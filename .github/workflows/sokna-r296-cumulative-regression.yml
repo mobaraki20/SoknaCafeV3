@@ -1,0 +1,217 @@
+name: SOKNA R296 Full Cumulative Finance Printing Calendar Template QA
+on:
+  push:
+    branches: [qa/sokna-r296-close-calendar-template-20261119]
+    paths:
+      - 'r296/**'
+      - '.github/workflows/sokna-r296-cumulative-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-mariadb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r293-disposable-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    env:
+      R293_DB_PASSWORD: r293-disposable-test-only
+      R294_DB_PASSWORD: r293-disposable-test-only
+      SOKNA_R294_DB_QA: disposable_only
+      R293_QA_MODE: disposable_only
+      GITHUB_ACTIONS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          run-id: 44305226007
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r278
+      - name: Exact R278 through R296 full cumulative source and SQL migration
+        env:
+          ROOT: ${{ runner.temp }}/local
+          ARTIFACTS: ${{ runner.temp }}/r278
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,zipfile,hashlib,io,json
+          ar=pathlib.Path(os.environ['ARTIFACTS']);dst=pathlib.Path(os.environ['ROOT']);dst.mkdir(parents=True,exist_ok=True)
+          digest='3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824'
+          files=[p for p in ar.rglob('*.zip') if hashlib.sha256(p.read_bytes()).hexdigest()==digest]
+          assert len(files)==1,[(p.name,p.stat().st_size) for p in ar.rglob('*.zip')]
+          with zipfile.ZipFile(files[0]) as outer:
+            manifest=json.loads(outer.read('release-set.json'))
+            assert manifest['targets']['local']['version']=='3.0.0-g6.2-workspace.231fn-r278-rial-policy-persist'
+            inner=outer.read('artifacts/local/web.zip')
+          with zipfile.ZipFile(io.BytesIO(inner)) as z:
+            names=[n for n in z.namelist() if not n.endswith('/')]
+            assert len(names)==604,len(names)
+            for name in names:
+              dstfile=dst/name;dstfile.parent.mkdir(parents=True,exist_ok=True);dstfile.write_bytes(z.read(name))
+          print('R290_BASELINE_EXACT_R278',digest,len(names))
+          PY
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r288/R278-to-R288-cumulative.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r289/HISTORICAL-SETTLEMENT-LINKS.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r290/R289-TO-R290-ITEMIZED.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r291/R290-TO-R291-POS-DEFAULT.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r292/R291-TO-R292-OPEN-ACCOUNTS.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r293/R292-TO-R293-PARTIAL-DISCOUNT-MOVE.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r294/R293-TO-R294-SCHEMA-POLICY.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r295/R294-TO-R295-OPEN-ISSUES.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r296/R295-TO-R296-CALENDAR-TEMPLATES.patch")
+          php -l "$ROOT/src/Domain/System/GoLiveResetEngine.php"
+          php -l "$ROOT/public/index.php"
+          php -l "$ROOT/resources/shared-staff-ui/dashboard-workspace.php"
+          node --check "$ROOT/public/assets/dashboard-open-accounts.js"
+          php -l "$ROOT/src/Domain/Admin/AdminControlService.php"
+          php -l "$ROOT/src/Domain/PublicEdge/PublicProjectionBuilder.php"
+          php -l "$ROOT/public/operator/api.php"
+          php -l "$ROOT/public/admin/index.php"
+          node --check "$ROOT/public/assets/hall-settlement-v32.js"
+          node --check "$ROOT/public/assets/settlement-tender.js"
+          node --check "$ROOT/public/assets/admin-workspace.js"
+          php -l "$ROOT/src/Domain/Orders/OrderStaffActionService.php"
+          php -l "$ROOT/src/Domain/Finance/SettlementService.php"
+          php -l "$ROOT/src/Domain/Orders/TableChangeService.php"
+          php -l "$ROOT/public/finance/api.php"
+          php -l "$ROOT/src/Relay/SettlementRealtimeAdapter.php"
+          node --check "$ROOT/public/assets/finance-workspace.js"
+          node --check "$ROOT/public/assets/operator-workspace.js"
+          php -l "$ROOT/src/Domain/Orders/OrderWorkspaceService.php"
+          node --check "$ROOT/public/assets/staff-app/hall-workspace.js"
+          node --check "$ROOT/public/assets/product-shell.js"
+          node --check "$ROOT/public/assets/printing-workspace.js"
+          python3 - <<'PY'
+          import os,pathlib,hashlib
+          root=pathlib.Path(os.environ['ROOT']);data={p.relative_to(root).as_posix():p.read_bytes() for p in root.rglob('*') if p.is_file()}
+          assert len(data)==607,len(data)
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          digest=sha(''.join(n+'\0'+sha(b)+'\n' for n,b in sorted(data.items())).encode())
+          expected='9ecbbc9850d3f077d57f0cff4e808975157710781682cfa8be0e0b3bca458246'
+          assert digest==expected,(digest,expected)
+          print('R296_EXACT_MANAGED_TREE_PASS',digest)
+          PY
+      - name: Validate official Iran 1405 holiday coverage and no fabricated day events
+        env:
+          ROOT: ${{ runner.temp }}/local
+        run: |
+          set -euo pipefail
+          python3 - <<'PYVALID'
+          import json,pathlib,os
+          data=json.loads((pathlib.Path(os.environ['ROOT'])/'public/assets/iran-calendar-1405.json').read_text())
+          events=data['events'];holidays=[key for key,meta in events.items() if meta['holiday'] is True]
+          assert len(holidays)==26,(len(holidays),holidays)
+          assert len(events)==59,len(events)
+          assert data.get('official_holiday_count')==26,data.get('official_holiday_count')
+          assert data.get('event_count')==59,data.get('event_count')
+          assert all(key in holidays for key in ('1405-08-22','1405-10-02','1405-11-04'))
+          assert data['coverage']=='all_26_annual_national_public_holidays_plus_selected_official_occasions'
+          print('R296_CALENDAR_26_OFFICIAL_DATES_SELECTED_EVENTS_PASS',len(holidays))
+          PYVALID
+      - name: Verify source-based QA fixtures for template archive, mobile calendar and no schema change
+        run: |
+          python3 - <<'PYVALID'
+          import json,pathlib
+          cal=json.loads(pathlib.Path('r296/R296-CALENDAR-QA.json').read_text())
+          tpl=json.loads(pathlib.Path('r296/R296-TEMPLATE-LIBRARY-QA.json').read_text())
+          assert cal.get('status')=='PASS'
+          assert tpl.get('status')=='PASS'
+          assert len(tpl.get('tests',[]))==2
+          print('R296_COMPONENT_BROWSER_QA_RECEIPTS_PRESENT')
+          PYVALID
+      - name: Validate historical orders with old/new sessions on the same table in MariaDB
+        env:
+          R295_SOURCE_ROOT: ${{ runner.temp }}/local
+          R295_DB_PASSWORD: r293-disposable-test-only
+          R295_QA_ONLY: disposable
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R295_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r295 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r295/qa_historical_order_mariadb.php | tee "$RUNNER_TEMP/r295-history.json"
+      - name: Validate unsaved template draft on real MariaDB and real PrintTemplatePackageService
+        env:
+          R295_SOURCE_ROOT: ${{ runner.temp }}/local
+          R295_DB_PASSWORD: r293-disposable-test-only
+          R295_QA_ONLY: disposable
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R295_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r295_print CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r295/qa_print_draft_mariadb.php | tee "$RUNNER_TEMP/r295-print-draft.json"
+      - name: Real immutable template save, activate, rollback, archive-delete, and audit lifecycle
+        env:
+          R296_SOURCE_ROOT: ${{ runner.temp }}/local
+          R296_DB_PASSWORD: r293-disposable-test-only
+          R296_QA_ONLY: disposable
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R296_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r296_templates CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r296/qa_template_lifecycle_mariadb.php | tee "$RUNNER_TEMP/r296-template-lifecycle.json"
+      - name: Full real 82-step R278 schema and forward-only 0083 upgrade, idempotency and go-live policy
+        env:
+          R294_SOURCE_ROOT: ${{ runner.temp }}/local
+        run: |
+          set -euo pipefail
+          php r294/qa_full_r278_to_r293_migrations.php | tee "$RUNNER_TEMP/r294-db-full-upgrade.json"
+      - name: Actual SettlementService & TableChangeService with live financial receipts and 0083 migration
+        env:
+          R293_SOURCE_ROOT: ${{ runner.temp }}/local
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R293_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r293 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r293/qa_remaining_discount_and_move_mariadb.php | tee "$RUNNER_TEMP/r293-mariadb.json"
+      - name: Real MariaDB paid-floor grouped item corrections
+        env:
+          R290_SOURCE_ROOT: ${{ runner.temp }}/local
+          R290_DB_PASSWORD: r293-disposable-test-only
+          R290_QA_MODE: disposable_only
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R290_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r290 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r290/qa_itemized_mariadb.php | tee "$RUNNER_TEMP/r290-itemized.json"
+      - name: Real MariaDB persisted POS default and version-guard
+        env:
+          R291_SOURCE_ROOT: ${{ runner.temp }}/local
+          R291_DB_PASSWORD: r293-disposable-test-only
+          R291_QA_MODE: disposable_only
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R291_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r291 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r291/qa_default_tender_mariadb.php | tee "$RUNNER_TEMP/r291-pos.json"
+      - name: Real MariaDB open account financial subtotal projection
+        env:
+          R292_SOURCE_ROOT: ${{ runner.temp }}/local
+          R292_DB_PASSWORD: r293-disposable-test-only
+          R292_QA_MODE: disposable_only
+        run: |
+          set -euo pipefail
+          php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R292_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r292 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
+          php r292/qa_open_accounts_mariadb.php | tee "$RUNNER_TEMP/r292-open-accounts.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R296-FINANCE-CALENDAR-TEMPLATE-MARIADB-REGRESSION-QA
+          path: |
+            ${{ runner.temp }}/r296-template-lifecycle.json
+            ${{ runner.temp }}/r290-itemized.json
+            ${{ runner.temp }}/r291-pos.json
+            ${{ runner.temp }}/r292-open-accounts.json
+            ${{ runner.temp }}/r295-history.json
+            ${{ runner.temp }}/r295-print-draft.json
+            ${{ runner.temp }}/r293-mariadb.json
+            ${{ runner.temp }}/r294-db-full-upgrade.json
+          if-no-files-found: ignore
+          retention-days: 30
