@@ -1,0 +1,146 @@
+name: SOKNA R297 Local Cumulative Candidate - factory QA only
+on:
+  push:
+    branches: [qa/sokna-r297-local-release-20261119]
+    paths:
+      - 'r297/**'
+      - '.github/workflows/sokna-r297-local-candidate-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      SOKNA_R297_WORKDIR: ${{ runner.temp }}/r297-work
+      SOKNA_R296_SOURCE_DIR: ${{ runner.temp }}/r297-source
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R278-231FN-ORIGINAL-ZIP-FACTORY-QA-ONLY
+          run-id: 44305226007
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r278-artifacts
+      - name: Pin exact historical Local R278 bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SOKNA_R297_WORKDIR" "$SOKNA_R296_SOURCE_DIR"
+          python3 - <<'PY'
+          import os,pathlib,hashlib,zipfile,io,shutil
+          ar=pathlib.Path(os.environ['RUNNER_TEMP'])/'r278-artifacts'
+          target=pathlib.Path(os.environ['SOKNA_R297_WORKDIR'])/'SOKNA-R278-LOCAL-231FN-CUMULATIVE-RIAL-PERSISTENCE-INSTALL-READY.zip'
+          pin='3a1070e18b14307fb2571634c961b20ca3e5d38e6c9a9dc1afad68be89fe6824'
+          matches=[x for x in ar.rglob('*.zip') if hashlib.sha256(x.read_bytes()).hexdigest()==pin]
+          assert len(matches)==1,[(x.name,x.stat().st_size) for x in ar.rglob('*.zip')]
+          shutil.copyfile(matches[0],target)
+          with zipfile.ZipFile(target) as z:
+            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as inner:
+              dst=pathlib.Path(os.environ['SOKNA_R296_SOURCE_DIR'])
+              for name in inner.namelist():
+                file=dst/name; file.parent.mkdir(parents=True,exist_ok=True);file.write_bytes(inner.read(name))
+          print('PASS_EXACT_R278_604_MANAGED_SOURCE')
+          PY
+      - name: Replay the committed R288-to-R296 cumulative patch chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$SOKNA_R296_SOURCE_DIR"
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r288/R278-to-R288-cumulative.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r289/HISTORICAL-SETTLEMENT-LINKS.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r290/R289-TO-R290-ITEMIZED.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r291/R290-TO-R291-POS-DEFAULT.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r292/R291-TO-R292-OPEN-ACCOUNTS.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r293/R292-TO-R293-PARTIAL-DISCOUNT-MOVE.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r294/R293-TO-R294-SCHEMA-POLICY.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r295/R294-TO-R295-OPEN-ISSUES.patch")
+          (cd "$ROOT" && patch --batch --forward -p1 -i "$GITHUB_WORKSPACE/r296/R295-TO-R296-CALENDAR-TEMPLATES.patch")
+          python3 - <<'PY'
+          import pathlib,os,hashlib
+          root=pathlib.Path(os.environ['SOKNA_R296_SOURCE_DIR'])
+          files={p.relative_to(root).as_posix():p.read_bytes() for p in root.rglob('*') if p.is_file()}
+          h=lambda b:hashlib.sha256(b).hexdigest()
+          sha=h(''.join(k+'\0'+h(v)+'\n' for k,v in sorted(files.items())).encode())
+          assert len(files)==607,(len(files),sha)
+          assert sha=='9ecbbc9850d3f077d57f0cff4e808975157710781682cfa8be0e0b3bca458246',sha
+          print('PASS_R296_EXACT_SOURCE_TREE',sha)
+          PY
+      - name: Build the exact R297 QA-only Release Set 2.1 and verify immutable SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 r297/build_r297_candidate.py
+          sha256sum "$SOKNA_R297_WORKDIR/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip"
+          echo 'dc91ddc34d97e0ae500d9f61bd8151c8be531fec11d9f6fcdf3b938ca6f2ceaf  '"$SOKNA_R297_WORKDIR/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip" | sha256sum -c -
+          python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R297_WORKDIR/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip"
+          if python3 packaging/windows/release-gates/check_local_release_set.py "$SOKNA_R297_WORKDIR/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip" --require-installable; then
+            echo 'UNSAFE_OPERATOR_INSTALL_ALLOWED';exit 4
+          fi
+          echo 'PASS_QA_CANDIDATE_REJECTED_BY_PRODUCTION_GATE'
+      - name: Prepare exact byte candidate-contract for shared factory QA
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib,hashlib
+          d=pathlib.Path(os.environ['SOKNA_R297_WORKDIR'])/'output'
+          pkg=d/'SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip'
+          pr=d/'R297-INTEGRITY-AND-RELEASE-GATES.json'
+          H=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          c={'schema':'sokna-candidate-contract-v1',
+            'component':'local',
+            'producer':{'run_id':'same_run','artifact':'SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA'},
+            'source_authority':{'approved_checkpoint':'R296_QA_TREE_PIN_ONLY_NOT_FIELD_APPROVED',
+                                'source_sha256':'9ecbbc9850d3f077d57f0cff4e808975157710781682cfa8be0e0b3bca458246'},
+            'packages':[{'file':pkg.name,'sha256':H(pkg),'kind':'local-update',
+                         'component':'local','version':'3.0.0-g6.2-workspace.231fo-r297-r296-cumulative-qa'}],
+            'supporting_files':[{'file':pr.name,'sha256':H(pr)}],
+            'production_authorized':False}
+          (d/'candidate-contract.json').write_text(json.dumps(c,sort_keys=True,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
+          path: |
+            ${{ runner.temp }}/r297-work/output/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip
+            ${{ runner.temp }}/r297-work/output/R297-INTEGRITY-AND-RELEASE-GATES.json
+            ${{ runner.temp }}/r297-work/output/candidate-contract.json
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-archive-static-qa:
+    needs: build-candidate
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
+          path: r297-candidate
+      - name: Read original byte ZIP under native Windows without installing
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='r297-candidate/SOKNA-R297-LOCAL-231FO-CUMULATIVE-CANDIDATE-NOT-INSTALL.zip'
+          $got=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($got -cne 'dc91ddc34d97e0ae500d9f61bd8151c8be531fec11d9f6fcdf3b938ca6f2ceaf'){throw 'R297_SHA_MISMATCH'}
+          python packaging/windows/release-gates/check_local_release_set.py $p
+          if($LASTEXITCODE -ne 0){throw 'R297_STATIC_CONTRACT_FAILED'}
+          $d=Get-Content 'r297-candidate/R297-INTEGRITY-AND-RELEASE-GATES.json' -Raw|ConvertFrom-Json
+          if($d.production_authorized -ne $false -or $d.for_install -ne $false){throw 'R297_QA_ONLY_POLICY_VIOLATED'}
+          Write-Host 'PASS_R297_EXACT_FINAL_CANDIDATE_WINDOWS_ARCHIVE_STATIC_ONLY_NO_MAINTENANCE_ACTIVATION'
+
+  shared-factory-admission:
+    needs: build-candidate
+    uses: ./.github/workflows/sokna-release-factory.yml
+    with:
+      track: registered-candidate
+      candidate_contract_path: artifact:candidate-contract.json
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R297-LOCAL-CANDIDATE-FACTORY-QA
+    permissions:
+      contents: read
+      actions: read
