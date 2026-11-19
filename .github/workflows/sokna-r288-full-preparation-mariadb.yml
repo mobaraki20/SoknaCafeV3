@@ -83,10 +83,18 @@ jobs:
           set -euo pipefail
           php -r '$p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("R288_DB_PASSWORD"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec("CREATE DATABASE sokna_r288_print CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");'
           php r288/qa_full_reprint_mariadb.php | tee "$RUNNER_TEMP/r288-mariadb-result.json"
+      - name: Verify exact Local dashboard business-day cutoff and unread historical safety
+        env:
+          R288_SOURCE_ROOT: ${{ runner.temp }}/local
+        run: |
+          set -euo pipefail
+          php r288/qa_dashboard_business_clock.php | tee "$RUNNER_TEMP/r288-dashboard-result.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: SOKNA-R288-FULL-PREP-MARIADB-REAL-RESULT
-          path: ${{ runner.temp }}/r288-mariadb-result.json
+          path: |
+            ${{ runner.temp }}/r288-mariadb-result.json
+            ${{ runner.temp }}/r288-dashboard-result.json
           if-no-files-found: ignore
           retention-days: 30
