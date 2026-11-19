@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "checks": [
+    {
+      "viewport": "desktop",
+      "tab_count": 2,
+      "summary_hidden": true,
+      "old_order_in_separate_tab": true,
+      "no_empty_note_placeholder": true,
+      "stale_mutation_blocked": true,
+      "projection_reload": true
+    },
+    {
+      "viewport": "mobile",
+      "tab_count": 2,
+      "summary_hidden": true,
+      "old_order_in_separate_tab": true,
+      "no_empty_note_placeholder": true,
+      "stale_mutation_blocked": true,
+      "projection_reload": true
+    }
+  ]
+}
