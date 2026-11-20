@@ -28,6 +28,7 @@ $schema=[
 "CREATE TABLE settlement_record_lines(id INT PRIMARY KEY AUTO_INCREMENT,settlement_id INT,order_item_id INT,quantity INT,discount_amount BIGINT,tax_amount BIGINT,gross_amount BIGINT,net_amount BIGINT,taxable_amount BIGINT,final_amount BIGINT) ENGINE=InnoDB",
 "CREATE TABLE remaining_account_discount_grants(id INT PRIMARY KEY AUTO_INCREMENT,session_id INT UNIQUE,discount_type VARCHAR(12),discount_value BIGINT,base_unpaid_subtotal BIGINT,discount_amount BIGINT,actor_user_id INT) ENGINE=InnoDB",
 "CREATE TABLE remaining_account_discount_lines(grant_id INT,order_item_id INT,quantity_snapshot INT,paid_quantity_at_grant INT,original_discount_snapshot BIGINT,discount_amount BIGINT,invoice_tax_after_grant BIGINT,invoice_taxable_after_grant BIGINT,PRIMARY KEY(grant_id,order_item_id)) ENGINE=InnoDB",
+"CREATE TABLE settlement_followup_events(id INT PRIMARY KEY AUTO_INCREMENT,session_id INT,event_type VARCHAR(40),from_destination VARCHAR(30),to_destination VARCHAR(30),note TEXT,actor_user_id INT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB",
 "CREATE TABLE users(id INT PRIMARY KEY,display_name VARCHAR(80)) ENGINE=InnoDB",
 "CREATE TABLE audit_log(id INT AUTO_INCREMENT PRIMARY KEY,actor_user_id INT,actor_display_name_snapshot VARCHAR(80),action VARCHAR(100),entity_type VARCHAR(60),entity_id VARCHAR(60),details_json LONGTEXT) ENGINE=InnoDB"
 ];foreach($schema as $sql)$p->exec($sql);
