@@ -57,12 +57,12 @@ jobs:
           php -l "$RUNNER_TEMP/r309-source/src/Domain/Finance/SettlementService.php"
           php -l "$RUNNER_TEMP/r309-source/src/Domain/Orders/OrderStaffActionService.php"
           node --check "$RUNNER_TEMP/r309-source/public/assets/staff-app/hall-workspace.js"
-      - name: Real source pure-logic tests: earlier invoice discount, tax, full complimentary
+      - name: 'Real source pure-logic tests: earlier invoice discount, tax, full complimentary'
         env:
           SOKNA_QA_ROOT: ${{ runner.temp }}/r309-source
         run: |
           php -d zend.assertions=1 -d assert.exception=1 r309/tests/test_remaining_discount.php
-      - name: Actual preview + commit + receipt snapshot verification on MariaDB 11.4
+      - name: 'Actual preview and commit on disposable MariaDB 11.4'
         env:
           R309_QA_MODE: disposable_only
           R309_DB_PASSWORD: local_ci_only
