@@ -1,0 +1,70 @@
+name: SOKNA R307 LOCAL — single-baseline factory original ZIP registration
+on:
+  push:
+    branches: [qa/sokna-r307-231fv-dashboard-ui-20261120]
+    paths: ['.github/workflows/sokna-r307-factory-local.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare-isolated-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          run-id: 44731300422
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-original
+      - name: Verify independent Local/Public CI receipt and LOCAL source ZIP without rebuilding
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/44731300422/jobs?per_page=100&filter=all" > "$RUNNER_TEMP/r307-producer-jobs.json"
+          python3 - <<'PYCODE'
+          import pathlib,hashlib,json,os,shutil
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);s=t/'r307-original'
+          jobs=json.loads((t/'r307-producer-jobs.json').read_text())['jobs']
+          names=['exact-build','mariadb-currency','windows-native','final-decision']
+          latest={}
+          for j in jobs:
+            n=j.get('name');k=(j.get('run_attempt',0),j.get('id',0))
+            if n in names and (n not in latest or k>latest[n][0]):latest[n]=(k,j.get('status'),j.get('conclusion'))
+          assert set(names)==set(latest),latest
+          assert all(latest[n][1]=='completed' and latest[n][2]=='success' for n in names),latest
+          name='SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip';digest='069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa';version='3.0.0-g6.2-workspace.231fw-r307-dashboard-money-calendar-notify';component='local';source='63df287e865ac0503fd21dea275a4714c1138f0c11ee53834522b7cb3d060d7c';artifact='SOKNA-R307-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE'
+          found=list(s.rglob(name));assert len(found)==1,found
+          orig=found[0];assert hashlib.sha256(orig.read_bytes()).hexdigest()==digest
+          proof=list(s.rglob('R307-RELEASE-PROOF.json'));assert len(proof)==1
+          pb=proof[0].read_bytes(); ph=hashlib.sha256(pb).hexdigest()
+          receipt={'schema':'sokna-r307-disposable-qa-ci-v1','producer_run':44731300422,'all_disposable_checks_pass':True,'checks':{n:latest[n][2] for n in names},'production_authorized':False,'field_install_authorized':False}
+          cb=(json.dumps(receipt,sort_keys=True,ensure_ascii=False,indent=2)+'\n').encode()
+          folder=pathlib.Path('r307-factory')/component;folder.mkdir(parents=True,exist_ok=True)
+          shutil.copyfile(orig,folder/name)
+          (folder/'R307-RELEASE-PROOF.json').write_bytes(pb)
+          (folder/'R307-DISPOSABLE-CI-RECEIPT.json').write_bytes(cb)
+          contract={'schema':'sokna-candidate-contract-v1','component':component,'producer':{'run_id':'same_run','artifact':artifact},'source_authority':{'approved_checkpoint':'R306_EXACT_R301_LOCAL_R304_PUBLIC_44731300422','source_sha256':source},'packages':[{'file':name,'sha256':digest,'kind':('local-update' if component=='local' else 'public-update'),'component':component,'version':version}], 'supporting_files':[{'file':'R307-RELEASE-PROOF.json','sha256':ph},{'file':'R307-DISPOSABLE-CI-RECEIPT.json','sha256':hashlib.sha256(cb).hexdigest()}], 'production_authorized':False}
+          (folder/'candidate-contract.json').write_text(json.dumps(contract,ensure_ascii=False,sort_keys=True,indent=2)+'\n')
+          print('R307_FACTORY_ORIGINAL_SHA_VERIFIED_NO_REBUILD',component,digest)
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE
+          path: r307-factory/local/*
+          if-no-files-found: error
+  factory-local:
+    needs: prepare-isolated-source
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R307-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE
