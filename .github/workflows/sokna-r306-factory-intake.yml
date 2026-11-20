@@ -1,0 +1,89 @@
+name: SOKNA R306 Central Factory — exact original Local/Public registered candidates
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa/sokna-r306-coordinated-ui-20261120]
+    paths: ['.github/workflows/sokna-r306-factory-intake.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare-qualified-originals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-source-original
+      - name: Verify producer run exact latest statuses and immutable hashes before factory intake
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/44723958829/jobs?per_page=100&filter=all" > "$RUNNER_TEMP/r306-producer-jobs.json"
+          python3 - <<'PY'
+          import pathlib,hashlib,json,os,shutil
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);s=t/'r306-source-original';out=pathlib.Path('r306-factory')
+          jobs=json.loads((t/'r306-producer-jobs.json').read_text())['jobs']
+          want=['byte-identical-build','finance-mariadb','native-windows-exact-activation','public-emergency-actual-http']
+          latest={}
+          for j in jobs:
+            n=j.get('name');a=j.get('run_attempt',0);i=j.get('id',0)
+            if n in want and (n not in latest or (a,i)>(latest[n][0],latest[n][1])):
+              latest[n]=(a,i,j.get('status'),j.get('conclusion'))
+          assert set(want)==set(latest),latest
+          assert all(latest[n][2]=='completed' and latest[n][3]=='success' for n in want),latest
+          receipt={'schema':'sokna-r306-disposable-qa-ci-v1','producer_run':44723958829,'all_disposable_checks_pass':True,'checks':{n:{'attempt':latest[n][0],'id':latest[n][1],'conclusion':latest[n][3]} for n in want},'field_install_authorized':False,'live_cafe_mutated':False}
+          cb=(json.dumps(receipt,sort_keys=True,ensure_ascii=False,indent=2)+'\n').encode()
+          proof=list(s.rglob('R306-EXACT-CANDIDATE-VERIFY.json'));assert len(proof)==1
+          pb=proof[0].read_bytes(); ph=hashlib.sha256(pb).hexdigest()
+          packages=[('local','local-update','SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip','1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209','3.0.0-g6.2-workspace.231fv-r306-local-public-ui-parity','159b20c33d9b8d92a0a53f5ab1a91bcf8ca60e6a446b836636d66dbd4213193a','SOKNA-R306-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE'),
+                    ('public','public-update','SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip','e2d78030a7246103a1b4ae2b28409093ebf8e61d44abc3739d73d0ac10b9fe51','3.0.0-g3.6-workspace.35in-r306-local-public-ui-parity','3055050385f5e3133e86bd58248e4935c5dd378826b371036ef35229734afe27','SOKNA-R306-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE')]
+          for component,kind,name,digest,version,src,artifact in packages:
+            found=list(s.rglob(name));assert len(found)==1,found
+            original=found[0];assert hashlib.sha256(original.read_bytes()).hexdigest()==digest,name
+            folder=out/component;folder.mkdir(parents=True,exist_ok=True)
+            shutil.copyfile(original,folder/name)
+            (folder/'R306-EXACT-CANDIDATE-VERIFY.json').write_bytes(pb)
+            (folder/'R306-DISPOSABLE-CI-RECEIPT.json').write_bytes(cb)
+            spec={'schema':'sokna-candidate-contract-v1','component':component,'producer':{'run_id':'same_run','artifact':artifact},'source_authority':{'approved_checkpoint':'EXACT_R301_LOCAL_R304_PUBLIC_R306_DISPOSABLE_GATES_44723958829','source_sha256':src},'packages':[{'file':name,'sha256':digest,'kind':kind,'component':component,'version':version}], 'supporting_files':[{'file':'R306-EXACT-CANDIDATE-VERIFY.json','sha256':ph},{'file':'R306-DISPOSABLE-CI-RECEIPT.json','sha256':hashlib.sha256(cb).hexdigest()}], 'production_authorized':False}
+            (folder/'candidate-contract.json').write_text(json.dumps(spec,ensure_ascii=False,sort_keys=True,indent=2)+'\n')
+            print('R306_FACTORY_PREPARED_ORIGINAL_ZIP_NO_REBUILD',component,name,digest)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R306-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE
+          path: r306-factory/local/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R306-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE
+          path: r306-factory/public/*
+          if-no-files-found: error
+  factory-local:
+    needs: prepare-qualified-originals
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R306-LOCAL-ORIGINAL-ZIP-FACTORY-SOURCE
+  factory-public:
+    needs: prepare-qualified-originals
+    uses: mobaraki20/SoknaCafeV3/.github/workflows/sokna-release-factory.yml@main
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-R306-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE
