@@ -1,0 +1,48 @@
+--- a/assets/product-ui.css
++++ b/assets/product-ui.css
+@@ -6200,3 +6200,12 @@
+ [data-preparation-workspace] .sc-preparation-tab:focus-visible{outline:2px solid var(--sc-accent);outline-offset:-2px}
+ [data-preparation-workspace] .sc-preparation-tab-panel{min-inline-size:0}
+ @media(max-width:560px){[data-preparation-workspace] .sc-preparation-tabs{display:flex;inline-size:100%}[data-preparation-workspace] .sc-preparation-tab{flex:1;justify-content:center;padding:7px 6px}}
++
++
++/* R306: shared Local/Public icon-only refresh control parity. */
++.sc-refresh-action{display:inline-flex!important;align-items:center!important;justify-content:center!important;inline-size:44px!important;min-inline-size:44px!important;max-inline-size:44px!important;block-size:44px!important;min-block-size:44px!important;padding:0!important;flex:0 0 44px!important;gap:0!important;border-radius:12px!important;white-space:nowrap!important;font-size:inherit!important;}
++.sc-refresh-action .sc-ui-icon{inline-size:19px!important;block-size:19px!important;stroke:currentColor;fill:none;flex:0 0 auto;}
++.sc-refresh-action:focus-visible{outline:2px solid var(--sc-accent)!important;outline-offset:2px;}
++.sc-refresh-action:disabled{opacity:.5;cursor:not-allowed;}
++body[data-page="finance"] [data-refresh].sc-refresh-action::before,body[data-page="integrations"] [data-refresh].sc-refresh-action::before{content:none!important;}
++@media(max-width:640px){body[data-page="system"] .sc-shell__content>.sc-workspace>.sc-local-nav>.sc-actions>[data-refresh].sc-refresh-action{inline-size:44px!important;max-inline-size:44px!important;min-inline-size:44px!important;place-self:start!important;}body[data-page="finance"] .sc-shell__content>.sc-workspace>.sc-local-nav>[data-refresh].sc-refresh-action,body[data-page="integrations"] .sc-shell__content>.sc-workspace>.sc-local-nav>[data-refresh].sc-refresh-action{inline-size:44px!important;min-inline-size:44px!important;block-size:44px!important;min-block-size:44px!important;}}
+--- a/resources/shared-staff-ui/operations-workspace.php
++++ b/resources/shared-staff-ui/operations-workspace.php
+@@ -3,7 +3,7 @@
+ /** Shared Operations workspace markup. Host provides $workspaceApi/$workspaceAsset and capability booleans. */
+ ?>
+ <section class="sc-workspace" data-operations-workspace data-api="<?=htmlspecialchars($workspaceApi,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>" data-admin="<?= $isAdmin?'1':'0' ?>" data-can-expenses="<?= !empty($canExpenses)?'1':'0' ?>" data-can-ops="<?= $canOps?'1':'0' ?>" data-can-manage="<?= $canManage?'1':'0' ?>" data-can-finalize="<?= $canFinalize?'1':'0' ?>" data-can-buy="<?= $canBuy?'1':'0' ?>" data-read-only="<?= !empty($workspaceReadOnly)?'1':'0' ?>">
+-  <div class="sc-toolbar sc-local-nav"><div class="sc-tabs" role="tablist" aria-label="حوزه عملیات"><button class="sc-tab" role="tab" aria-selected="true" type="button" data-tab="inventory">انبار و تأمین</button><?php if(!empty($canExpenses)): ?><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="expenses">هزینه‌ها</button><?php endif; ?></div><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button></div>
++  <div class="sc-toolbar sc-local-nav"><div class="sc-tabs" role="tablist" aria-label="حوزه عملیات"><button class="sc-tab" role="tab" aria-selected="true" type="button" data-tab="inventory">انبار و تأمین</button><?php if(!empty($canExpenses)): ?><button class="sc-tab" role="tab" aria-selected="false" type="button" data-tab="expenses">هزینه‌ها</button><?php endif; ?></div><button class="sc-button sc-button--secondary sc-refresh-action" type="button" data-refresh aria-label="بازخوانی اطلاعات" title="بازخوانی اطلاعات"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.1-5.2L4 8m0-5v5h5M4 13a8 8 0 0 0 14.1 5.2L20 16m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+   <div class="sc-alert" role="status" aria-live="polite" data-status hidden></div>
+   <div class="sc-alert sc-alert--warning" role="status" aria-live="polite" data-ops-section-status hidden></div>
+ 
+--- a/resources/shared-staff-ui/preparation-workspace.php
++++ b/resources/shared-staff-ui/preparation-workspace.php
+@@ -14,7 +14,7 @@
+ $prepAttrHtml='';foreach($prepAttrs as $name=>$value)$prepAttrHtml.=' '.$name.($value===''?'':'="'.$prepE($value).'"');
+ ?>
+ <section class="sc-workspace"<?=$prepAttrHtml?>>
+-  <button class="sc-button sc-button--secondary" type="button" data-refresh hidden>تازه‌سازی</button>
++  <button class="sc-button sc-button--secondary sc-refresh-action" type="button" data-refresh hidden aria-label="بازخوانی اطلاعات" title="بازخوانی اطلاعات"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.1-5.2L4 8m0-5v5h5M4 13a8 8 0 0 0 14.1 5.2L20 16m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+   <section class="sc-preparation-panel">
+     <div class="sc-preparation-summary" data-preparation-summary aria-live="polite"></div>
+     <div class="sc-alert" role="status" aria-live="polite" data-status hidden></div>
+--- a/resources/shared-staff-ui/subscribers-workspace.php
++++ b/resources/shared-staff-ui/subscribers-workspace.php
+@@ -4,7 +4,7 @@
+ $canPayment=$canPayment??true;
+ ?>
+ <section class="sc-workspace" data-subscriber-workspace data-api="<?=htmlspecialchars($workspaceApi,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>" data-admin="<?= $isAdmin?'1':'0' ?>" data-can-payment="<?= $canPayment?'1':'0' ?>">
+-  <div class="sc-toolbar"><label class="sc-toolbar__field"><span class="sc-field__label">جست‌وجو</span><input class="sc-control" type="search" data-search placeholder="نام یا موبایل" autocomplete="off" enterkeyhint="search" aria-label="جست‌وجوی مشتری"></label><label class="sc-inline"><input type="checkbox" data-debt-only> فقط بدهکار</label><label class="sc-field sc-toolbar__compact"><span class="sc-field__label">وضعیت</span><select class="sc-control" data-status-filter><option value="all">همه وضعیت‌ها</option><option value="active">فعال</option><option value="inactive">غیرفعال</option></select></label><button class="sc-button sc-button--secondary" type="button" data-refresh>تازه‌سازی</button><?php if($isAdmin): ?><button class="sc-button" type="button" data-new-subscriber>مشتری جدید</button><?php endif; ?></div>
++  <div class="sc-toolbar"><label class="sc-toolbar__field"><span class="sc-field__label">جست‌وجو</span><input class="sc-control" type="search" data-search placeholder="نام یا موبایل" autocomplete="off" enterkeyhint="search" aria-label="جست‌وجوی مشتری"></label><label class="sc-inline"><input type="checkbox" data-debt-only> فقط بدهکار</label><label class="sc-field sc-toolbar__compact"><span class="sc-field__label">وضعیت</span><select class="sc-control" data-status-filter><option value="all">همه وضعیت‌ها</option><option value="active">فعال</option><option value="inactive">غیرفعال</option></select></label><button class="sc-button sc-button--secondary sc-refresh-action" type="button" data-refresh aria-label="بازخوانی اطلاعات" title="بازخوانی اطلاعات"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.1-5.2L4 8m0-5v5h5M4 13a8 8 0 0 0 14.1 5.2L20 16m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><?php if($isAdmin): ?><button class="sc-button" type="button" data-new-subscriber>مشتری جدید</button><?php endif; ?></div>
+   <div class="sc-alert" role="status" aria-live="polite" data-status hidden></div>
+   <div class="sc-subscriber-layout">
+     <section class="sc-data-panel sc-subscriber-list-panel">

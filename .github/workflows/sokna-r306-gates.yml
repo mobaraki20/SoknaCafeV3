@@ -1,0 +1,224 @@
+name: SOKNA R306 Local/Public Coordinated UI — byte-pinned Windows/MariaDB/Emergency
+on:
+  push:
+    branches: [qa/sokna-r306-coordinated-ui-20261120]
+    paths: ['r306/**', '.github/workflows/sokna-r306-gates.yml']
+  workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r305b-print-latency-station-20261120]
+    paths: ['r306/**', '.github/workflows/sokna-r306-gates.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  byte-identical-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          run-id: 44637786705
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-baselines
+      - name: Rebuild both R306 packages from immutable R304 source plus checked-in R305/R305B/R306 patches
+        shell: bash
+        env:
+          R306_WORK: ${{ runner.temp }}/r306-work
+        run: |
+          set -euo pipefail
+          export R306_LOCAL_BASE="$(find "$RUNNER_TEMP/r306-baselines" -name 'SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip' -type f | head -1)"
+          export R306_PUBLIC_BASE="$(find "$RUNNER_TEMP/r306-baselines" -name 'SOKNA-R304-PUBLIC-35IM-EMERGENCY-CANDIDATE-NOT-FIELD.zip' -type f | head -1)"
+          test -f "$R306_LOCAL_BASE" && test -f "$R306_PUBLIC_BASE"
+          python3 r306/qa/rebuild_exact.py
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R306_WORK/artifacts/SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip" --require-installable
+          php -l "$R306_WORK/local/public/catalog/index.php"
+          php -l "$R306_WORK/public/resources/shared-staff-ui/subscribers-workspace.php"
+          php -l "$R306_WORK/public/resources/shared-staff-ui/preparation-workspace.php"
+          php -l "$R306_WORK/public/resources/shared-staff-ui/operations-workspace.php"
+          node --check "$R306_WORK/local/public/assets/staff-app/order-draft-workspace.js"
+          node --check "$R306_WORK/public/assets/staff-app/preparation-workspace.js"
+          echo PASS_R306_BYTE_IDENTICAL_BUILD_AND_RELEASE_SET_AND_SYNTAX
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          path: ${{ runner.temp }}/r306-work/artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+  finance-mariadb:
+    needs: [byte-identical-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-r303-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          path: ${{ runner.temp }}/r306-artifact
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Run real MariaDB financial invoice grouping and selected item reports from exact Local R306 source
+        shell: bash
+        env:
+          R303_DB_DISPOSABLE: 'yes'
+          R303_DB_HOST: 127.0.0.1
+          R303_DB_PASSWORD: disposable-r303-only
+          R303_LOCAL_SOURCE: ${{ runner.temp }}/r306-local-web
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,zipfile,io,hashlib,os
+          r=pathlib.Path(os.environ['RUNNER_TEMP']);a=list((r/'r306-artifact').rglob('SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip'))
+          assert len(a)==1 and hashlib.sha256(a[0].read_bytes()).hexdigest()=='1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209'
+          dest=pathlib.Path(os.environ['R303_LOCAL_SOURCE']);dest.mkdir()
+          with zipfile.ZipFile(a[0]) as z:
+            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+              for n in w.namelist():
+                if n.endswith('/'): continue
+                p=dest/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(n))
+          PY
+          php r303/tests/finance_mariadb.php | tee "$RUNNER_TEMP/r306-finance.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R306-FINANCE-MARIADB-RECEIPT
+          path: ${{ runner.temp }}/r306-finance.json
+          if-no-files-found: ignore
+  public-emergency-actual-http:
+    needs: [byte-identical-build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      mariadb:
+        image: mariadb:11.4
+        ports: ['3306:3306']
+        env:
+          MARIADB_DATABASE: sokna_public_r267_http_qa
+          MARIADB_ROOT_PASSWORD: test-only-root-pass
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -ptest-only-root-pass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_USER: root
+      SOKNA_QA_DB_PASSWORD: test-only-root-pass
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          path: ${{ runner.temp }}/r306-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          run-id: 44637786705
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-all-input
+      - uses: actions/download-artifact@v4
+        with:
+          name: R263-SELFCONTAINED-PUBLIC-CLEAN-UAT-HOST-NOT-QUALIFIED
+          run-id: 43837950540
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-all-input
+      - name: Protected Public Emergency exact 35im to 35in upload Stage Activate Commit with real MariaDB 11 migrations
+        shell: bash
+        env:
+          R306_CI_ARTIFACTS: ${{ runner.temp }}/r306-all-input
+          SOKNA_FIX_ROOT: ${{ github.workspace }}/r273
+          SOKNA_INPUT_ROOT: ${{ runner.temp }}/r306-public-input
+        run: |
+          set -euo pipefail
+          python3 r306/qa/prepare_public_emergency_direct.py
+          python3 "$RUNNER_TEMP/r306-public-direct-http-qa.py" | tee "$RUNNER_TEMP/r306-public-emergency.log"
+          grep -q 'R306_PROTECTED_EMERGENCY_35IM_TO_35IN_STAGE_ACTIVATE_COMMIT_PASS' "$RUNNER_TEMP/r306-public-emergency.log"
+          echo PASS_R306_PUBLIC_EMERGENCY_HTTP_STAGE_ACTIVATE_COMMIT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R306-PUBLIC-EMERGENCY-RECEIPT
+          path: ${{ runner.temp }}/r306-public-emergency.log
+          if-no-files-found: ignore
+  native-windows-exact-activation:
+    needs: [byte-identical-build]
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT
+          run-id: 44561325048
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          path: ${{ runner.temp }}/r306-target
+      - name: Real disposable Windows Maintenance R301 to R306 Stage Activate HTTP MariaDB83 and identity checks
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem '${{ runner.temp }}/r306-baseline' -Recurse -Filter 'SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip' | Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/r306-target' -Recurse -Filter 'SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'R306_EXACT_ARCHIVES_NOT_FOUND'}
+          $env:SOKNA_R301_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_R306_CANDIDATE_ZIP=$target.FullName
+          python r306/qa/prepare_native_windows.py
+          if($LASTEXITCODE -ne 0){throw 'R306_NATIVE_SCRIPT_PREP_FAILED'}
+          python (Join-Path $env:RUNNER_TEMP 'r306-prepare-from-r301.py')
+          if($LASTEXITCODE -ne 0){throw 'R306_NATIVE_STRICT_ADAPTATION_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'r306-native.ps1')
+            if($LASTEXITCODE -ne 0){throw 'R306_EXACT_NATIVE_WINDOWS_FAILED'}
+          } finally {Pop-Location}
+          'PASS_R306_EXACT_NATIVE_WINDOWS_R301_TO_R306' | Out-File "$env:RUNNER_TEMP/r306-native-receipt.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R306-NATIVE-WINDOWS-RECEIPT
+          path: ${{ runner.temp }}/r306-native-receipt.txt
+          if-no-files-found: ignore
+  final-decision:
+    if: always()
+    needs: [byte-identical-build, finance-mariadb, public-emergency-actual-http, native-windows-exact-activation]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Issue fail-closed QA decision without changing café or Public host
+        shell: bash
+        env:
+          BUILD: ${{ needs.byte-identical-build.result }}
+          FINANCE: ${{ needs.finance-mariadb.result }}
+          PUBLIC: ${{ needs.public-emergency-actual-http.result }}
+          WINDOWS: ${{ needs.native-windows-exact-activation.result }}
+        run: |
+          echo "R306_BUILD=$BUILD R306_FINANCE=$FINANCE R306_PUBLIC=$PUBLIC R306_WINDOWS=$WINDOWS"
+          test "$BUILD" = success && test "$FINANCE" = success && test "$PUBLIC" = success && test "$WINDOWS" = success
+          echo 'R306_DISPOSABLE_QUALIFICATION_PASS_FIELD_PREFLIGHT_STILL_REQUIRED'
