@@ -1,0 +1,77 @@
+name: SOKNA R308 safe itemized note-correction QA (not install)
+on:
+  push:
+    branches: [qa/sokna-r308-itemized-finance-safe-notes-20261120]
+    paths:
+      - 'r308/**'
+      - '.github/workflows/sokna-r308-finance.yml'
+  pull_request:
+    paths:
+      - 'r308/**'
+      - '.github/workflows/sokna-r308-finance.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  mariadb-itemized:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: local_ci_only
+          MARIADB_DATABASE: sokna_r290
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          repository: mobaraki20/SoknaCafeV3
+          run-id: 44731300422
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-original
+      - name: Extract exact R307 installed source and apply QA-only patch
+        env:
+          RUNNER_TMP: ${{ runner.temp }}
+        run: |
+          set -eu
+          python3 - <<'PYCODE'
+          import os,zipfile,pathlib,hashlib,io
+          t=pathlib.Path(os.environ['RUNNER_TMP'])
+          a=list((t/'r307-original').rglob('SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip'))
+          assert len(a)==1,a
+          blob=a[0].read_bytes()
+          assert hashlib.sha256(blob).hexdigest()=='069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa','R307_SHA_MISMATCH'
+          outer=zipfile.ZipFile(io.BytesIO(blob));inner=outer.read('artifacts/local/web.zip');dest=t/'r308-source';dest.mkdir()
+          with zipfile.ZipFile(io.BytesIO(inner)) as z:z.extractall(dest)
+          print('PASS_R307_EXACT_ORIGINAL_SOURCE',len(blob))
+          PYCODE
+          patch --fuzz=0 -p1 -d "$RUNNER_TEMP/r308-source" < r308/patches/r308-safe-note-after-itemized.patch
+          php -l "$RUNNER_TEMP/r308-source/src/Domain/Orders/OrderStaffActionService.php"
+      - name: Install PDO MySQL for disposable MariaDB tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-mysql
+          php -r 'if(!extension_loaded("pdo_mysql"))exit(1);'
+      - name: Run actual source rules + legacy itemized fixture and new financial-neutral regression
+        env:
+          SOKNA_SOURCE_ROOT: ${{ runner.temp }}/r308-source
+          R290_SOURCE_ROOT: ${{ runner.temp }}/r308-source
+          R290_DB_PASSWORD: local_ci_only
+          R290_QA_MODE: disposable_only
+        run: |
+          set -euo pipefail
+          php r308/qa/test_finance_guard_unit.php
+          php r308/qa/test_patch_idempotent.php
+          php r308/qa/qa_itemized_mariadb.php | tee "$RUNNER_TEMP/r308-finance-receipt.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R308-FINANCE-QA-RECEIPT-NOT-INSTALL
+          path: ${{ runner.temp }}/r308-finance-receipt.txt
+          if-no-files-found: ignore
