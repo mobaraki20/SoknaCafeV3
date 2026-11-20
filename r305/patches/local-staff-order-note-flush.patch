@@ -1,0 +1,50 @@
+--- a/public/assets/staff-app/order-draft-workspace.js
++++ b/public/assets/staff-app/order-draft-workspace.js
+@@ -61,9 +61,9 @@
+  const notify=(msg,tone='success')=>window.SoknaUI?.toast?.(msg,{tone});
+  const focusSoon=selector=>queueMicrotask(()=>{const el=host.querySelector(selector);if(el&&typeof el.focus==='function')el.focus({preventScroll:true})});
+  const captureViewport=()=>({cart:Number(host.querySelector('[data-order-cart]')?.scrollTop||0),products:Number(host.querySelector('[data-order-products]')?.scrollTop||0)});
+  const restoreViewport=(v,focusSelector='')=>queueMicrotask(()=>{const c=host.querySelector('[data-order-cart]'),p=host.querySelector('[data-order-products]');if(c)c.scrollTop=Number(v?.cart||0);if(p)p.scrollTop=Number(v?.products||0);if(focusSelector){const el=host.querySelector(focusSelector);if(el&&typeof el.focus==='function')el.focus({preventScroll:true})}});
+- const rerender=(focusSelector='')=>{const v=captureViewport();renderOrder();restoreViewport(v,focusSelector)};
++ const rerender=(focusSelector='')=>{flushActiveItemNote();const v=captureViewport();renderOrder();restoreViewport(v,focusSelector)};
+  const isConflict=e=>['session_changed','version_conflict'].includes(String(e?.code||''));
+  const returnLabel=()=>entryContext.returnLabel||'بازگشت به سالن';
+  const orderTitle=t=>Boolean(t?.has_draft||Number(t?.draft_id)>0)?'ادامه سفارش موقت':(Number(t?.session_id)>0?'افزودن سفارش':'ثبت اولین سفارش');
+  const orderContext=t=>Boolean(t?.has_draft||Number(t?.draft_id)>0)?`ثبت موقت · ارسال‌نشده${Number(t?.session_id)>0?` · حساب باز ${money(t.account_total)}`:''}`:(Number(t?.session_id)>0?`نوبت ${L.integer(Number(t.order_round_count||0)+1)} · حساب باز ${money(t.account_total)}`:'با ثبت این سفارش حساب میز باز می‌شود');
+@@ -110,11 +110,11 @@
+    host.querySelectorAll('[data-order-add]').forEach(b=>b.addEventListener('click',()=>addItem(Number(b.dataset.orderAdd))));
+    host.querySelectorAll('[data-order-bundle]').forEach(b=>b.addEventListener('click',()=>chooseBundle(Number(b.dataset.orderBundle)).catch(()=>{})));
+    host.querySelectorAll('[data-order-row]').forEach(b=>b.addEventListener('click',()=>{const key=String(b.dataset.orderRow||'');selectedItem=selectedItem===key?'':key;rerender(`[data-order-row=\"${CSS.escape(key)}\"]`)}));
+    host.querySelectorAll('[data-order-delta]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();changeQty(String(b.dataset.orderKey||''),Number(b.dataset.orderDelta))}));
+-   host.querySelectorAll('[data-order-note-item]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const key=String(b.dataset.orderNoteItem||''),row=cart.get(key);if(!row)return;if(noteEditorKey===key){noteEditorKey='';noteDraft='';rerender(`[data-order-note-item=\"${CSS.escape(key)}\"]`)}else{selectedItem=key;noteEditorKey=key;noteDraft=human(row.note||'');rerender(`[data-order-note-input=\"${CSS.escape(key)}\"]`)}}));
++   host.querySelectorAll('[data-order-note-item]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const key=String(b.dataset.orderNoteItem||''),row=cart.get(key);if(!row)return;flushActiveItemNote();if(noteEditorKey===key){noteEditorKey='';noteDraft='';rerender(`[data-order-note-item=\"${CSS.escape(key)}\"]`)}else{selectedItem=key;noteEditorKey=key;noteDraft=human(row.note||'');rerender(`[data-order-note-input=\"${CSS.escape(key)}\"]`)}}));
+    const confirmItemNote=key=>{const row=cart.get(key);if(!row||noteEditorKey!==key)return;row.note=String(noteDraft||'').trim().slice(0,500);cart.set(key,row);noteEditorKey='';noteDraft='';markDirty();rerender(`[data-order-note-item=\"${CSS.escape(key)}\"]`)};
+-   host.querySelectorAll('[data-order-note-input]').forEach(input=>{input.addEventListener('input',e=>{e.stopPropagation();noteDraft=LineUI.humanizeInput(e.target)});input.addEventListener('keydown',e=>{if(e.isComposing||e.keyCode===229)return;const key=String(e.currentTarget.dataset.orderNoteInput||'');if(!key||key!==noteEditorKey)return;if(e.key==='Enter'){e.preventDefault();e.stopPropagation();confirmItemNote(key)}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();noteEditorKey='';noteDraft='';rerender(`[data-order-note-item=\"${CSS.escape(key)}\"]`)}})});
++   host.querySelectorAll('[data-order-note-input]').forEach(input=>{input.addEventListener('input',e=>{e.stopPropagation();noteDraft=LineUI.humanizeInput(e.target);dirty=true});input.addEventListener('keydown',e=>{if(e.isComposing||e.keyCode===229)return;const key=String(e.currentTarget.dataset.orderNoteInput||'');if(!key||key!==noteEditorKey)return;if(e.key==='Enter'){e.preventDefault();e.stopPropagation();confirmItemNote(key)}else if(e.key==='Escape'){e.preventDefault();e.stopPropagation();noteEditorKey='';noteDraft='';rerender(`[data-order-note-item=\"${CSS.escape(key)}\"]`)}})});
+    host.querySelectorAll('[data-order-note-confirm]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();confirmItemNote(String(b.dataset.orderNoteConfirm||''))}));
+    host.querySelectorAll('[data-order-service-toggle]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=String(b.dataset.orderServiceToggle||'');const mobileKey=String(b.dataset.orderServiceLine||'');if(mobileKey)selectedItem=mobileKey;serviceEditorItemId=String(serviceEditorItemId)===id?0:id;rerender(`[data-order-service-toggle=\"${CSS.escape(id)}\"]`)}));
+    host.querySelectorAll('[data-order-service-delta]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();changeServiceSplit(Number(b.dataset.orderServiceItem||0),String(b.dataset.orderServiceMode||'dine_in'),Number(b.dataset.orderServiceDelta||0),Number(b.dataset.orderServiceChoice||0))}));
+    host.querySelectorAll('[data-order-remove]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();removeItem(String(b.dataset.orderRemove||''))}));
+@@ -184,9 +184,21 @@
+       renderOrder();setStatus('');
+     }catch(e){if(isCurrent())setStatus(e.message,'danger')}
+     finally{if(isCurrent())setBusy(false)}
+   }
+- function savePayload(){const t=table();if(!t)throw new Error('اول یک میز را انتخاب کنید.');return {action:'draft_save',table_id:t.id,expected_version:draft?.version||0,expected_session_id:t.session_id||0,note:orderNote,items:payloadItems()}}
++ // Persist an item note even when staff press Save/Finalize without the checkmark.
++ // The selected editor input is the authoritative value while the field is focused.
++ function flushActiveItemNote(){
++   const input=host.querySelector('[data-order-note-input]');
++   const key=String(input?.dataset?.orderNoteInput||'');
++   if(!key||key!==String(noteEditorKey||''))return false;
++   const row=cart.get(key);if(!row)return false;
++   const value=String(input.value??noteDraft??'').trim().slice(0,500);
++   if(String(row.note||'')===value)return false;
++   row.note=value;cart.set(key,row);noteDraft=value;dirty=true;
++   persistDeviceDraft();return true;
++ }
++ function savePayload(){flushActiveItemNote();const t=table();if(!t)throw new Error('اول یک میز را انتخاب کنید.');return {action:'draft_save',table_id:t.id,expected_version:draft?.version||0,expected_session_id:t.session_id||0,note:orderNote,items:payloadItems()}}
+  function showConflict(e){conflict={code:String(e?.code||''),message:String(e?.message||'حساب این میز تغییر کرده است؛ اطلاعات را تازه کنید.')};renderOrder()}
+  async function recoverConflict(){if(busy)return;const localItems=[...cart.values()].map(x=>({...x})),localNote=orderNote,localOpen=orderNoteOpen,localDirty=dirty||localItems.length>0||Boolean(String(localNote).trim());let keepLocal=localDirty;setBusy(true);try{workspace=await getAction('workspace');normalizeGroupSelection(false);const t=table();if(!t){conflict=null;tableId=0;renderPicker();return}const d=await getAction('draft',{table_id:tableId}),serverDraft=d.draft||null,currentSession=Number(t.session_id||0),draftSession=Number(serverDraft?.expected_session_id||0);if(serverDraft&&draftSession!==currentSession){const choice=await SoknaUI.choose('حساب میز تغییر کرده',[{label:'حفظ سفارش من',value:'keep',kind:'primary'},{label:'بازگشت به سالن',value:'exit'}],{message:'ثبت موقت قبلی به حساب قبلی این میز مربوط است. برای ادامه باید ثبت موقت قدیمی حذف شود؛ سفارش فعلی روی صفحه حفظ می‌شود.'});if(choice==='exit'){dirty=false;conflict=null;onExit({tableId});return}if(choice!=='keep')return;await postAction({action:'draft_cancel',table_id:serverDraft.table_id,expected_version:serverDraft.version});draft=null;keepLocal=true}else if(serverDraft&&localDirty){const choice=await SoknaUI.choose('ثبت موقت هم‌زمان تغییر کرده',[{label:'سفارش من',value:'local',kind:'primary'},{label:'نسخه ذخیره‌شده',value:'server'}],{message:'یک ثبت موقت تازه برای این میز وجود دارد. کدام نسخه ادامه پیدا کند؟'});if(choice===null)return;if(choice==='server'){applyDraft(serverDraft);dirty=false;clearDeviceDraft();keepLocal=false}else{draft=serverDraft;keepLocal=true}}else if(!serverDraft&&localDirty){draft=null;keepLocal=true}else{applyDraft(serverDraft);dirty=false;keepLocal=false}if(keepLocal){cart.clear();for(const item of localItems)cart.set(rowKey(item.id,item.fulfillment_mode,item.price,item.bundle_choice_item_id||0),item);orderNote=localNote;orderNoteOpen=localOpen;dirty=true}conflict=null;renderOrder();setStatus(keepLocal?'حساب تازه شد؛ سفارش فعلی حفظ شد.':'آخرین ثبت موقت میز بارگذاری شد.','success')}catch(e){if(isConflict(e))showConflict(e);else setStatus(e.message,'danger')}finally{setBusy(false)}}
+   async function saveDraft(options={}){
+     if(busy||!cart.size||conflict||!canMutate() )return;
