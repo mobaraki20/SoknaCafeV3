@@ -1,0 +1,67 @@
+{
+  "format": "sokna-r305-qa-bundle-v1",
+  "date": "2026-11-20",
+  "baseline": "R304 Local 231fu / Public 35im",
+  "production_install_approved": false,
+  "tested_counts": {
+    "note": 7,
+    "preparation": 6,
+    "hall": 3
+  },
+  "patches": [
+    {
+      "target": "local/public/assets/staff-app/order-draft-workspace.js",
+      "from_sha256": "81a156188828535bec4d8cd70e864aa2878e8805a8b78a8b7c8af356acd13a1f",
+      "to_sha256": "b798bacda59161062fd8312cf435ac6c40c4b3b6403cfce742e78ee580bfd98d",
+      "patch_file": "local-staff-order-note-flush.patch",
+      "patch_sha256": "235dc0c3be377893328bef67abc321c987194204ba1c4ee035215bacb22502a9",
+      "patch_dry_run": "PASS",
+      "apply_byte_identical": "PASS",
+      "node_check": "PASS"
+    },
+    {
+      "target": "public/assets/staff-app/preparation-workspace.js",
+      "from_sha256": "de84a3213e56c739c6954c537626599c7e6fa078498c74895f7643910033850d",
+      "to_sha256": "58f0da1c23440206750918b040c37accf961c5f22dc8e6c734f05bc29cee9a7d",
+      "patch_file": "public-preparation-remove-duplicate-summary.patch",
+      "patch_sha256": "f4319aa5770998d3f5a9593fb5946567240e996d58bd6d0a9040e071d78120de",
+      "patch_dry_run": "PASS",
+      "apply_byte_identical": "PASS",
+      "node_check": "PASS"
+    }
+  ],
+  "screenshots": {
+    "after-finalize-after-action.png": "c1695daaa66556fb50e905df4b32ef1762a5a997f9e02310a80458ba642c24f3",
+    "after-finalize-note-in-editor.png": "871615c2d558f8d924c4eb0fbccbbbc626d27015b1acc9895d2da4072c204e9d",
+    "after-mobile-after-action.png": "c76f949a604f6e20aeeba1d57c415969935766d5ff58fd3e3d236f59f69c5579",
+    "after-mobile-note-in-editor.png": "8a2fec34e36466e4f8d31ad153c0d58a0e20b10ec3209ef33a9e12fa5b891219",
+    "after-switch-after-action.png": "6d268fcd6e69da4e2ad92047fc48ac9b6a09915d3d9bd107cebfc9a6e9cdbc1d",
+    "after-switch-note-in-editor.png": "5f826ecfa917b5add4a50e01719eb2b4f5fdf024eabe66bde0ac64e3ff5423d1",
+    "before-finalize-after-action.png": "c1695daaa66556fb50e905df4b32ef1762a5a997f9e02310a80458ba642c24f3",
+    "before-finalize-note-in-editor.png": "5f826ecfa917b5add4a50e01719eb2b4f5fdf024eabe66bde0ac64e3ff5423d1",
+    "local-preparation-1360-pending.png": "8d3a74306647bbd29d596a830f8f54c3397f1d0d32f07ff83c3cddf9fde75831",
+    "local-preparation-1360-received.png": "facd9ffe3da1b4f79a6678f8adb49025ad7bbe14d15c8d308b6b467faac84fa6",
+    "local-preparation-390-pending.png": "a0bc018f1c3eeefad6d9977b278360aa7bd38f4b6eeb5eeddb4fa0766c7a9974",
+    "local-preparation-390-received.png": "bb69c984566d71dffafabe1422bc87da97660467c6cda7091c20605b22756e5a",
+    "local-r304-preparation-1360-pending.png": "8d3a74306647bbd29d596a830f8f54c3397f1d0d32f07ff83c3cddf9fde75831",
+    "local-r304-preparation-1360-received.png": "facd9ffe3da1b4f79a6678f8adb49025ad7bbe14d15c8d308b6b467faac84fa6",
+    "local-r304-preparation-390-pending.png": "a0bc018f1c3eeefad6d9977b278360aa7bd38f4b6eeb5eeddb4fa0766c7a9974",
+    "local-r304-preparation-390-received.png": "bb69c984566d71dffafabe1422bc87da97660467c6cda7091c20605b22756e5a",
+    "public-after-patch-preparation-1360-pending.png": "0eef74ee4aee64b758aa8878a22ee9ec2927662a9d1fac232abf78246feac8d7",
+    "public-after-patch-preparation-1360-received.png": "1dd0d33e63ffcce5a5c394ee2bcce3ab375a1885e585dd3614f3d70adca58aff",
+    "public-after-patch-preparation-390-pending.png": "a464b364e1022d67a346e2a9bf0eb978e2bd59c87df604d5d026f627c11b268b",
+    "public-after-patch-preparation-390-received.png": "91a38a54f706235f4f134c138a03b01c129c120cb43a9b3bb2643160ed7f6a17",
+    "public-before-r304-preparation-1360-pending.png": "94d99dad99c1c82af419ae86c53a1fc4bcd2a460747c18b877b40cd9b73f9286",
+    "public-before-r304-preparation-1360-received.png": "fc2ebfb0ae17536bf6057ffeaad1f3484af5868899a08baa32317238c2160a24",
+    "public-before-r304-preparation-390-pending.png": "26bb69189b4c40296c1f4733d389ccb27ee7081e8163f27695631b419256c888",
+    "public-before-r304-preparation-390-received.png": "162118ca297797278521bc92dd1264c9bd8e5945ff699a19282db506067fbdc0",
+    "public-preparation-1360-pending.png": "94d99dad99c1c82af419ae86c53a1fc4bcd2a460747c18b877b40cd9b73f9286",
+    "public-preparation-1360-received.png": "fc2ebfb0ae17536bf6057ffeaad1f3484af5868899a08baa32317238c2160a24",
+    "r304-hall-compact-before-acceptance.png": "a5d7ddf142d7c2bfe5410f621bb3ca56aebd9d251dff644274c295aa7ee5f4b1",
+    "r304-hall-normal-before-acceptance.png": "f8b001cd91e2666806861ab72bb76b43e73e51b5fc9305bb98e102bd7d61ce12",
+    "r304-hall-overview-before-acceptance.png": "7e8767cae9790c796c0ac6c529f1204ca0080e83b841d21fbbdcf924e308bb2f"
+  },
+  "matrix_total": 91,
+  "individually_reviewed": 25,
+  "not_individually_retested": 66
+}
