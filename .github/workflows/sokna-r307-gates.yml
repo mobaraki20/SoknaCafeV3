@@ -1,0 +1,161 @@
+name: SOKNA R307 Local 231fv-only UI hotfix — exact Windows/MariaDB/source gate
+on:
+  push:
+    branches: [qa/sokna-r307-231fv-dashboard-ui-20261120]
+    paths: ['r307/**', '.github/workflows/sokna-r307-gates.yml']
+  workflow_dispatch:
+  pull_request:
+    branches: [qa/sokna-r306-coordinated-ui-20261120]
+    paths: ['r307/**', '.github/workflows/sokna-r307-gates.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-origin
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, zip
+          coverage: none
+      - name: Patch only five source files from exact R306 managed tree, rebuild exact R307 ZIP, lint and verify one baseline
+        shell: bash
+        env:
+          R307_WORK: ${{ runner.temp }}/r307-work
+        run: |
+          set -euo pipefail
+          export R307_LOCAL_BASE="$(find "$RUNNER_TEMP/r307-origin" -name 'SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip' -type f | head -1)"
+          test -f "$R307_LOCAL_BASE"
+          python3 r307/qa/rebuild_exact.py
+          python3 packaging/windows/release-gates/check_local_release_set.py "$R307_WORK/artifacts/SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip" --require-installable
+          php -l "$R307_WORK/local/public/index.php"
+          php -l "$R307_WORK/local/src/UI/ProductShell.php"
+          php -l "$R307_WORK/local/resources/shared-staff-ui/dashboard-workspace.php"
+          node --check "$R307_WORK/local/public/assets/dashboard-open-accounts.js"
+          echo 'PASS_R307_SOURCE_GUARD_SINGLE_BASELINE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          path: ${{ runner.temp }}/r307-work/artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+  mariadb-currency:
+    needs: exact-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: r307-disposable-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          path: ${{ runner.temp }}/r307-input
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Validate exact source currency policy with real temporary MariaDB
+        shell: bash
+        env:
+          R307_LOCAL_SOURCE: ${{ runner.temp }}/r307-qa-src
+          R307_DB_HOST: 127.0.0.1
+          R307_DB_PASSWORD: r307-disposable-test-only
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP']);zips=list((root/'r307-input').rglob('SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip'))
+          assert len(zips)==1 and hashlib.sha256(zips[0].read_bytes()).hexdigest()=='069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa'
+          dest=pathlib.Path(os.environ['R307_LOCAL_SOURCE']);dest.mkdir()
+          with zipfile.ZipFile(zips[0]) as outer:
+            with zipfile.ZipFile(io.BytesIO(outer.read('artifacts/local/web.zip'))) as src:
+              for name in ['public/index.php','resources/shared-staff-ui/dashboard-workspace.php']:
+                p=dest/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(src.read(name))
+          PY
+          php r307/qa/test_dashboard_currency.php | tee "$RUNNER_TEMP/r307-currency.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R307-MARIADB-CURRENCY-RECEIPT
+          path: ${{ runner.temp }}/r307-currency.txt
+          if-no-files-found: ignore
+  windows-native:
+    needs: exact-build
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          path: ${{ runner.temp }}/r307-target
+      - name: Real disposable Windows Maintenance 231fv to 231fw Stage Activate identity and 83-migration preservation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem '${{ runner.temp }}/r307-baseline' -Recurse -Filter 'SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip' | Select-Object -First 1
+          $target=Get-ChildItem '${{ runner.temp }}/r307-target' -Recurse -Filter 'SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'R307_INPUT_ZIPS_NOT_FOUND'}
+          $env:SOKNA_R306_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_R307_CANDIDATE_ZIP=$target.FullName
+          python r307/qa/prepare_native_r307.py
+          if($LASTEXITCODE -ne 0){throw 'R307_NATIVE_ADAPTER_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'r307-native.ps1')
+            if($LASTEXITCODE -ne 0){throw 'R307_MAINTENANCE_ACTIVATE_FAILED'}
+          } finally {Pop-Location}
+          'PASS_R307_NATIVE_WINDOWS_R306_TO_R307_NO_MIGRATION' | Out-File "$env:RUNNER_TEMP/r307-native-receipt.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-R307-NATIVE-WINDOWS-RECEIPT
+          path: ${{ runner.temp }}/r307-native-receipt.txt
+          if-no-files-found: ignore
+  final-decision:
+    if: always()
+    needs: [exact-build,mariadb-currency,windows-native]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail-closed qualification, no café host mutation
+        env:
+          BUILD: ${{ needs.exact-build.result }}
+          CURRENCY: ${{ needs.mariadb-currency.result }}
+          WINDOWS: ${{ needs.windows-native.result }}
+        run: |
+          echo "R307_BUILD=$BUILD CURRENCY=$CURRENCY WINDOWS=$WINDOWS"
+          test "$BUILD" = success && test "$CURRENCY" = success && test "$WINDOWS" = success
+          echo PASS_R307_DISPOSABLE_QA_FIELD_BACKUP_PREFLIGHT_STILL_REQUIRED
