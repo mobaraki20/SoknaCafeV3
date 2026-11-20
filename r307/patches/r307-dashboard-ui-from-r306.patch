@@ -1,0 +1,189 @@
+--- a/public/assets/dashboard-open-accounts.js
++++ b/public/assets/dashboard-open-accounts.js
+@@ -12,8 +12,12 @@
+   if(!resp.ok)throw new Error('dashboard_open_accounts_status');
+   const result=await resp.json();const n=result?.amount_toman,accounts=result?.account_count,rial=result?.rial_display===true;
+   if(result?.ok!==true||!Number.isSafeInteger(n)||n<0||!Number.isSafeInteger(accounts)||accounts<0||!Number.isSafeInteger(rial?n*10:n))throw new Error('dashboard_unreliable_amount');
+   if(current!==request)return;
++  // An administrator can change the unit from another browser: refresh the whole
++  // dashboard so sales, invoice average, trend and open accounts never disagree.
++  const renderedPolicy=card.dataset.currencyRial;
++  if(renderedPolicy==='1'&& !rial || renderedPolicy==='0'&&rial){window.location.reload();return;}
+   amount.textContent=fa(rial?n*10:n)+(rial?' ریال':' تومان');
+   if(hint)hint.textContent='مانده تسویه‌نشده '+fa(accounts)+' حساب';
+  }catch{if(current===request)unknown();}
+  finally{busy=false;}
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6542,4 +6542,64 @@
+ .sc-item-sales-table{width:100%;border-collapse:collapse;min-width:440px;text-align:start;font-variant-numeric:tabular-nums}
+ .sc-item-sales-table th,.sc-item-sales-table td{padding:12px 9px;text-align:start;border-block-end:1px solid var(--sc-border)}
+ .sc-item-sales-table th{background:var(--sc-surface-subtle)}
+ .sc-item-sales-total{padding:12px;font-weight:800;background:var(--sc-accent-soft);border-radius:10px;margin-block:10px}
++
++
++/* R307 - header popovers: the topbar's left cluster is LTR while the content
++   is RTL. Logical 'inline-end' previously aligned panels off the left viewport. */
++.sc-shell__calendar-wrap .sc-shell__calendar-panel,
++.sc-shell__notify-wrap .sc-shell__notify-panel{
++  box-sizing:border-box;
++  inset-inline-start:auto;
++  inset-inline-end:auto;
++  inset-block-end:auto;
++  left:0;
++  right:auto;
++  direction:rtl;
++  font-family:var(--sc-font);
++  font-size:.8rem;
++  line-height:1.65;
++  max-inline-size:calc(100vw - 24px);
++  overflow-x:hidden;
++}
++.sc-shell__calendar-wrap .sc-shell__calendar-panel{
++  width:min(360px,calc(100vw - 24px));
++  max-height:min(75dvh,620px);
++  overflow-y:auto;
++  padding:12px;
++}
++.sc-shell__calendar-panel>header{
++  display:grid;
++  grid-template-columns:36px minmax(0,1fr) 36px 36px;
++  direction:rtl;
++  align-items:center;
++  gap:5px;
++  margin-bottom:10px;
++}
++.sc-shell__calendar-panel>header>strong{min-width:0;white-space:nowrap;text-align:center;font-size:.9rem;font-weight:750}
++.sc-shell__calendar-panel>header>.sc-icon-button{
++  display:grid;place-items:center;inline-size:36px;block-size:36px;
++  padding:0;border:1px solid var(--sc-border);border-radius:10px;
++  background:var(--sc-surface-raised);color:var(--sc-text);
++}
++.sc-shell__calendar-panel>header>.sc-icon-button>.sc-ui-icon{inline-size:17px;block-size:17px}
++.sc-shell__calendar-panel .sc-shell__calendar-weekdays{font-size:.75rem;font-weight:700}
++.sc-shell__calendar-panel .sc-shell__calendar-day{font-size:.8rem;line-height:1.3}
++.sc-shell__notify-wrap .sc-shell__notify-panel{
++  width:min(370px,calc(100vw - 24px));max-height:min(72dvh,560px);
++  padding:12px;overflow-y:auto;
++}
++.sc-shell__notify-panel>header{direction:rtl;gap:10px;padding-bottom:8px;border-bottom:1px solid var(--sc-border)}
++.sc-shell__notify-panel>header>strong{font-size:.9rem;line-height:1.5;font-weight:750}
++.sc-shell__notify-panel>header>.sc-icon-button{display:grid;place-items:center;inline-size:34px;block-size:34px;min-inline-size:34px;min-block-size:34px;font-size:.9rem}
++.sc-shell__notify-items{gap:7px;min-width:0;line-height:1.6}
++.sc-shell__notify-item{direction:rtl;grid-auto-rows:max-content;min-height:0;padding:10px 12px;border-radius:11px;gap:3px}
++.sc-shell__notify-item>strong{font-size:.81rem;line-height:1.55;font-weight:750}
++.sc-shell__notify-item>small{font-size:.75rem;line-height:1.65;opacity:.8;font-weight:400}
++.sc-shell__notify-panel>footer{margin-top:10px;padding-top:10px;font-size:.79rem;font-weight:650}
++@media(max-width:980px){
++  .sc-shell__calendar-wrap .sc-shell__calendar-panel{position:fixed;left:12px;right:auto;top:64px;bottom:auto;width:min(360px,calc(100vw - 24px));max-height:calc(100dvh - 80px);margin:0}
++}
++@media(max-width:700px){
++  .sc-shell__notify-wrap .sc-shell__notify-panel{position:fixed;left:12px;right:auto;top:64px;bottom:auto;width:min(370px,calc(100vw - 24px));max-height:calc(100dvh - 80px)}
++}
+--- a/public/index.php
++++ b/public/index.php
+@@ -17,13 +17,24 @@
+ function home_e(string $v): string{return htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');}
+ function home_icon(string $name): string{return '<svg class="sc-ui-icon" aria-hidden="true" focusable="false"><use href="'.home_e(\Sokna\Local\UI\AssetUrl::asset('/assets/ui-sprite.svg')).'#icon-'.home_e($name).'"></use></svg>';}
+ function home_url(string $path): string{return home_e(LocalUrl::path($path));}
+ function home_fa_num(string|int|float $v): string{return strtr((string)$v,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹']);}
+-function home_money(int $v): string{return home_fa_num(str_replace(',', '٬', number_format($v))).' تومان';}
+-function home_open_money(?int $amountToman,bool $rial): string{
++/** Dashboard settlement totals are stored in toman. The administrator's single
++ * system-wide final-amount policy determines ALL financial KPI display units.
++ * Never change stored values or multiply more than once. */
++function home_money(int $v,?bool $rial): string{
++    if($rial===null||($rial&&($v>intdiv(PHP_INT_MAX,10)||$v<-(intdiv(PHP_INT_MAX,10)))))return '—';
++    return home_fa_num(str_replace(',', '٬', number_format($rial?$v*10:$v))).($rial?' ریال':' تومان');
++}
++function home_open_money(?int $amountToman,?bool $rial): string{
+     if($amountToman===null||$amountToman<0)return '—';
+-    if($rial && $amountToman>intdiv(PHP_INT_MAX,10))return '—';
+-    return home_fa_num(str_replace(',', '٬', number_format($rial?$amountToman*10:$amountToman))).($rial?' ریال':' تومان');
++    return home_money($amountToman,$rial);
++}
++function home_dashboard_rial_mode($core): ?bool{
++    try{
++        $raw=$core->database()->query("SELECT setting_value FROM settings WHERE setting_key='payment.final_amount_rial' LIMIT 1")->fetchColumn();
++        return in_array(strtolower(trim((string)$raw)),['1','true','yes','on'],true);
++    }catch(Throwable){return null;} // Do not silently display the wrong financial unit.
+ }
+ /** Coherent MVCC readback from the same authoritative financial account computation
+  * used for settlement. Never approximate unpaid balance by gross order totals.
+  * One financially inconsistent open session makes the whole KPI unknown.
+@@ -72,8 +83,9 @@
+ $canReports=home_any($core,$user,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+ $canOps=home_any($core,$user,['orders_floor','cashier_accounts','shift_supervision']);
+ $canAccounts=home_any($core,$user,['cashier_accounts','shift_supervision']);
+ $canInventory=home_any($core,$user,['inventory_operations','inventory_finalize','inventory_manage','preparation','shift_supervision']);
++$dashboardRialMode=home_dashboard_rial_mode($core);
+ $tzName='Asia/Tehran';try{$tz=new DateTimeZone($tzName);}catch(Throwable){$tz=new DateTimeZone('Asia/Tehran');}
+ $dashboardErrors=[];
+ $clockSection=$core->snapshotGuard()->capture('dashboard','business_clock',null,'تاریخ روز کاری فعلاً در دسترس نیست.',fn()=> $core->businessClock()->assignment());
+ if(is_array($clockSection['value'])&&isset($clockSection['value']['business_date'])){$todayKey=(string)$clockSection['value']['business_date'];$today=new DateTimeImmutable($todayKey,$tz);}else{$today=new DateTimeImmutable('now',$tz);$todayKey=$today->format('Y-m-d');if($clockSection['error']!==null)$dashboardErrors['business_clock']=$clockSection['error'];}
+@@ -101,8 +113,10 @@
+     $openAccountsSection=$core->snapshotGuard()->capture('dashboard','open_accounts',$openAccounts,'جمع حساب‌های باز فعلاً در دسترس نیست.',fn():array=>home_open_accounts_snapshot($core));
+     $openAccounts=(array)$openAccountsSection['value'];
+     $openAccountsError=$openAccountsSection['error'];
+     if($openAccountsError!==null)$dashboardErrors['open_accounts']=$openAccountsError;
++    // Trust the same committed policy used for this authoritative account projection.
++    if($openAccountsError===null)$dashboardRialMode=(bool)($openAccounts['rial_display']??false);
+ }
+ $inventory=[];$lowStock=[];$inventoryError=null;
+ if($canInventory){$inventorySection=$core->snapshotGuard()->capture('dashboard','inventory',[],'وضعیت اقلام انبار فعلاً در دسترس نیست.',fn(): array=>$core->operationsWorkspace()->inventoryItems());$inventory=(array)$inventorySection['value'];$inventoryError=$inventorySection['error'];if($inventoryError!==null)$dashboardErrors['inventory']=$inventoryError;if($inventoryError===null){$lowStock=array_values(array_filter($inventory,static fn(array $r):bool=>(int)($r['active']??0)===1&&(int)($r['warning_threshold']??0)>0&&(int)($r['quantity_base']??0)<=(int)($r['warning_threshold']??0)));usort($lowStock,static fn(array $a,array $b):int=>(((int)$a['quantity_base']-(int)$a['warning_threshold'])<=>((int)$b['quantity_base']-(int)$b['warning_threshold']))?:strcmp((string)$a['name'],(string)$b['name']));$lowStock=array_slice($lowStock,0,5);}}
+ 
+@@ -113,14 +127,14 @@
+ $yesterdayHasInvoices=(int)($yesterdaySummary['invoice_count']??0)>0;
+ $yesterdayHasSettlements=(int)($yesterdaySummary['completed_settlements']??0)>0;
+ $metrics=[];
+ if($canReports){
+-    $metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>$reportsError?'—':home_money((int)$todaySummary['net_sales']),'delta'=>($reportsError||!$todayHasSettlements||!$yesterdayHasSettlements)?null:home_delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasSettlements?'هنوز تسویهٔ موفقی ثبت نشده':(!$yesterdayHasSettlements?'دیروز تسویهٔ موفقی ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];
+-    if($canAccounts)$metrics[]=['icon'=>'ticket','tone'=>'info','label'=>'جمع حساب‌های باز','value'=>$openAccountsError?'—':home_open_money($openAccounts['amount_toman']??null,!empty($openAccounts['rial_display'])),'delta'=>null,'helper'=>$openAccountsError?'مبلغ فعلاً نامشخص است':'مانده تسویه‌نشده '.home_fa_num((int)($openAccounts['account_count']??0)).' حساب','href'=>'/operator/?view=open','live_open_accounts'=>true];
++    $metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>$reportsError?'—':home_money((int)$todaySummary['net_sales'],$dashboardRialMode),'delta'=>($reportsError||!$todayHasSettlements||!$yesterdayHasSettlements)?null:home_delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasSettlements?'هنوز تسویهٔ موفقی ثبت نشده':(!$yesterdayHasSettlements?'دیروز تسویهٔ موفقی ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];
++    if($canAccounts)$metrics[]=['icon'=>'ticket','tone'=>'info','label'=>'جمع حساب‌های باز','value'=>$openAccountsError?'—':home_open_money($openAccounts['amount_toman']??null,$dashboardRialMode),'delta'=>null,'helper'=>$openAccountsError?'مبلغ فعلاً نامشخص است':'مانده تسویه‌نشده '.home_fa_num((int)($openAccounts['account_count']??0)).' حساب','href'=>'/operator/?view=open','live_open_accounts'=>true];
+     $metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>$reportsError?'—':home_fa_num((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$reportsError?'موقتاً در دسترس نیست':'کل سفارش‌های ثبت‌شده','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];
+ }
+ if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsError?'—':home_fa_num((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsError?'موقتاً در دسترس نیست':'نشست باز در سالن','href'=>'/operator/?view=open'];
+-if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>$reportsError?'—':($todayHasInvoices?home_money((int)$todaySummary['avg_ticket']):'—'),'delta'=>($reportsError||!$todayHasInvoices||!$yesterdayHasInvoices)?null:home_delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasInvoices?'هنوز فاکتور نهایی ثبت نشده':('میانگین '.home_fa_num((int)$todaySummary['invoice_count']).' فاکتور نهایی')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
++if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>$reportsError?'—':($todayHasInvoices?home_money((int)$todaySummary['avg_ticket'],$dashboardRialMode):'—'),'delta'=>($reportsError||!$todayHasInvoices||!$yesterdayHasInvoices)?null:home_delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasInvoices?'هنوز فاکتور نهایی ثبت نشده':('میانگین '.home_fa_num((int)$todaySummary['invoice_count']).' فاکتور نهایی')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
+ 
+ $attention=[];
+ $pending=(array)($ops['attention_orders']??[]);if($pending){$oldest=$pending[0]??[];$attention[]=['tone'=>'danger','context'=>'سفارش','status'=>'فوری','title'=>home_fa_num(count($pending)).' سفارش منتظر رسیدگی','subtitle'=>($oldest?('قدیمی‌ترین · '.home_relative((string)($oldest['created_at']??''),$tz)):'در صف بررسی'),'href'=>'/operator/?work=attention&attention_filter=orders#attention'];}
+ $calls=(array)($ops['waiter_calls']??[]);if($calls){$oldest=$calls[0]??[];$attention[]=['tone'=>'warning','context'=>'سالن','status'=>'بررسی','title'=>home_fa_num(count($calls)).' فراخوان مهمان باز','subtitle'=>($oldest?(home_fa_num((string)($oldest['table_name']??'')) .' · '.home_relative((string)($oldest['created_at']??''),$tz)):'نیازمند بررسی'),'href'=>'/operator/?work=attention&attention_filter=calls#attention'];}
+@@ -165,9 +179,9 @@
+ $dashFaNum=static fn(string|int|float $v):string=>home_fa_num($v);
+ $dashDegraded=static fn(?array $error,string $fallback):string=>home_degraded($error,$fallback);
+ $dashClock=static fn(string $value):string=>home_clock($value,$tz);
+ $dashNotificationIcon=static fn(array $item):string=>home_notification_icon($item);
+-$dashMoney=static fn(int $v):string=>home_money($v);
++$dashMoney=static fn(int $v):string=>home_money($v,$dashboardRialMode);
+ $dashUnit=static fn(int $quantity,string $unit):string=>home_unit($quantity,$unit);
+ if($canAccounts)echo '<script defer src="'.home_e(ProductShell::asset('assets/dashboard-open-accounts.js')).'"></script>';
+ require dirname(__DIR__).'/resources/shared-staff-ui/dashboard-workspace.php';
+ ?>
+--- a/resources/shared-staff-ui/dashboard-workspace.php
++++ b/resources/shared-staff-ui/dashboard-workspace.php
+@@ -6,9 +6,9 @@
+ <section class="sc-dashboard sc-dashboard--converged" aria-label="داشبورد مدیریتی">
+   <?php if($metrics): ?>
+   <div class="sc-dashboard-kpis<?=!empty($canAccounts)?' sc-dashboard-kpis--five':''?>" aria-label="شاخص‌های امروز">
+     <?php foreach($metrics as $metric): $delta=$metric['delta']; ?>
+-    <a class="sc-card sc-dashboard-kpi sc-dashboard-kpi--link" data-tone="<?=$dashE((string)$metric['tone'])?>" <?=!empty($metric['live_open_accounts'])?'data-open-accounts-kpi data-url="'.$dashUrl('/?live_open_accounts=1').'"':''?> href="<?=$dashUrl((string)$metric['href'])?>" aria-label="<?=$dashE((string)$metric['label'])?>؛ مشاهده جزئیات"><span class="sc-dashboard-kpi__icon"><?=$dashIcon((string)$metric['icon'])?></span><div><small><?=$dashE((string)$metric['label'])?></small><strong><?=$dashE((string)$metric['value'])?></strong><?php if(is_int($delta)): ?><span class="sc-dashboard-kpi__delta <?=$delta>=0?'is-up':'is-down'?>"><?=$delta>=0?'↑':'↓'?> <?=$dashFaNum(abs($delta))?>٪ <?=$dashE((string)$metric['helper'])?></span><?php else: ?><span><?=$dashE((string)$metric['helper'])?></span><?php endif; ?></div><span class="sc-dashboard-chevron" aria-hidden="true"><?=$dashIcon('chevron-left')?></span></a>
++    <a class="sc-card sc-dashboard-kpi sc-dashboard-kpi--link" data-tone="<?=$dashE((string)$metric['tone'])?>" <?=!empty($metric['live_open_accounts'])?'data-open-accounts-kpi data-currency-rial="'.($dashboardRialMode===true?'1':'0').'" data-url="'.$dashUrl('/?live_open_accounts=1').'"':''?> href="<?=$dashUrl((string)$metric['href'])?>" aria-label="<?=$dashE((string)$metric['label'])?>؛ مشاهده جزئیات"><span class="sc-dashboard-kpi__icon"><?=$dashIcon((string)$metric['icon'])?></span><div><small><?=$dashE((string)$metric['label'])?></small><strong><?=$dashE((string)$metric['value'])?></strong><?php if(is_int($delta)): ?><span class="sc-dashboard-kpi__delta <?=$delta>=0?'is-up':'is-down'?>"><?=$delta>=0?'↑':'↓'?> <?=$dashFaNum(abs($delta))?>٪ <?=$dashE((string)$metric['helper'])?></span><?php else: ?><span><?=$dashE((string)$metric['helper'])?></span><?php endif; ?></div><span class="sc-dashboard-chevron" aria-hidden="true"><?=$dashIcon('chevron-left')?></span></a>
+     <?php endforeach; ?>
+   </div>
+   <?php endif; ?>
+ 
+--- a/src/UI/ProductShell.php
++++ b/src/UI/ProductShell.php
+@@ -86,9 +86,9 @@
+         echo '<header class="sc-shell__topbar'.($searchPath===''?' sc-shell__topbar--without-search':'').'" data-product-topbar>';
+         echo '<div class="sc-shell__top-left">';
+         $accountLink=$accountPath!==''?'<a class="sc-user-menu__link" href="'.$u($accountPath).'" data-user-menu-primary><span>'.self::icon('users').'</span><span><strong>حساب کاربری</strong><small>پروفایل و امنیت حساب</small></span></a>':'';
+         echo '<div class="sc-user-menu sc-theme-picker" data-theme-picker data-user-menu><button class="sc-shell__user-card sc-user-menu__trigger" type="button" data-theme-menu-toggle data-theme-menu-label="preserve" aria-label="منوی کاربر، '.$name.'" aria-haspopup="true" aria-expanded="false"><span class="sc-shell__user-copy"><strong>'.$name.'</strong><small>'.$safeRole.'</small></span><span class="sc-user-menu__chevron" aria-hidden="true">'.self::icon('chevron-down').'</span></button><div class="sc-theme-picker__menu sc-user-menu__menu" aria-label="منوی کاربر" hidden data-theme-menu data-user-menu-panel>'.$accountLink.'<div class="sc-user-menu__section"><span class="sc-user-menu__section-label">پوسته</span><div class="sc-user-menu__theme" role="radiogroup" aria-label="پوسته سامانه"><button type="button" role="radio" data-theme-option="light" aria-checked="false"><span>'.self::icon('sun').'</span><span>روشن</span></button><button type="button" role="radio" data-theme-option="dark" aria-checked="false"><span>'.self::icon('moon').'</span><span>تیره</span></button><button type="button" role="radio" data-theme-option="system" aria-checked="false"><span>'.self::icon('device').'</span><span>سیستم</span></button></div></div><a class="sc-user-menu__link sc-user-menu__link--logout" href="'.$u($logoutPath).'"><span>'.self::icon('logout').'</span><span><strong>خروج</strong><small>پایان نشست جاری</small></span></a></div></div>';
+-        echo '<div class="sc-shell__date-card sc-shell__calendar-wrap" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><button type="button" class="sc-shell__calendar-toggle" data-shell-calendar-toggle aria-label="بازکردن تقویم شمسی" aria-haspopup="dialog" aria-controls="sokna-shell-calendar" aria-expanded="false"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></button><section id="sokna-shell-calendar" class="sc-shell__calendar-panel" data-shell-calendar-panel role="dialog" aria-modal="false" aria-label="تقویم شمسی" hidden><header><button type="button" class="sc-icon-button" data-shell-calendar-prev aria-label="ماه قبل">›</button><strong data-shell-calendar-month>—</strong><button type="button" class="sc-icon-button" data-shell-calendar-next aria-label="ماه بعد">‹</button><button type="button" class="sc-icon-button" data-shell-calendar-close aria-label="بستن تقویم">×</button></header><div class="sc-shell__calendar-weekdays" aria-hidden="true"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div><div class="sc-shell__calendar-days" data-shell-calendar-days></div><p class="sc-shell__calendar-detail" data-shell-calendar-detail aria-live="polite">برای مشاهده مناسبت، یک روز را انتخاب کنید.</p><footer><span data-shell-calendar-source>تقویم رسمی ۱۴۰۵؛ داده مناسبت‌ها در حال دریافت…</span></footer></section></div>';
++        echo '<div class="sc-shell__date-card sc-shell__calendar-wrap" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><button type="button" class="sc-shell__calendar-toggle" data-shell-calendar-toggle aria-label="بازکردن تقویم شمسی" aria-haspopup="dialog" aria-controls="sokna-shell-calendar" aria-expanded="false"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></button><section id="sokna-shell-calendar" class="sc-shell__calendar-panel" data-shell-calendar-panel role="dialog" aria-modal="false" aria-label="تقویم شمسی" hidden><header><button type="button" class="sc-icon-button" data-shell-calendar-prev aria-label="ماه قبل">'.self::icon('chevron-right').'</button><strong data-shell-calendar-month>—</strong><button type="button" class="sc-icon-button" data-shell-calendar-next aria-label="ماه بعد">'.self::icon('chevron-left').'</button><button type="button" class="sc-icon-button" data-shell-calendar-close aria-label="بستن تقویم">'.self::icon('close').'</button></header><div class="sc-shell__calendar-weekdays" aria-hidden="true"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div><div class="sc-shell__calendar-days" data-shell-calendar-days></div><p class="sc-shell__calendar-detail" data-shell-calendar-detail aria-live="polite">برای مشاهده مناسبت، یک روز را انتخاب کنید.</p><footer><span data-shell-calendar-source>تقویم رسمی ۱۴۰۵؛ داده مناسبت‌ها در حال دریافت…</span></footer></section></div>';
+         echo '<div class="sc-shell__notify-wrap" data-shell-notify-wrap><button class="sc-icon-button sc-shell__notify" type="button" data-shell-notify-toggle aria-haspopup="true" aria-expanded="false" aria-controls="sokna-shell-notify-panel" aria-label="اعلان‌ها">'.self::icon('bell').'</button><section id="sokna-shell-notify-panel" class="sc-shell__notify-panel" data-shell-notify-panel data-api="'.$u('/notifications/api.php').'" hidden aria-label="اعلان‌های اخیر"><header><strong>اعلان‌های اخیر</strong><button type="button" class="sc-icon-button" data-shell-notify-close aria-label="بستن اعلان‌ها">×</button></header><div class="sc-shell__notify-items" data-shell-notify-items aria-live="polite">در حال دریافت اعلان‌ها…</div><footer><a href="'.$u($notificationsPath).'" data-shell-notify-all>مشاهده همه اعلان‌ها</a></footer></section></div>';
+         echo '</div>';
+         echo '<div class="sc-shell__top-spacer" aria-hidden="true"></div>';
+         echo '<div class="sc-shell__right-actions">';
