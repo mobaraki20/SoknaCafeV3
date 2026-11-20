@@ -1,0 +1,56 @@
+--- a/src/Domain/Orders/OrderStaffActionService.php
++++ b/src/Domain/Orders/OrderStaffActionService.php
+@@ -482,9 +482,16 @@
+                 'چاپ خودکار خاموش است. تأیید کنید این سفارش نه به‌صورت دستی چاپ شده و نه به آماده‌سازی اعلام شده است.',409);
+     }
+ 
+-    private function assertCorrectionReceiptTotalsSafe(array $allocation): void
+-    {
+-        if(!empty($allocation['finance_allocations']))
++    /**
++     * Previously settled tax/discount allocations are immutable. A correction
++     * that changes quantities or distribution still fails closed pending an
++     * audited receipt-allocation preview. A text-only note correction on an
++     * entirely unpaid row changes no financial basis and may proceed, subject
++     * to the separate paid-row identity and remaining-grant guards.
++     */
++    private function assertCorrectionReceiptTotalsSafe(array $allocation,bool $financiallyRelevantChange): void
++    {
++        if($financiallyRelevantChange&&!empty($allocation['finance_allocations']))
+             throw new OrderStaffActionException('receipt_allocation_rebalance_required',
+                 'در این حساب تسویه دارای تخفیف یا مالیات ثبت شده است؛ تغییر اقلام نیازمند کنترل سهم سندهای پرداخت است.',409);
+     }
+@@ -537,12 +544,15 @@
+             $groupStmt->execute([(int)$anchor['order_id'],(string)$anchor['item_name'],(int)$anchor['unit_price'],(string)$anchor['preparation_station'],$anchor['item_id'],$anchor['item_note']]);
+             $rows=$groupStmt->fetchAll(PDO::FETCH_ASSOC);if(!$rows)$rows=[$anchor];
+             $allocations=$this->settlementAllocationsTx($sessionId);
+-            $this->assertCorrectionReceiptTotalsSafe($allocations);
++
+             $fromDine=0;$fromTake=0;foreach($rows as $r){$q=max(0,(int)$r['quantity']);if((string)($r['fulfillment_mode']??'dine_in')==='takeaway')$fromTake+=$q;else $fromDine+=$q;}
+             $fromQuantity=$fromDine+$fromTake;$fromNote=trim((string)($anchor['item_note']??''));$toNote=$noteProvided?$requestedNote:$fromNote;
+             $this->assertPriceSnapshotIncreaseAllowed($anchor,$fromQuantity,$toQuantity);
+             $quantityChanged=$fromQuantity!==$toQuantity;$distributionChanged=$fromDine!==$toDine||$fromTake!==$toTake;$noteChanged=$fromNote!==$toNote;
+             if(!$quantityChanged&&!$distributionChanged&&!$noteChanged){if($ownsTransaction)$this->pdo->commit();return ['success'=>true,'idempotent'=>true,'no_change'=>true,'order_item_id'=>$orderItemId,'display_order_item_id'=>$orderItemId,'quantity'=>$toQuantity,'fulfillment_quantities'=>['dine_in'=>$toDine,'takeaway'=>$toTake],'item_note'=>$toNote];}
++            // Preserve the legacy fail-closed protection for quantity/mode changes
++            // whenever a prior receipt contains tax or discount.
++            $this->assertCorrectionReceiptTotalsSafe($allocations,$quantityChanged||$distributionChanged);
+             $this->assertRemainingDiscountGroupUnlockedTx($rows);
+             // Identity-aware quantity plan; payment allocations cannot move to a different row or mode.
+             $rowPlan=$this->planGroupedCorrectionTx($rows,$allocations['paid_by_item'],['dine_in'=>$toDine,'takeaway'=>$toTake],$noteChanged);
+@@ -627,7 +637,7 @@
+             $sessionId=(int)($row['session_id']??0);if($sessionId<1||(string)($row['session_status']??'')!=='active'||empty($row['live_table_guard']))throw new OrderStaffActionException('session_closed','این حساب دیگر به میز فعال متصل نیست و تغییر سفارش روی آن مجاز نیست.',409);
+ 
+             $allocations=$this->settlementAllocationsTx($sessionId);
+-            $this->assertCorrectionReceiptTotalsSafe($allocations);
++
+             $paidQuantity=(int)($allocations['paid_by_item'][$orderItemId]??0);
+             $fromQuantity=(int)$row['quantity'];$fromMode=(string)($row['fulfillment_mode']??'dine_in');$fromNote=trim((string)($row['item_note']??''));
+             $this->assertSinglePaidOrderRowSafe($orderItemId,$paidQuantity,$toQuantity,
+@@ -638,6 +648,7 @@
+             $quantityChanged=$fromQuantity!==$toQuantity;$modeChanged=$fromMode!==$toMode;$noteChanged=$fromNote!==$toNote;
+             if(!$quantityChanged&&!$modeChanged&&!$noteChanged){if($ownsTransaction)$this->pdo->commit();return ['success'=>true,'idempotent'=>true,'no_change'=>true,'order_item_id'=>$orderItemId,'quantity'=>$toQuantity,'fulfillment_mode'=>$toMode,'item_note'=>$toNote];}
+ 
++            $this->assertCorrectionReceiptTotalsSafe($allocations,$quantityChanged||$modeChanged);
+             $this->assertRemainingDiscountGroupUnlockedTx([['id'=>$orderItemId]]);
+             $orderId=(int)$row['order_id'];$area=PreparationService::areaForPreparationStation((string)$row['preparation_station']);$prepRelevant=$area!==null&&($quantityChanged||$modeChanged||$noteChanged);$claimedBefore=false;
+             if($prepRelevant){
