@@ -1,0 +1,27 @@
+--- a/public/assets/staff-app/hall-workspace.js
++++ b/public/assets/staff-app/hall-workspace.js
+@@ -664,7 +664,7 @@
+  let value=numericValue(input?.value||0);if(!Number.isFinite(value))value=0;
+  value=type==='percent'?Math.max(0,Math.min(100,value)):Math.max(0,Math.trunc(value));
+  const partial=Number(financeAccount?.receipt_count||0)>0;
+- const base=Math.max(0,Number(partial?financeAccount?.remaining_subtotal:financeAccount?.subtotal)||0);
++ const base=Math.max(0,Number(partial?Number(financeAccount?.remaining_subtotal||0)-Number(financeAccount?.remaining_discount||0):financeAccount?.subtotal)||0);
+  return {session_id:sessionId,discount_type:type,discount_value:value,subtotal:base,
+    expected_signature:partial?String(financeAccount?.signature||''):''};
+ }
+@@ -700,12 +700,11 @@
+  },160);
+ }
+ function openDiscountDialog(){if(!discountDialog||!financeAccount)return;
+- if(financeAccount.session?.remaining_discount_grant){toast('تخفیف مانده قبلاً ثبت شده است؛ برای اصلاح آن به مسئول مالی مراجعه کنید.','warning');return;}const currentType=String(financeAccount.session?.discount_type||''),currentValue=Number(financeAccount.session?.discount_value||0),hasCurrent=Boolean(currentType&&currentValue>0);discountDraftType=currentType||'percent';discountDraftValue=hasCurrent?String(currentValue):'';const input=discountDialog.querySelector('[data-discount-value]'),current=discountDialog.querySelector('[data-discount-current]'),currentLabel=discountDialog.querySelector('[data-discount-current-label]');if(input)input.value=human(discountDraftValue);if(current)current.hidden=!hasCurrent;if(currentLabel&&hasCurrent)currentLabel.textContent=currentType==='percent'?`${L.integer(currentValue)}٪`:`${money(currentValue)}`;
+- const partial=Number(financeAccount.receipt_count||0)>0;
++ if(financeAccount.session?.remaining_discount_grant){toast('تخفیف مانده قبلاً ثبت شده است؛ برای اصلاح آن به مسئول مالی مراجعه کنید.','warning');return;}const partial=Number(financeAccount.receipt_count||0)>0;const currentType=String(financeAccount.session?.discount_type||''),currentValue=Number(financeAccount.session?.discount_value||0),hasCurrent=Boolean(currentType&&currentValue>0);discountDraftType=partial?'percent':(currentType||'percent');discountDraftValue=partial?'':(hasCurrent?String(currentValue):'');const input=discountDialog.querySelector('[data-discount-value]'),current=discountDialog.querySelector('[data-discount-current]'),currentLabel=discountDialog.querySelector('[data-discount-current-label]');if(input)input.value=human(discountDraftValue);if(current)current.hidden=!hasCurrent;if(currentLabel&&hasCurrent)currentLabel.textContent=currentType==='percent'?`${L.integer(currentValue)}٪`:`${money(currentValue)}`;
+  const baseCaption=discountDialog.querySelector('[data-discount-base]')?.previousElementSibling;
+- if(baseCaption)baseCaption.textContent=partial?'مانده اقلام پرداخت‌نشده (پیش از مالیات)':'جمع سفارش‌ها';
++ if(baseCaption)baseCaption.textContent=partial?'مانده خالص اقلام پرداخت‌نشده (قبل از مالیات)':'جمع سفارش‌ها';
+  const description=discountDialog.querySelector('.sc-hall-discount-head p');
+- if(description)description.textContent=partial?'تخفیف فقط روی اقلام پرداخت‌نشده است؛ رسیدهای قبلی تغییر نمی‌کنند.':'مبلغ قابل پرداخت را پیش از ثبت بررسی کنید.';
++ if(description)description.textContent=partial?'تخفیف جدید فقط از مانده خالص پرداخت‌نشده کسر می‌شود؛ تخفیف قبلی و رسیدها ثابت می‌مانند.':'مبلغ قابل پرداخت را پیش از ثبت بررسی کنید.';
+  const remove=discountDialog.querySelector('[data-discount-remove]');
+  if(remove)remove.hidden=partial||!hasCurrent;
+  discountPreview();if(!window.SoknaUI?.showDialog?.(discountDialog,{initialFocus:'[data-discount-value]'}))discountDialog.showModal()}
