@@ -1,0 +1,28 @@
+{
+  "schema": "sokna-r309-qa-iteration-v1",
+  "date": "2026-11-20",
+  "baseline_installed_local": "3.0.0.231fw / R307",
+  "includes_r308_qa_patch": true,
+  "scope": "extra post-itemized discount after existing invoice-wide discount; no changes to paid receipts",
+  "status": "QA_NOT_INSTALL",
+  "migration_count": 0,
+  "changed_files": [
+    "src/Domain/Finance/SettlementService.php",
+    "public/assets/staff-app/hall-workspace.js"
+  ],
+  "unit_tests": "PASS",
+  "browser_test": "PASS 4 screenshots source-derived UI; sample data",
+  "integration": "PASS_DISPOSABLE_MARIADB_11_4",
+  "known_remaining": [
+    "change/remove an already-granted remaining discount",
+    "refund paid quantities and adjustment invoice",
+    "field printer & finance UAT"
+  ],
+  "github_actions_run_id": 44748626286,
+  "github_ci_success": true,
+  "production_authorized": false,
+  "field_install_authorized": false,
+  "source_isolated_from_live_cafe": true,
+  "source_anchor_sha256": "069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa",
+  "live_system_modified": false
+}
