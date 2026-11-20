@@ -7,6 +7,8 @@ spl_autoload_register(static function(string $class)use($root):void{
  $prefix='Sokna\\Local\\';if(!str_starts_with($class,$prefix))return;
  $path=$root.'/src/'.str_replace('\\','/',substr($class,strlen($prefix))).'.php';if(is_file($path))require_once $path;
 });
+require_once $root.'/src/Domain/Finance/SettlementException.php';
+require_once $root.'/src/Domain/Tax/TaxException.php';
 use Sokna\Local\Core\IdentityRepository;
 use Sokna\Local\Core\Capabilities;
 use Sokna\Local\Domain\Finance\SettlementService;
