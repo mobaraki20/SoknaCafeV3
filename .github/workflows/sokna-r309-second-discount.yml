@@ -1,0 +1,72 @@
+name: SOKNA R309 QA — supplemental unpaid discount with historical invoice discount (NO DEPLOY)
+on:
+  push:
+    branches: [qa/sokna-r309-second-remaining-discount-20261120]
+    paths:
+      - 'r309/**'
+      - '.github/workflows/sokna-r309-second-discount.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  finance-r309:
+    name: Actual R307 + R308 + R309 / disposable MariaDB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb114:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: local_ci_only
+          MARIADB_DATABASE: sokna_r309
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP and MariaDB client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq php-cli php-mysql php-mbstring mariadb-client >/dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          run-id: 44731300422
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-original
+      - name: Extract exact installed R307 source; apply R308 and R309 without fuzz
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,hashlib,zipfile,io,os
+          t=pathlib.Path(os.environ['RUNNER_TEMP']); src=t/'r307-original'; target=t/'r309-source';target.mkdir()
+          zips=list(src.rglob('SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip'))
+          assert len(zips)==1,zips
+          blob=zips[0].read_bytes()
+          assert hashlib.sha256(blob).hexdigest()=='069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa'
+          with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            inner=z.read('artifacts/local/web.zip')
+          with zipfile.ZipFile(io.BytesIO(inner)) as z:z.extractall(target)
+          print('PASS_R307_SOURCE_HASH',hashlib.sha256(blob).hexdigest())
+          PY
+          patch --fuzz=0 -p1 -d "$RUNNER_TEMP/r309-source" < r308/patches/r308-safe-note-after-itemized.patch
+          patch --fuzz=0 -p1 -d "$RUNNER_TEMP/r309-source" < r309/patches/R309-src-Domain-Finance-SettlementService.php.patch
+          patch --fuzz=0 -p1 -d "$RUNNER_TEMP/r309-source" < r309/patches/R309-public-assets-staff-app-hall-workspace.js.patch
+          php -l "$RUNNER_TEMP/r309-source/src/Domain/Finance/SettlementService.php"
+          php -l "$RUNNER_TEMP/r309-source/src/Domain/Orders/OrderStaffActionService.php"
+          node --check "$RUNNER_TEMP/r309-source/public/assets/staff-app/hall-workspace.js"
+      - name: 'Real source pure-logic tests: earlier invoice discount, tax, full complimentary'
+        env:
+          SOKNA_QA_ROOT: ${{ runner.temp }}/r309-source
+        run: |
+          php -d zend.assertions=1 -d assert.exception=1 r309/tests/test_remaining_discount.php
+      - name: 'Actual preview and commit on disposable MariaDB 11.4'
+        env:
+          R309_QA_MODE: disposable_only
+          R309_DB_PASSWORD: local_ci_only
+          SOKNA_QA_ROOT: ${{ runner.temp }}/r309-source
+        run: |
+          php -d zend.assertions=1 -d assert.exception=1 r309/tests/test_remaining_discount_mariadb.php
+          echo 'PASS_R309_DISPOSABLE_MARIADB'

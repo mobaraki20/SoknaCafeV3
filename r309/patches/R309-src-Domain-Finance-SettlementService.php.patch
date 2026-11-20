@@ -1,0 +1,52 @@
+--- a/src/Domain/Finance/SettlementService.php
++++ b/src/Domain/Finance/SettlementService.php
+@@ -254,26 +254,39 @@
+             throw new SettlementStateConflict('remaining_discount_exists','تخفیف مانده این حساب قبلاً ثبت شده است؛ برای اصلاح آن از مسئول مالی کمک بگیرید.',409);
+         if((int)($account['receipt_count']??0)<1)
+             throw new SettlementStateConflict('no_partial_payment','هنوز پرداخت آیتمی قطعی برای حساب وجود ندارد.',409);
+-        if((int)($account['discount']??0)>0)
+-            throw new SettlementStateConflict('prior_discount_requires_review','این حساب از قبل تخفیف دیگری دارد؛ برای جلوگیری از تغییر سهم رسیدهای قبلی، بررسی مالی لازم است.',409);
++        // An earlier invoice-wide discount is already allocated between paid and
++        // unpaid units by accountTx. An *additional* grant may only discount the
++        // still-unpaid net portion; paid receipt snapshots are immutable.
+         $type=$type===null?null:trim($type);
+         if(!in_array($type,['percent','fixed'],true)||$value<1||($type==='percent'&&$value>100))
+             throw new SettlementException('invalid_discount','مقدار یا نوع تخفیف مانده معتبر نیست.',422);
+-        $base=(int)$account['remaining_subtotal'];
+-        if($base<2)throw new SettlementStateConflict('nothing_remaining','مانده‌ای برای تخفیف وجود ندارد.',409);
++        // The displayed gross unpaid subtotal includes the previous invoice
++        // discount. Subtract ONLY its outstanding share; never rebalance or
++        // rewrite already paid invoice lines.
++        $base=(int)$account['remaining_subtotal']-(int)$account['remaining_discount'];
++        if($base<1)throw new SettlementStateConflict('nothing_remaining','مانده خالصی برای تخفیف وجود ندارد.',409);
+         $amount=self::discountAmount($base,$type,$value);
+-        if(($type==='fixed'&&$value>$base)||$amount<1||$amount>=$base)
+-            throw new SettlementException('invalid_discount','مبلغ تخفیف باید مثبت و کمتر از مانده اقلام پیش از مالیات باشد.',422);
+-        $eligible=[];$originalBy=[];
++        if(($type==='fixed'&&$value>$base)||$amount<1||$amount>$base)
++            throw new SettlementException('invalid_discount','مبلغ تخفیف باید مثبت و حداکثر برابر مانده پرداخت‌نشده باشد.',422);
++        $eligible=[];$originalBy=[];$unpaidNetSum=0;
+         foreach($account['items'] as $line){
+             $qty=(int)$line['remaining_quantity'];if($qty<1)continue;
+-            $gross=(int)$line['unit_price']*$qty;
+-            $eligible[]=['order_item_id'=>(int)$line['id'],'quantity'=>$qty,'unit_price'=>(int)$line['unit_price'],
+-                'gross_amount'=>$gross,'tax_policy_snapshot'=>(string)$line['tax_policy_snapshot'],
++            $originalPendingDiscount=(int)$line['invoice_discount_amount']-(int)$line['paid_discount_amount'];
++            $pendingNet=(int)$line['unit_price']*$qty-$originalPendingDiscount;
++            if($originalPendingDiscount<0||$pendingNet<0)
++                throw new SettlementStateConflict('paid_allocation_changed','سهم تخفیف اقلام پرداخت‌شده معتبر نیست.',409);
++            if($pendingNet<1)continue;
++            $unpaidNetSum+=$pendingNet;
++            // One synthetic unit represents the already-discounted unpaid net.
++            // TaxService redistributes just the NEW reduction, using stable item IDs.
++            $eligible[]=['order_item_id'=>(int)$line['id'],'quantity'=>1,'unit_price'=>$pendingNet,
++                'gross_amount'=>$pendingNet,'tax_policy_snapshot'=>(string)$line['tax_policy_snapshot'],
+                 'tax_rate_bps_snapshot'=>(int)$line['tax_rate_bps_snapshot']];
+             $originalBy[(int)$line['id']]=$line;
+         }
+         if($eligible===[])throw new SettlementStateConflict('nothing_remaining','قلم قابل تخفیفی وجود ندارد.',409);
++        if($unpaidNetSum!==$base)
++            throw new SettlementStateConflict('discount_allocation_mismatch','جمع خالص اقلام پرداخت‌نشده با حساب یکسان نیست.',409);
+         $allocated=TaxService::calculateInvoiceLines($eligible,$amount);
+         if((int)$allocated['subtotal']!==$base||(int)$allocated['discount']!==$amount)
+             throw new SettlementStateConflict('discount_allocation_mismatch','تخصیص تخفیف با مانده حساب برابر نیست.',409);
