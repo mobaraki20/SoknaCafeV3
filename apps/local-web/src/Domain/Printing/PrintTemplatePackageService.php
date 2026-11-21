@@ -10,8 +10,8 @@ final class PrintTemplatePackageService
     public const FORMAT='sokna-print-template-package-v1';
     private const KINDS=['preparation','customer'];
     private const TOP_KEYS=['format','template_key','name','version','document_kind','description','template'];
-    private const TEMPLATE_KEYS=['base_font_size','title_font_size','table_font_size','line_spacing','margin','show_actor','show_time','show_order_number','show_section_titles','show_prices','footer','design'];
-    private const DESIGN_KEYS=['density','header_alignment','separator_style','item_layout','section_order','labels'];
+    private const TEMPLATE_KEYS=['base_font_size','title_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin','show_actor','show_time','show_order_number','show_section_titles','show_prices','show_settlement_label','header_title','header_subtitle','header_subtitle_font_size','footer','design'];
+    private const DESIGN_KEYS=['density','header_alignment','separator_style','item_layout','preparation_station_order','section_order','labels'];
     private const LABEL_KEYS=['adjustment','discount','note','reprint','settlement','subtotal','takeaway','tax','taxable','ticket_title','total'];
     private const PREP_SECTIONS=['status','meta','items','notes','footer'];
     private const CUSTOMER_SECTIONS=['brand','meta','items','summary','settlement','footer'];
@@ -108,6 +108,36 @@ final class PrintTemplatePackageService
         return ['package_id'=>$packageId,'document_kind'=>(string)$row['document_kind'],'version'=>(string)$row['version']];
     }
 
+    /** Permanently remove only a non-active template version. No print history is modified. */
+    public function delete(int $packageId,array $actor): array
+    {
+        $uid=$this->admin($actor);
+        if($packageId<1)throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);
+        $this->pdo->beginTransaction();
+        try{
+            $q=$this->pdo->prepare('SELECT id,template_key,display_name,version,document_kind,content_sha256 FROM print_template_packages WHERE id=? FOR UPDATE');
+            $q->execute([$packageId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+            if(!is_array($row))throw new PrintException('print_template_not_found','قالب چاپ پیدا نشد.',404);
+            $active=$this->pdo->prepare('SELECT document_kind FROM print_template_activations WHERE package_id=? LIMIT 1 FOR UPDATE');
+            $active->execute([$packageId]);
+            if($active->fetchColumn()!==false)throw new PrintException('print_template_delete_active','قالب فعال را نمی‌توان حذف کرد. ابتدا قالب دیگری را فعال کنید.',409);
+            $del=$this->pdo->prepare('DELETE FROM print_template_packages WHERE id=?');
+            $del->execute([$packageId]);
+            if($del->rowCount()!==1)throw new PrintException('print_template_delete_conflict','حذف قالب انجام نشد؛ وضعیت آن را دوباره بررسی کنید.',409);
+            $this->audit($uid,'printing.template_deleted','print_template_package',(string)$packageId,[
+                'template_key'=>(string)$row['template_key'],'version'=>(string)$row['version'],
+                'document_kind'=>(string)$row['document_kind'],'sha256'=>(string)$row['content_sha256'],
+            ]);
+            $this->pdo->commit();
+            return ['package_id'=>$packageId,'deleted'=>true,'document_kind'=>(string)$row['document_kind']];
+        }catch(\Throwable $e){
+            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            if($e instanceof \PDOException && (string)$e->getCode()==='23000')
+                throw new PrintException('print_template_delete_referenced','این قالب هنوز در بخش دیگری استفاده می‌شود و قابل حذف نیست.',409);
+            throw $e;
+        }
+    }
+
     public function applyActive(array $payload): array
     {
         $kind=$this->payloadKind($payload);$template=$this->activeTemplate($kind);if($template===null)return $payload;$payload['schema']='sokna-print-document-v2';$payload['template']=$template;return $payload;
@@ -138,6 +168,31 @@ final class PrintTemplatePackageService
         ];
     }
 
+    /** Authenticated, CSRF-gated, no-write preview of a validated draft against the actual Print Agent. */
+    public function previewDraft(int $basePackageId,array $input,string $destinationKey,array $actor,string $outputFormat='pdf'): array
+    {
+        $this->admin($actor);
+        if(strlen(self::json($input))>65536)throw new PrintException('print_template_package_size','پیش‌نویس قالب بزرگ‌تر از حد مجاز است.',413);
+        $base=$this->packageRow($basePackageId);
+        $draft=$this->canonicalPackage([
+            'format'=>self::FORMAT,
+            'template_key'=>(string)$base['template_key'],
+            'name'=>$input['name']??$base['display_name'],
+            'version'=>$input['version']??(string)$base['version'],
+            'document_kind'=>(string)$base['document_kind'],
+            'description'=>$input['description']??'',
+            'template'=>$input['template']??null,
+        ]);
+        // preview() enforces agent pairing, destination kind and output format; it makes no write.
+        $result=$this->preview($basePackageId,$destinationKey,$actor,$outputFormat);
+        $fixture=$this->fixture((string)$base['document_kind']);
+        $fixture['template']=$draft['template'];
+        $result['preview']['payload_json']=self::json($fixture);
+        $result['preview']['session_id']='draft-'.bin2hex(random_bytes(8));
+        $result['draft']=true;
+        return $result;
+    }
+
     private function previewAgent(int $preferredAgentId=0): array
     {
         $where='active=1 AND retired_at IS NULL AND bridge_protocol_version=1 AND bridge_port>0 AND bridge_pairing_id IS NOT NULL AND bridge_pairing_id<>\'\'';
@@ -159,9 +214,9 @@ final class PrintTemplatePackageService
             'design_fields'=>self::DESIGN_KEYS,
             'label_fields'=>self::LABEL_KEYS,
             'sections'=>['preparation'=>self::PREP_SECTIONS,'customer'=>self::CUSTOMER_SECTIONS],
-            'ranges'=>['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'line_spacing'=>[2,20],'margin'=>[2,30]],
-            'choices'=>['density'=>['compact','comfortable'],'header_alignment'=>['center','right'],'separator_style'=>['solid','dashed','minimal'],'item_layout'=>['columnar','columnar-compact','two-line','responsive-receipt']],
-            'standards'=>['preparation'=>['template_key'=>'sokna-standard-preparation','version'=>'1.0.0'],'customer'=>['template_key'=>'sokna-standard-customer','version'=>'1.0.0']],
+            'ranges'=>['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'notes_font_size'=>[14,72],'header_subtitle_font_size'=>[12,60],'footer_font_size'=>[14,72],'totals_font_size'=>[14,72],'settlement_font_size'=>[14,72],'meta_font_size'=>[14,72],'line_spacing'=>[2,20],'margin'=>[2,30]],
+            'choices'=>['density'=>['compact','comfortable'],'header_alignment'=>['center','right'],'separator_style'=>['solid','dashed','minimal'],'item_layout'=>['columnar','columnar-compact','columnar-notes','two-line','responsive-receipt'],'preparation_station_order'=>['default','as_ordered','bar_first','kitchen_first']],
+            'standards'=>['preparation'=>['template_key'=>'sokna-standard-preparation','version'=>'1.1.0'],'customer'=>['template_key'=>'sokna-standard-customer','version'=>'1.0.0']],
             'executable_content'=>false,
             'versioning'=>'immutable',
         ];
@@ -206,8 +261,8 @@ final class PrintTemplatePackageService
     private function standardPackage(string $kind): array
     {
         if($kind==='preparation')return $this->canonicalPackage([
-            'format'=>self::FORMAT,'template_key'=>'sokna-standard-preparation','name'=>'استاندارد سکنا — آماده‌سازی','version'=>'1.0.0','document_kind'=>'preparation','description'=>'قالب رسمی و خوانای سکنا برای فیش آماده‌سازی.',
-            'template'=>['base_font_size'=>24,'title_font_size'=>32,'table_font_size'=>28,'line_spacing'=>5,'margin'=>8,'show_actor'=>true,'show_time'=>true,'show_order_number'=>true,'show_section_titles'=>true,'show_prices'=>false,'footer'=>'','design'=>['density'=>'compact','header_alignment'=>'right','separator_style'=>'solid','item_layout'=>'two-line','section_order'=>self::PREP_SECTIONS,'labels'=>['ticket_title'=>'فیش آماده‌سازی','note'=>'یادداشت','takeaway'=>'بیرون‌بر','reprint'=>'چاپ مجدد']]],
+            'format'=>self::FORMAT,'template_key'=>'sokna-standard-preparation','name'=>'استاندارد سکنا — آماده‌سازی ستونی','version'=>'1.1.0','document_kind'=>'preparation','description'=>'قالب رسمی و خوانای سکنا برای فیش آماده‌سازی.',
+            'template'=>['base_font_size'=>24,'title_font_size'=>32,'table_font_size'=>28,'line_spacing'=>5,'margin'=>8,'show_actor'=>true,'show_time'=>true,'show_order_number'=>true,'show_section_titles'=>true,'show_prices'=>false,'footer'=>'','design'=>['density'=>'compact','header_alignment'=>'right','separator_style'=>'solid','item_layout'=>'columnar','section_order'=>self::PREP_SECTIONS,'labels'=>['ticket_title'=>'فیش آماده‌سازی','note'=>'یادداشت','takeaway'=>'بیرون‌بر','reprint'=>'چاپ مجدد']]],
         ]);
         return $this->canonicalPackage([
             'format'=>self::FORMAT,'template_key'=>'sokna-standard-customer','name'=>'استاندارد سکنا — فیش مشتری','version'=>'1.0.0','document_kind'=>'customer','description'=>'قالب رسمی سکنا برای فیش مشتری با جمع‌ها و روش تسویه.',
@@ -232,8 +287,9 @@ final class PrintTemplatePackageService
     private function validateTemplate(mixed $value,string $kind): array
     {
         if(!is_array($value)||array_is_list($value))throw new PrintException('print_template_shape','بدنه قالب معتبر نیست.',422);$this->keys($value,self::TEMPLATE_KEYS,'template');$out=[];
-        foreach(['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'line_spacing'=>[2,20],'margin'=>[2,30]] as $key=>$range)if(array_key_exists($key,$value)){$n=filter_var($value[$key],FILTER_VALIDATE_INT);if($n===false||$n<$range[0]||$n>$range[1])throw new PrintException('print_template_range','مقدار '.$key.' خارج از محدوده امن است.',422);$out[$key]=(int)$n;}
-        foreach(['show_actor','show_time','show_order_number','show_section_titles','show_prices'] as $key)if(array_key_exists($key,$value)){if(!is_bool($value[$key]))throw new PrintException('print_template_boolean','مقدار '.$key.' باید true/false باشد.',422);$out[$key]=$value[$key];}
+        foreach(['base_font_size'=>[18,42],'title_font_size'=>[22,60],'table_font_size'=>[24,72],'notes_font_size'=>[14,72],'header_subtitle_font_size'=>[12,60],'footer_font_size'=>[14,72],'totals_font_size'=>[14,72],'settlement_font_size'=>[14,72],'meta_font_size'=>[14,72],'line_spacing'=>[2,20],'margin'=>[2,30]] as $key=>$range)if(array_key_exists($key,$value)){$n=filter_var($value[$key],FILTER_VALIDATE_INT);if($n===false||$n<$range[0]||$n>$range[1])throw new PrintException('print_template_range','مقدار '.$key.' خارج از محدوده امن است.',422);$out[$key]=(int)$n;}
+        foreach(['show_actor','show_time','show_order_number','show_section_titles','show_prices','show_settlement_label'] as $key)if(array_key_exists($key,$value)){if(!is_bool($value[$key]))throw new PrintException('print_template_boolean','مقدار '.$key.' باید true/false باشد.',422);$out[$key]=$value[$key];}
+        foreach(['header_title'=>120,'header_subtitle'=>160] as $k=>$max)if(array_key_exists($k,$value))$out[$k]=$this->optional($value[$k],$max);
         if(array_key_exists('footer',$value))$out['footer']=$this->optional($value['footer'],300);
         if(array_key_exists('design',$value))$out['design']=$this->validateDesign($value['design'],$kind);
         if($out===[])throw new PrintException('print_template_empty','قالب چاپ خالی است.',422);return $out;
@@ -241,7 +297,7 @@ final class PrintTemplatePackageService
     private function validateDesign(mixed $value,string $kind): array
     {
         if(!is_array($value)||array_is_list($value))throw new PrintException('print_design_shape','تنظیمات طراحی معتبر نیست.',422);$this->keys($value,self::DESIGN_KEYS,'design');$out=[];
-        $choices=['density'=>['compact','comfortable'],'header_alignment'=>['center','right'],'separator_style'=>['solid','dashed','minimal'],'item_layout'=>['columnar','columnar-compact','two-line','responsive-receipt']];
+        $choices=['density'=>['compact','comfortable'],'header_alignment'=>['center','right'],'separator_style'=>['solid','dashed','minimal'],'item_layout'=>['columnar','columnar-compact','columnar-notes','two-line','responsive-receipt'],'preparation_station_order'=>['default','as_ordered','bar_first','kitchen_first']];
         foreach($choices as $key=>$allowed)if(array_key_exists($key,$value)){if(!is_string($value[$key])||!in_array($value[$key],$allowed,true))throw new PrintException('print_design_choice','مقدار '.$key.' معتبر نیست.',422);$out[$key]=$value[$key];}
         if(array_key_exists('section_order',$value)){
             if(!is_array($value['section_order'])||!array_is_list($value['section_order']))throw new PrintException('print_section_order','ترتیب بخش‌ها معتبر نیست.',422);$allowed=$kind==='preparation'?self::PREP_SECTIONS:self::CUSTOMER_SECTIONS;$sections=[];
@@ -252,10 +308,42 @@ final class PrintTemplatePackageService
         }
         return $out;
     }
+    /**
+     * Renderer-grade fixtures, not decorative mock rows.  The preparation example
+     * carries all print-station and original-order metadata that live jobs use.
+     * The submitted section ordering intentionally starts kitchen-first, as the
+     * default production preparation payload does.  The original order_index
+     * values differ, so all three operator choices visibly differ in Print Agent.
+     */
     private function fixture(string $kind): array
     {
-        if($kind==='preparation')return ['schema'=>'sokna-print-document-v2','document_kind'=>'preparation','title'=>'کافه سکنا','badge'=>'پیش‌نمایش قالب','table_name'=>'میز ۲','order_number'=>'2048','created_at'=>date('Y-m-d H:i:s'),'sections'=>[['title'=>'بار گرم','items'=>[['name'=>'قهوه دمی','quantity'=>2,'note'=>'بدون شکر'],['name'=>'کیک روز','quantity'=>1,'fulfillment_mode'=>'takeaway']]]],'customer_note'=>'مهمان عجله دارد'];
-        return ['schema'=>'sokna-print-document-v2','document_kind'=>'customer','title'=>'کافه سکنا','invoice_number'=>'INV-2048','table_name'=>'میز ۲','created_at'=>date('Y-m-d H:i:s'),'currency'=>'تومان','sections'=>[['items'=>[['name'=>'قهوه دمی','quantity'=>2,'unit_price'=>180000,'line_total'=>360000],['name'=>'کیک روز','quantity'=>1,'unit_price'=>220000,'line_total'=>220000]]]],'subtotal'=>580000,'discount'=>0,'tax'=>0,'total'=>580000,'settlement_label'=>'کارتخوان'];
+        if($kind==='preparation'){
+            $items=[
+                ['name'=>'پیتزا مخصوص','quantity'=>1,'note'=>'بدون پیاز؛ سس جداگانه','station'=>'kitchen','order_index'=>1],
+                ['name'=>'سیب‌زمینی','quantity'=>1,'note'=>null,'station'=>'kitchen','order_index'=>3],
+                ['name'=>'چای ساده','quantity'=>2,'note'=>'کم‌رنگ','station'=>'hot_bar','order_index'=>0],
+                ['name'=>'لیموناد','quantity'=>1,'note'=>'بدون یخ','station'=>'cold_bar','order_index'=>2],
+            ];
+            return [
+                'schema'=>'sokna-print-document-v2','document_kind'=>'preparation',
+                'title'=>'کافه سکنا','badge'=>'پیش‌نمایش قالب','table_name'=>'میز ۲',
+                'order_number'=>'2048','created_at'=>date('Y-m-d H:i:s'),
+                'sections'=>[['title'=>'','items'=>$items]],
+                'customer_note'=>'مهمان عجله دارد',
+            ];
+        }
+        return [
+            'schema'=>'sokna-print-document-v2','document_kind'=>'customer',
+            'document_role'=>'receipt_preview','title'=>'کافه سکنا',
+            'invoice_number'=>'INV-2048','table_name'=>'میز ۲','created_at'=>date('Y-m-d H:i:s'),
+            'currency'=>'تومان',
+            'sections'=>[['items'=>[
+                ['name'=>'قهوه دمی','quantity'=>2,'unit_price'=>180000,'line_total'=>360000],
+                ['name'=>'کیک روز','quantity'=>1,'unit_price'=>220000,'line_total'=>220000],
+            ]]],
+            'subtotal'=>580000,'discount'=>0,'tax'=>0,'total'=>580000,
+            'settlement_label'=>'کارتخوان',
+        ];
     }
     private function payloadKind(array $payload): string{$kind=(string)($payload['document_kind']??'');return $kind==='preparation'?'preparation':'customer';}
     private function destinationKind(string $type): string{return $type==='preparation'?'preparation':'customer';}
