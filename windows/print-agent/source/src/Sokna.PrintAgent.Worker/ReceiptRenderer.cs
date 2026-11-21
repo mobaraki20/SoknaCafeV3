@@ -57,7 +57,7 @@ internal static class ReceiptRenderer
             var kind=Get(root,"document_kind",Get(root,"job_type","").StartsWith("prep",StringComparison.Ordinal)?"preparation":"customer");var prep=kind=="preparation"||Get(root,"job_type","").StartsWith("prep",StringComparison.Ordinal);
             var header=Get(_template,"header_title","");if(string.IsNullOrWhiteSpace(header))header=Get(root,"title","کافه سکنا");if(!string.IsNullOrWhiteSpace(header))Text(header,_title,true,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);var subtitle=Get(_template,"header_subtitle","");if(!string.IsNullOrWhiteSpace(subtitle))Text(subtitle,Math.Clamp(GetInt(_template,"header_subtitle_font_size",Math.Max(12,_base-6)),12,60),false,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);
             if(GetBool(root,"is_reprint",false))BoxText(Label("reprint","چاپ مجدد"),Math.Max(_title,32),true);
-            var order=_sectionOrder.Count>0?_sectionOrder:(prep?new List<string>{"status","meta","items","notes","footer"}:new List<string>{"brand","meta","items","summary","settlement","footer"});
+            var order=_sectionOrder.Count>0?new List<string>(_sectionOrder):(prep?new List<string>{"status","meta","items","notes","footer"}:new List<string>{"brand","meta","items","summary","settlement","footer"});if(!prep&&Get(root,"document_role","")=="account_preview"&&!order.Contains("meta"))order.Insert(0,"meta");
             foreach(var section in order)
             {
                 switch(section)
