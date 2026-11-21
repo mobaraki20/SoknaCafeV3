@@ -1,0 +1,74 @@
+{
+    "count": 17,
+    "passed": 17,
+    "tests": [
+        {
+            "id": "multi-line title accepted",
+            "passed": true
+        },
+        {
+            "id": "subtitle text accepted",
+            "passed": true
+        },
+        {
+            "id": "independent subtitle size accepted",
+            "passed": true
+        },
+        {
+            "id": "footer truly empty",
+            "passed": true
+        },
+        {
+            "id": "settlement line can be hidden",
+            "passed": true
+        },
+        {
+            "id": "three-column layout accepted",
+            "passed": true
+        },
+        {
+            "id": "bar-first order accepted",
+            "passed": true
+        },
+        {
+            "id": "station choice default",
+            "passed": true
+        },
+        {
+            "id": "station choice as_ordered",
+            "passed": true
+        },
+        {
+            "id": "station choice bar_first",
+            "passed": true
+        },
+        {
+            "id": "station choice kitchen_first",
+            "passed": true
+        },
+        {
+            "id": "invalid station rejected",
+            "passed": true
+        },
+        {
+            "id": "server legacy order kitchen-first",
+            "passed": true
+        },
+        {
+            "id": "original order metadata survives legacy sort",
+            "passed": true
+        },
+        {
+            "id": "station preserved for renderer",
+            "passed": true
+        },
+        {
+            "id": "preview notice remains explicit in account role",
+            "passed": true
+        },
+        {
+            "id": "forced warning append absent",
+            "passed": true
+        }
+    ]
+}
