@@ -1,0 +1,39 @@
+name: R323 M8 MariaDB Contract QA (no release)
+on:
+  push:
+    branches: ['qa/sokna-r323-print-render-raster-qa-20261121']
+    paths:
+      - '.github/workflows/r323-mariadb-m8-qa.yml'
+      - 'tests/local-mysql-migration-selftest.php'
+      - 'tests/local-m8-printing-selftest.php'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  mariadb-m8:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: sokna_m2
+          MARIADB_USER: sokna
+          MARIADB_PASSWORD: sokna
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure PHP MySQL driver
+        run: if ! php -m | grep -qi '^pdo_mysql$'; then sudo apt-get update && sudo apt-get install -y php-mysql; fi
+      - name: Verify bounded historical migration and M8 printing contract
+        env:
+          SOKNA_TEST_DB_HOST: 127.0.0.1
+          SOKNA_TEST_DB_PORT: '3306'
+          SOKNA_TEST_DB_NAME: sokna_m2
+          SOKNA_TEST_DB_USER: sokna
+          SOKNA_TEST_DB_PASS: sokna
+        run: |
+          php tests/local-mysql-migration-selftest.php
+          php tests/local-m8-printing-selftest.php
