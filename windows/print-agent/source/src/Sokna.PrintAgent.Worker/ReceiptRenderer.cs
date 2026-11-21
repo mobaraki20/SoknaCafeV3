@@ -111,7 +111,7 @@ internal static class ReceiptRenderer
                 return;
             }
 
-            var rows=new List<(JsonElement Item,string Station,string Title,int Position,int SourceIndex)>();
+            var rows=new List<(JsonElement Item,string Station,string Title,int Position,int SourceIndex,bool HasPosition)>();
             var sourceIndex=0;
             foreach(var section in sections.EnumerateArray())
             {
@@ -121,19 +121,39 @@ internal static class ReceiptRenderer
                 foreach(var item in items.EnumerateArray())
                 {
                     var station=Get(item,"station",sectionStation);
-                    var position=GetInt(item,"order_index",sourceIndex);
-                    rows.Add((item,station,title,position,sourceIndex));
+                    var hasPosition=item.ValueKind==JsonValueKind.Object
+                        &&item.TryGetProperty("order_index",out var indexValue)
+                        &&indexValue.ValueKind==JsonValueKind.Number
+                        &&indexValue.TryGetInt32(out _);
+                    var position=hasPosition?GetInt(item,"order_index",sourceIndex):sourceIndex;
+                    rows.Add((item,station,title,position,sourceIndex,hasPosition));
                     sourceIndex++;
                 }
             }
 
-            // If older saved jobs have no per-row indices, the source order is
-            // the only trustworthy order: never fabricate a reconstruction.
-            // New jobs provide these indices from order_items id / bundle order.
+            // Original cross-station order cannot be reconstructed for old jobs
+            // without order_index: keep their saved presentation instead of
+            // incorrectly claiming to show the customer's order.
+            if(_stationOrder=="as_ordered"&&rows.Any(row=>!row.HasPosition))
+            {
+                foreach(var section in sections.EnumerateArray())
+                {
+                    if(!section.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)continue;
+                    DrawPreparationGroup(Get(section,"title",""),items.EnumerateArray().ToList());
+                }
+                return;
+            }
             var ordered=rows.OrderBy(row=>PreparationStationRank(row.Station,_stationOrder))
                             .ThenBy(row=>row.Position)
                             .ThenBy(row=>row.SourceIndex)
                             .ToList();
+            // The operational template deliberately uses one unlabelled section,
+            // so emit a single column header even when sorting across stations.
+            if(ordered.All(row=>row.Title.Length==0))
+            {
+                DrawPreparationGroup("",ordered.Select(row=>row.Item).ToList());
+                return;
+            }
             var currentStation=(string?)null;
             var currentTitle="";
             var group=new List<JsonElement>();
