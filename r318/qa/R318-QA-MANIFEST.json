@@ -1,0 +1,79 @@
+{
+  "schema": "sokna-r318-editor-source-qa-v1",
+  "date": "2026-11-21",
+  "parent": "R317 cumulative source QA with R311 print editor changes",
+  "mode": "NO_INSTALL",
+  "installed_local_unchanged": "231fw/R307",
+  "installed_public_unchanged": "35in/R306",
+  "changed_local_files": [
+    {
+      "path": "local/public/assets/printing-workspace.js",
+      "baseline_sha256": "481a34f18b4fdefe080a3f0d6b4ac9fca2ad31b1ecead6179b8a5397e19472ef",
+      "qa_sha256": "9ac42fb4d866e41744451b8c69b1beb00ab4a397890019571ce94c713b9e6b56",
+      "added_lines": 0
+    },
+    {
+      "path": "local/public/printing/index.php",
+      "baseline_sha256": "a88cda8f5f0a7a345c0f6428dd20550c4627709a30469be18bbd588a4f737903",
+      "qa_sha256": "b5977a325da86b4e71a75c446aeb4dd07725077283c7be0eb55682fb1f46a072",
+      "added_lines": 11
+    },
+    {
+      "path": "local/public/assets/product-ui.css",
+      "baseline_sha256": "a383b2227c8aca39562701f45253849f0ab35ba4b15568035da7afe1bc560abe",
+      "qa_sha256": "c8d1a075b7cb26dd508a6b4406be8950da10840ba7c5761217237b2ab8caa864",
+      "added_lines": 26
+    },
+    {
+      "path": "local/src/Domain/Printing/PrintTemplatePackageService.php",
+      "baseline_sha256": "b176bcc5ebd8e4e24ae37c5700f8d5456ab32ad22d0f66f6b336f6798d46c1ca",
+      "qa_sha256": "e00e0beb310db999d8edda78ac4f69e544bf9ac3a3755712c2bbb70fbc82649a",
+      "added_lines": 1
+    },
+    {
+      "path": "local/src/Domain/Printing/PrintService.php",
+      "baseline_sha256": "12362daac640c83ee3e7c3ab4f8c7776bd1ff4281f5bf4b4286d7ece6dd30667",
+      "qa_sha256": "3be53b3940ab541840939fcb512400b04c9056a887eff40611c98392e58ad4cb",
+      "added_lines": 3
+    }
+  ],
+  "print_agent": {
+    "path": "windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs",
+    "qa_branch": "qa/sokna-r318-print-template-editor-contract-20261121",
+    "renderer_commit": "765005f0b5f6a06c55cf75723a974b1e6d7aca5b",
+    "compile": "NOT_RUN_DOTNET_UNAVAILABLE",
+    "runtime_print": "NOT_TESTED"
+  },
+  "scope": [
+    "remove forced verbose prepayment footer while preserving account_preview role and unpaid badge",
+    "title and subtitle independent with line breaks and font control",
+    "optional footer truly clears without old text fallback",
+    "preparation station order as ordered/bar-first/kitchen-first",
+    "80mm three-column names/quantity/notes and 58mm compact fallback",
+    "single obvious user-facing text section with advanced version settings collapsed",
+    "mobile compact persistent live preview"
+  ],
+  "tested": {
+    "php_lint": "pass",
+    "js_syntax": "pass",
+    "php_contract": "17/17",
+    "browser_contract": "17/17",
+    "desktop_mobile_screenshot": "pass fixture only"
+  },
+  "not_tested": [
+    "Print Agent .NET compilation",
+    "Windows GDI+ actual raster output",
+    "actual receipt 58/80 thermal print",
+    "QA branch against authenticated full Local app",
+    "same-origin Public parity",
+    "MariaDB and full release deployment"
+  ],
+  "known_open": [
+    "direct click editing on receipt preview",
+    "fully identical renderer and browser output",
+    "legacy Print Agent compatibility gating",
+    "print station ordering acceptance on old agent",
+    "other 132-item register entries",
+    "system-wide page audit"
+  ]
+}
