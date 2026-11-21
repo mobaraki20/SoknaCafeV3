@@ -1,0 +1,57 @@
+{
+  "schema": "sokna-r313-public-dashboard-real-activity-projection-qa-v1",
+  "date": "2026-11-21",
+  "status": "SOURCE_AND_FIXTURE_QA_PASS_NOT_INSTALLED",
+  "installed_local_unchanged": "231fw / R307",
+  "installed_public_unchanged": "35in / R306",
+  "local_source_parent": "R311 QA, retains R308+R309+R310 source changes",
+  "public_source_parent": "R312 QA, retains R310 Public currency source changes and R312 stale dashboard",
+  "changed_paths": [
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php",
+    "local/src/Domain/PublicEdge/PublicOperationalActivityProjector.php",
+    "public/src/Remote/RemoteStaffPageRenderer.php",
+    "public/src/Remote/PublicDashboardOperationalActivity.php",
+    "public/resources/shared-staff-ui/dashboard-workspace.php"
+  ],
+  "sha256_by_path": {
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php": "ee51a24362e038c98dd201cb470cbd8a5f2a046daf2a28d9c09160b3354e0fc8",
+    "local/src/Domain/PublicEdge/PublicOperationalActivityProjector.php": "1c6b58b97fdb5d349e44918cc7f85373f6be1dd4622fec9e22e5782a46094da3",
+    "public/src/Remote/RemoteStaffPageRenderer.php": "d46ee6e188c0d0081a99695f8919d5e6c922afa61e869ffb3110d208a1b77840",
+    "public/src/Remote/PublicDashboardOperationalActivity.php": "2856726c533bc290bf6b360735f5f84fffe3d3fea77592ea3e942ad80f8d8c20",
+    "public/resources/shared-staff-ui/dashboard-workspace.php": "bc177956e8135a92ed14744b73839803e8f229416087b91c00f6f474b06cca3e"
+  },
+  "original_sha256_by_path": {
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php": "416462670913e08e4fa25256ba077b6b77f87bc9e1e594cb77317e5bdd8e248f",
+    "local/src/Domain/PublicEdge/PublicOperationalActivityProjector.php": null,
+    "public/src/Remote/RemoteStaffPageRenderer.php": "d5d1ff62ddfd91e0d299cf098010d67ba219ef23a7356fcd0f63428c0d674fc7",
+    "public/src/Remote/PublicDashboardOperationalActivity.php": null,
+    "public/resources/shared-staff-ui/dashboard-workspace.php": "c2aee635bea2b3e415807500eaea18bd28e9f420c08eced8851d88c24cf073f7"
+  },
+  "canonical_business_cutoff": "04:00 from local BusinessClock; no hard-coded cutoff in logic",
+  "tests": {
+    "local_projection_business_day": 8,
+    "public_projection_business_day": 9,
+    "php_lint_files": 5,
+    "playwright_fixture_views": 4,
+    "all_pass": true,
+    "mariadb_integrated": "NOT_RUN",
+    "full_auth_browser": "NOT_RUN"
+  },
+  "visual_evidence": {
+    "fresh_mobile": "R313-public-dashboard-fresh-mobile-QA.png",
+    "fresh_desktop": "R313-public-dashboard-fresh-desktop-QA.png",
+    "stale_mobile": "R313-public-dashboard-stale-mobile-QA.png",
+    "stale_desktop": "R313-public-dashboard-stale-desktop-QA.png",
+    "source_derived": "Yes, shared PHP template and real CSS, mocked data; no cafe host access"
+  },
+  "limitations": [
+    "Requires coordinated Local+Public update in final release, not deploy one side in isolation",
+    "No known authenticated Public deep link to closed historic invoice, use safe operational route only",
+    "No full MariaDB sync/E2E run yet; retain no-install status",
+    "Bell popup and family sales report parity are independent open tasks"
+  ],
+  "no_release_build": true,
+  "no_installer": true,
+  "production_touched": false,
+  "retain_public_35in_managed_inventory": "Baseline remains R306 + R310 JS + R312 dashboard modifications in QA only"
+}
