@@ -665,11 +665,12 @@ function discountRequest(){
  const rialFixed=type==='fixed'&&root.dataset.finalAmountRial==='1';
  let value=rialFixed?window.SoknaFinalAmountCurrency?.parseInput?.(input?.value||'',true):numericValue(input?.value||0);
  if(value===null||!Number.isSafeInteger(value))value=-1;
- value=value<0?-1:(type==='percent'?Math.max(0,Math.min(100,value)):Math.max(0,Math.trunc(value)));
+ value=value<0?-1:(type==='percent'?(value>100?-1:value):Math.max(0,Math.trunc(value)));
  const partial=Number(financeAccount?.receipt_count||0)>0;
  const base=Math.max(0,Number(partial?Number(financeAccount?.remaining_subtotal||0)-Number(financeAccount?.remaining_discount||0):financeAccount?.subtotal)||0);
+ const expectedSignature=partial?String(financeAccount?.signature||''):'';
  return {session_id:sessionId,discount_type:type,discount_value:value,subtotal:base,
-   expected_signature:partial?String(financeAccount?.signature||''):''};
+   expected_signature:expectedSignature,preview_authority_valid:!partial||/^[0-9a-f]{64}$/.test(expectedSignature)};
 }
 function discountRequestKey(req){return [req.session_id,req.discount_type,req.discount_value,req.subtotal,req.expected_signature].join('|')}
 function verifyDiscountResponse(raw,req){
@@ -688,8 +689,8 @@ function discountPreview(){
  if(label)label.textContent=type==='percent'?'درصد تخفیف':`مبلغ تخفیف (${root.dataset.finalAmountRial==='1'?'ریال':'تومان'})`;
  if(input){input.placeholder=type==='percent'?'مثلاً ۱۰':`مبلغ به ${root.dataset.finalAmountRial==='1'?'ریال':'تومان'}`;if(type==='percent')delete input.dataset.moneyInput;else input.dataset.moneyInput='1';L.humanizeNumericInput?.(input)}
  if(baseEl)baseEl.textContent=finalMoney(base);if(amountEl)amountEl.textContent='—';if(taxRow)taxRow.hidden=true;if(taxEl)taxEl.textContent='—';if(netEl)netEl.textContent=value>0?'در حال محاسبه…':'—';
- if(statusEl){statusEl.hidden=value===0;statusEl.textContent=value<0?'مبلغ ریالی تخفیف باید عدد صحیح و مضرب ۱۰ باشد.':value>0?'در حال محاسبه مبلغ نهایی…':''}
- discountPreviewValid=false;discountPreviewSnapshot=null;if(apply)apply.disabled=true;clearTimeout(discountPreviewTimer);const seq=++discountPreviewSeq;if(value<=0||req.session_id<=0)return;
+ if(statusEl){statusEl.hidden=value===0&&req.preview_authority_valid;statusEl.textContent=!req.preview_authority_valid?'امضای حساب مالی موجود نیست؛ حساب را تازه‌سازی کنید.':value<0?(type==='percent'?'درصد تخفیف باید عدد صحیح بین ۱ تا ۱۰۰ باشد.':'مبلغ تخفیف باید عدد صحیح معتبر و در حالت ریال مضرب ۱۰ باشد.'):value>0?'در حال محاسبه مبلغ نهایی…':''}
+ discountPreviewValid=false;discountPreviewSnapshot=null;if(apply)apply.disabled=true;clearTimeout(discountPreviewTimer);const seq=++discountPreviewSeq;if(value<=0||req.session_id<=0||!req.preview_authority_valid)return;
  discountPreviewTimer=setTimeout(async()=>{try{
    const j=await financeMutate({action:'discount_preview',session_id:req.session_id,discount_type:type,discount_value:value});
    if(seq!==discountPreviewSeq)return;
@@ -703,7 +704,7 @@ function discountPreview(){
  },160);
 }
 function openDiscountDialog(){if(!discountDialog||!financeAccount)return;
- if(financeAccount.session?.remaining_discount_grant){toast('تخفیف مانده قبلاً ثبت شده است؛ برای اصلاح آن به مسئول مالی مراجعه کنید.','warning');return;}const partial=Number(financeAccount.receipt_count||0)>0;const currentType=String(financeAccount.session?.discount_type||''),currentValue=Number(financeAccount.session?.discount_value||0),hasCurrent=Boolean(currentType&&currentValue>0);discountDraftType=partial?'percent':(currentType||'percent');discountDraftValue=partial?'':(hasCurrent?String(currentValue):'');const input=discountDialog.querySelector('[data-discount-value]'),current=discountDialog.querySelector('[data-discount-current]'),currentLabel=discountDialog.querySelector('[data-discount-current-label]');if(input)input.value=human(currentType==='fixed'&&root.dataset.finalAmountRial==='1'?(window.SoknaFinalAmountCurrency?.inputValue?.(currentValue,true)||''):discountDraftValue);if(current)current.hidden=!hasCurrent;if(currentLabel&&hasCurrent)currentLabel.textContent=currentType==='percent'?`${L.integer(currentValue)}٪`:`${finalMoney(currentValue)}`;
+ if(financeAccount.session?.remaining_discount_grant){toast('تخفیف مانده قبلاً ثبت شده است؛ برای اصلاح آن به مسئول مالی مراجعه کنید.','warning');return;}const partial=Number(financeAccount.receipt_count||0)>0;const currentType=String(financeAccount.session?.discount_type||''),currentValue=Number(financeAccount.session?.discount_value||0),hasCurrent=Boolean(currentType&&currentValue>0);discountDraftType=partial?'percent':(currentType||'percent');discountDraftValue=partial?'':(hasCurrent?String(currentValue):'');const input=discountDialog.querySelector('[data-discount-value]'),current=discountDialog.querySelector('[data-discount-current]'),currentLabel=discountDialog.querySelector('[data-discount-current-label]');if(input)input.value=partial?'':human(currentType==='fixed'&&root.dataset.finalAmountRial==='1'?(window.SoknaFinalAmountCurrency?.inputValue?.(currentValue,true)||''):discountDraftValue);if(current)current.hidden=!hasCurrent;if(currentLabel&&hasCurrent)currentLabel.textContent=currentType==='percent'?`${L.integer(currentValue)}٪`:`${finalMoney(currentValue)}`;
  const baseCaption=discountDialog.querySelector('[data-discount-base]')?.previousElementSibling;
  if(baseCaption)baseCaption.textContent=partial?'مانده خالص اقلام پرداخت‌نشده (قبل از مالیات)':'جمع سفارش‌ها';
  const description=discountDialog.querySelector('.sc-hall-discount-head p');
