@@ -39,7 +39,7 @@ internal static class ReceiptRenderer
     private sealed class Canvas
     {
         private readonly Graphics _g;private readonly int _width,_marginX,_marginY,_base,_title,_table,_gap,_notesFont,_footerFont,_totalsFont,_settlementFont,_metaFont;private readonly JsonElement _template,_design;private readonly double _paperWidth,_scaleX,_scaleY;
-        private readonly bool _showActor,_showTime,_showOrder,_showSectionTitles,_showPrices;private readonly string _layout,_separatorStyle,_headerAlignment,_density;private readonly Dictionary<string,string> _labels;private readonly List<string> _sectionOrder;
+        private readonly bool _showActor,_showTime,_showOrder,_showSectionTitles,_showPrices;private readonly string _layout,_separatorStyle,_headerAlignment,_density,_stationOrder;private readonly Dictionary<string,string> _labels;private readonly List<string> _sectionOrder;
         public int Y{get;private set;}
         public Canvas(Graphics g,int width,int marginX,int marginY,JsonElement template,JsonElement design,double paperWidth,double scaleX,double scaleY)
         {
@@ -47,13 +47,13 @@ internal static class ReceiptRenderer
             _base=Math.Clamp(GetInt(template,"base_font_size",23),18,42);_title=Math.Clamp(GetInt(template,"title_font_size",30),22,60);_table=Math.Clamp(GetInt(template,"table_font_size",28),24,72);_gap=Py(Math.Clamp(GetInt(template,"line_spacing",5),2,20));
             _notesFont=OptionalFont(template,"notes_font_size");_footerFont=OptionalFont(template,"footer_font_size");_totalsFont=OptionalFont(template,"totals_font_size");_settlementFont=OptionalFont(template,"settlement_font_size");_metaFont=OptionalFont(template,"meta_font_size");
             _showActor=GetBool(template,"show_actor",false);_showTime=GetBool(template,"show_time",true);_showOrder=GetBool(template,"show_order_number",true);_showSectionTitles=GetBool(template,"show_section_titles",true);_showPrices=GetBool(template,"show_prices",true);
-            _layout=Get(design,"item_layout",paperWidth<=60?"columnar-compact":"columnar");if(_paperWidth<=60&&_layout=="columnar")_layout="columnar-compact";
+            _layout=Get(design,"item_layout",paperWidth<=60?"columnar-compact":"columnar");if(_paperWidth<=60&&_layout=="columnar")_layout="columnar-compact";_stationOrder=Get(design,"preparation_station_order","default");
             _separatorStyle=Get(design,"separator_style","solid");_headerAlignment=Get(design,"header_alignment","center");_density=Get(design,"density","compact");_labels=ReadLabels(design);_sectionOrder=ReadStringArray(design,"section_order");
         }
         public void Render(JsonElement root)
         {
             var kind=Get(root,"document_kind",Get(root,"job_type","").StartsWith("prep",StringComparison.Ordinal)?"preparation":"customer");var prep=kind=="preparation"||Get(root,"job_type","").StartsWith("prep",StringComparison.Ordinal);
-            Text(Get(root,"title","کافه سکنا"),_title,true,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);
+            var header=Get(_template,"header_title","");if(string.IsNullOrWhiteSpace(header))header=Get(root,"title","کافه سکنا");if(!string.IsNullOrWhiteSpace(header))Text(header,_title,true,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);var subtitle=Get(_template,"header_subtitle","");if(!string.IsNullOrWhiteSpace(subtitle))Text(subtitle,Math.Clamp(GetInt(_template,"header_subtitle_font_size",Math.Max(12,_base-6)),12,60),false,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);
             if(GetBool(root,"is_reprint",false))BoxText(Label("reprint","چاپ مجدد"),Math.Max(_title,32),true);
             var order=_sectionOrder.Count>0?_sectionOrder:(prep?new List<string>{"status","meta","items","notes","footer"}:new List<string>{"brand","meta","items","summary","settlement","footer"});
             foreach(var section in order)
@@ -66,7 +66,7 @@ internal static class ReceiptRenderer
                     case "items":Rule();if(prep)DrawPreparationItems(root);else DrawCustomerItems(root);break;
                     case "notes" when prep:DrawCustomerNote(root);break;
                     case "summary" when !prep:Rule();DrawSummary(root);break;
-                    case "settlement" when !prep:DrawSettlement(root);break;
+                    case "settlement" when !prep:if(GetBool(_template,"show_settlement_label",true))DrawSettlement(root);break;
                     case "footer":var footer=Get(_template,"footer",Get(root,"footer",""));if(footer.Length>0){Rule();Text(footer,_footerFont>0?_footerFont:Math.Max(16,_base-5),false,StringAlignment.Center,3);}break;
                 }
             }
@@ -88,17 +88,31 @@ internal static class ReceiptRenderer
             if(root.TryGetProperty("sections",out var sections)&&sections.ValueKind==JsonValueKind.Array)foreach(var section in sections.EnumerateArray())
             {
                 var sectionTitle=Get(section,"title","");if(_showSectionTitles&&sectionTitle.Length>0)Text(sectionTitle,Math.Max(20,_base),true,StringAlignment.Center,2);
-                if(!section.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)continue;
+                if(!section.TryGetProperty("items",out var sourceItems)||sourceItems.ValueKind!=JsonValueKind.Array)continue;
+                var items=sourceItems.EnumerateArray().ToList();
+                if(_stationOrder is "as_ordered" or "bar_first" or "kitchen_first")
+                {
+                    var originalPositions=new Dictionary<int,int>();
+                    for(int i=0;i<items.Count;i++)originalPositions[i]=i;
+                    items=items.Select((item,i)=>(item,index:i)).OrderBy(pair=>{
+                        var station=Get(pair.item,"station","other");
+                        var kitchen=station=="kitchen";var bar=station is "bar" or "hot_bar" or "cold_bar";
+                        if(_stationOrder=="bar_first")return bar?0:kitchen?1:2;
+                        if(_stationOrder=="kitchen_first")return kitchen?0:bar?1:2;
+                        return 0;
+                    }).ThenBy(pair=>GetInt(pair.item,"order_index",pair.index)).Select(pair=>pair.item).ToList();
+                }
                 var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"columnar-compact":"columnar"):_layout;
-                if(layout is "columnar" or "columnar-compact"){DrawPreparationColumns(items,layout=="columnar-compact");continue;}
-                foreach(var item in items.EnumerateArray())
+                if(layout=="columnar-notes"&&_paperWidth>60){DrawPreparationColumnsWithNotes(items);continue;}
+                if(layout is "columnar" or "columnar-compact" or "columnar-notes"){DrawPreparationColumns(items,layout!="columnar");continue;}
+                foreach(var item in items)
                 {
                     var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
                     DrawPreparationAnnotations(item,quantity);Hairline();
                 }
             }
         }
-        private void DrawPreparationColumns(JsonElement items,bool compact)
+        private void DrawPreparationColumns(List<JsonElement> items,bool compact)
         {
             var usable=Math.Max(1,_width-_marginX*2);
             var qtyWidth=Math.Max(Px(compact?72:60),(int)(usable*(compact?.28:.22)));
@@ -111,7 +125,7 @@ internal static class ReceiptRenderer
                 DrawCell("تعداد",_marginX,Y,qtyWidth,headerFont,StringAlignment.Near,headerHeight);
                 Y+=headerHeight;Hairline();
             }
-            foreach(var item in items.EnumerateArray())
+            foreach(var item in items)
             {
                 var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");
                 using(var nameFont=MakeFont(Math.Max(20,_table-2),true))
@@ -127,11 +141,39 @@ internal static class ReceiptRenderer
                 DrawPreparationAnnotations(item,quantity);Hairline();
             }
         }
-        private void DrawPreparationAnnotations(JsonElement item,string quantity)
+        private void DrawPreparationColumnsWithNotes(List<JsonElement> items)
+        {
+            var usable=Math.Max(1,_width-_marginX*2);
+            var qtyWidth=(int)(usable*.17);var noteWidth=(int)(usable*.32);var nameWidth=usable-qtyWidth-noteWidth;
+            using(var headerFont=MakeFont(Math.Max(16,_base-4),true))
+            {
+                var h=Math.Max(Py(34),(int)Math.Ceiling(headerFont.GetHeight(_g))+Py(8));
+                DrawCell("شرح",_marginX+qtyWidth+noteWidth,Y,nameWidth,headerFont,StringAlignment.Far,h);
+                DrawCell("تعداد",_marginX+noteWidth,Y,qtyWidth,headerFont,StringAlignment.Center,h);
+                DrawCell("یادداشت",_marginX,Y,noteWidth,headerFont,StringAlignment.Near,h);
+                Y+=h;Hairline();
+            }
+            foreach(var item in items)
+            {
+                var name=Get(item,"name","—");var qty=FaDigits(Get(item,"quantity","1"));var note=Get(item,"note","");
+                using(var nameFont=MakeFont(Math.Max(20,_table-2),true))
+                using(var qtyFont=MakeFont(Math.Max(18,_base),true))
+                using(var noteFont=MakeFont(_notesFont>0?_notesFont:Math.Max(16,_base-4),false))
+                {
+                    var height=Math.Max(Py(40),Math.Max(MeasureCellHeight(name,nameWidth,nameFont,StringAlignment.Far),Math.Max(MeasureCellHeight(qty,qtyWidth,qtyFont,StringAlignment.Center),MeasureCellHeight(note,noteWidth,noteFont,StringAlignment.Far))));
+                    DrawCell(name,_marginX+qtyWidth+noteWidth,Y,nameWidth,nameFont,StringAlignment.Far,height);
+                    DrawCell(qty,_marginX+noteWidth,Y,qtyWidth,qtyFont,StringAlignment.Center,height);
+                    if(note.Length>0)DrawCell(note,_marginX,Y,noteWidth,noteFont,StringAlignment.Far,height);
+                    Y+=height;
+                }
+                DrawPreparationAnnotations(item,qty,false);Hairline();
+            }
+        }
+        private void DrawPreparationAnnotations(JsonElement item,string quantity,bool includeNote=true)
         {
             if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null){var oldQuantity=FaDigits(previous.ToString());BoxText($"{Label("adjustment","اصلاح")}: قبلی {oldQuantity} ← جدید {quantity}",Math.Max(17,_base-3),true);}
             var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),_notesFont>0?_notesFont:Math.Max(18,_base-2),true);
-            var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont>0?_notesFont:Math.Max(18,_base-2),true);
+            var note=Get(item,"note","");if(includeNote&&note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont>0?_notesFont:Math.Max(18,_base-2),true);
         }
         private void DrawCustomerNote(JsonElement root){var note=Get(root,"customer_note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont>0?_notesFont:Math.Max(19,_base-1),true);}
         private void DrawCustomerItems(JsonElement root)
