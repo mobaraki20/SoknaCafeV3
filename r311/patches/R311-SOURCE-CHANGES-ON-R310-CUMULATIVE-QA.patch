@@ -1,0 +1,780 @@
+--- a/public/assets/printing-workspace.js
++++ b/public/assets/printing-workspace.js
+@@ -171,32 +171,57 @@
+ 
+ function renderTemplateDraftPreview(){
+  const form=$('[data-template-editor-form]'),area=$('[data-template-live-preview]');if(!form||!area||!templateEditorBase)return;
+- area.replaceChildren();const f=form.elements,base=templateEditorBase.package?.template||{},sample=el('div','sc-template-live-paper'),h=el('h4','',form.elements.name?.value||'نمونه فیش مشتری');
+- sample.dir='rtl';const design=base.design||{},density=f.density?.value||design.density||'comfortable';sample.classList.toggle('is-compact',density==='compact');
+- const headerAlign=f.header_alignment?.value||design.header_alignment||'right';sample.style.textAlign=headerAlign==='center'?'center':'right';
+- // Pixel preview is explicitly approximate; ratios are shared with the real template input values.
+- const numeric=(key,fallback,min,max)=>{const value=Number(String(f[key]?.value??'').trim()||base[key]||fallback);return Number.isFinite(value)?Math.max(min,Math.min(max,value)):fallback};
+- const baseSize=numeric('base_font_size',24,18,42),titleSize=numeric('title_font_size',32,22,60),itemSize=numeric('table_font_size',28,24,72);
+- const lineSpacing=numeric('line_spacing',5,2,20),margin=numeric('margin',8,2,30);
+- sample.style.fontSize=(baseSize*.55).toFixed(2)+'px';sample.style.padding=(margin*.9+6).toFixed(1)+'px';
+- sample.style.lineHeight=(1.28+lineSpacing*.04).toFixed(2);h.style.fontSize=(titleSize*.48).toFixed(2)+'px';
+- sample.style.setProperty('--sc-draft-item-size',(itemSize*.47).toFixed(2)+'px');sample.style.setProperty('--sc-draft-meta-size',(numeric('meta_font_size',baseSize-5,14,72)*.54).toFixed(2)+'px');sample.style.setProperty('--sc-draft-notes-size',(numeric('notes_font_size',baseSize-2,14,72)*.54).toFixed(2)+'px');
+- sample.style.setProperty('--sc-draft-row-gap',Math.max(1,lineSpacing*.4).toFixed(1)+'px');
+- 
+- const line=(a,b)=>{const row=el('div','sc-template-live-row');row.append(el('span','',a),el('span','',b));sample.append(row)};
+- sample.append(h);
+- const setting=k=>f[k]?.value===''?base[k]!==false:f[k]?.value!=='0';
+- if(setting('show_order_number'))line('شماره سفارش','۱۲۳');
+- if(setting('show_time'))line('زمان','۱۲:۳۰');
+- if(setting('show_actor'))line('ثبت‌کننده','پرسنل کافه');
+- const labels=templateEditorBase.contract?.label_fields||[],labelFor=k=>f['label_'+k]?.value||'';
+- if(setting('show_section_titles'))sample.append(el('h5','',f['label_preparation']?.value||'اقلام سفارش'));
+- const layout=f.item_layout?.value||design.item_layout||'columnar';sample.classList.toggle('is-two-line',layout==='two-line');
+- line('قهوه دمی × ۱',setting('show_prices')?'۱۵۰٬۰۰۰':'');
+- line('چای × ۲',setting('show_prices')?'۲۰۰٬۰۰۰':'');
+- const separator=f.separator_style?.value||design.separator_style||'solid';sample.classList.toggle('is-dashed',separator==='dashed');sample.classList.toggle('is-minimal',separator==='minimal');
+- const footer=String(f.footer?.value??base.footer??'').trim();if(footer){const foot=el('p','sc-template-live-footer',footer);foot.style.fontSize=(numeric('footer_font_size',baseSize-5,14,72)*.55).toFixed(2)+'px';sample.append(foot)}
+- area.append(sample);
++ const f=form.elements,base=templateEditorBase.package?.template||{},design=base.design||{},kind=templateEditorBase.package?.document_kind||'customer';
++ const sample=el('div','sc-template-live-paper');sample.dir='rtl';area.replaceChildren();area.append(sample);
++ const textValue=(key)=>String(f[key]?.value??'');
++ const getNumber=(key,fallback,min,max)=>{
++   const typed=textValue(key).trim();const selected=typed!==''?Number(typed):Number(base[key]??fallback);
++   return Number.isFinite(selected)?Math.max(min,Math.min(max,selected)):fallback;
++ };
++ const font=getNumber('base_font_size',24,18,42),titleFont=getNumber('title_font_size',32,22,60),itemFont=getNumber('table_font_size',28,24,72);
++ const metaFont=getNumber('meta_font_size',font-5,14,72),noteFont=getNumber('notes_font_size',font-2,14,72),footerFont=getNumber('footer_font_size',font-5,14,72);
++ const totalFont=getNumber('totals_font_size',font,14,72),settleFont=getNumber('settlement_font_size',font-3,14,72);
++ const spacing=getNumber('line_spacing',5,2,20),margin=getNumber('margin',8,2,30),scale=.50;
++ sample.style.fontSize=(font*scale)+'px';sample.style.padding=(margin*.9+6)+'px';sample.style.lineHeight=(1.28+spacing*.04).toFixed(2);
++ sample.style.setProperty('--sc-draft-item-size',itemFont*scale+'px');sample.style.setProperty('--sc-draft-meta-size',metaFont*scale+'px');sample.style.setProperty('--sc-draft-notes-size',noteFont*scale+'px');
++ sample.style.setProperty('--sc-draft-row-gap',Math.max(1,spacing*.4)+'px');
++ const align=textValue('header_alignment')||design.header_alignment||'right';
++ const density=textValue('density')||design.density||'comfortable';
++ const separator=textValue('separator_style')||design.separator_style||'solid';
++ const layout=textValue('item_layout')||design.item_layout||'columnar';
++ sample.classList.toggle('is-compact',density==='compact');sample.classList.toggle('is-dashed',separator==='dashed');sample.classList.toggle('is-minimal',separator==='minimal');
++ sample.classList.toggle('is-two-line',layout==='two-line');
++ const isVisible=(key,otherwise=true)=>{
++   const raw=textValue(key);if(raw==='1')return true;if(raw==='0')return false;
++   return Object.prototype.hasOwnProperty.call(base,key)?base[key]!==false:otherwise;
++ };
++ const label=(k,fallback)=>textValue('label_'+k).trim()||String(design.labels?.[k]??'')||fallback;
++ const title=el('h4','',kind==='preparation'?'آماده‌سازی':label('ticket_title','فیش مشتری'));
++ title.style.fontSize=(titleFont*.48).toFixed(2)+'px';title.style.textAlign=align==='center'?'center':'right';sample.append(title);
++ const row=(a,b,{cls='',size=null}={})=>{const node=el('div','sc-template-live-row'+(cls?' '+cls:''));if(size)node.style.fontSize=size+'px';node.append(el('span','',a),el('span','',b));sample.append(node);return node};
++ const meta=(a,b)=>row(a,b,{cls:'sc-template-live-meta'});
++ if(isVisible('show_order_number'))meta('سفارش','۱۲۳');if(isVisible('show_time'))meta('زمان','۱۲:۳۰');if(isVisible('show_actor'))meta('ثبت‌کننده','پرسنل');
++ if(isVisible('show_section_titles')){const h=el('h5','',kind==='preparation'?'اقلام آماده‌سازی':'اقلام فیش');sample.append(h)}
++ const money=isVisible('show_prices',kind!=='preparation');
++ const item=(name,quantity,value,note='')=>{
++   if(layout==='two-line'){
++     const line=row(name,quantity+' ×',{size:itemFont*scale});
++     if(money)sample.append(el('div','sc-template-live-amount',value));
++     if(note)sample.append(el('p','sc-template-live-note',note));
++   }else{
++     const line=row(name,quantity+' ×'+(money?' · '+value:''),{size:itemFont*scale});
++     if(note)sample.append(el('p','sc-template-live-note',note));
++   }
++ };
++ item('قهوه دمی','۱','۱۵۰٬۰۰۰','بدون شکر');item('چای','۲','۲۰۰٬۰۰۰');
++ if(kind==='customer'){
++   if(isVisible('show_section_titles'))sample.append(el('h5','',label('total','مبلغ نهایی')));
++   row(label('total','جمع حساب'),'۳۵۰٬۰۰۰',{cls:'sc-template-live-total',size:totalFont*scale});
++   row(label('settlement','روش تسویه'),'کارت‌خوان',{cls:'sc-template-live-settle',size:settleFont*scale});
++ }
++ // An intentionally cleared footer must stay empty (not fall back to the old text).
++ const footer=textValue('footer');
++ if(footer.trim()){const foot=el('p','sc-template-live-footer',footer);foot.style.fontSize=(footerFont*.55).toFixed(2)+'px';sample.append(foot)}
+ }
+ 
+ function fillTemplateEditor(details){templateEditorBase=structuredClone(details);const form=$('[data-template-editor-form]'),pkg=details.package||{},template=pkg.template||{},design=template.design||{},contract=details.contract||{};form.reset();editorValidation();setEditorValue(form,'name',pkg.name||'');setEditorValue(form,'version',details.suggested_version||'');setEditorValue(form,'description',pkg.description||'');$('[data-template-kind]').value=pkg.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';for(const key of ['base_font_size','title_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices'])setTriState(form,key,template);setEditorValue(form,'footer',Object.prototype.hasOwnProperty.call(template,'footer')?template.footer:'');for(const key of ['density','header_alignment','separator_style','item_layout'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(design,key)?design[key]:'');const allowed=[...(contract.sections?.[pkg.document_kind]||[])],saved=Array.isArray(design.section_order)?design.section_order:[];templateSectionOrder=[...saved,...allowed.filter(x=>!saved.includes(x))];templateSectionEnabled=new Set(saved.length?saved:allowed);$('[data-template-custom-order]').checked=saved.length>0;renderTemplateSectionOrder();renderTemplateLabels(contract,design.labels||{});$('[data-template-editor-context]').textContent=`مبنا: ${pkg.name||'قالب'} · نسخه ${pkg.version||'—'} · ذخیره فقط نسخه جدید می‌سازد.`;renderTemplateDraftPreview()}
+--- a/public/assets/product-shell.js
++++ b/public/assets/product-shell.js
+@@ -113,9 +113,22 @@
+     };
+     const render=rows=>{
+       items.replaceChildren();
+-      // Preserve all important/unread entries, but keep the header panel compact.
+-      const sorted=[...rows].sort((a,b)=>Boolean(a.read_at)-Boolean(b.read_at)||Number(b.id||0)-Number(a.id||0)).slice(0,6);
+-      if(!sorted.length){const empty=document.createElement('p');empty.textContent='اعلان جدیدی وجود ندارد.';items.append(empty);return}
++      // The quick view is scoped to the current server business day. The full
++      // inbox still contains history, including old unread and unresolved entries.
++      const today=String(panel.dataset.businessDate||'');
++      const cutoff=String(panel.dataset.businessCutoff||'');
++      const matchesBusinessDay=row=>{
++        if(!/^\d{4}-\d{2}-\d{2}$/.test(today)||!/^\d{2}:\d{2}$/.test(cutoff))return true;
++        const wall=String(row.created_at||'').replace('T',' ');
++        const m=/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/.exec(wall);
++        if(!m)return false;
++        const date=m[1],time=m[2];
++        const assigned=time<cutoff?new Date(Date.parse(date+'T00:00:00Z')-86400000).toISOString().slice(0,10):date;
++        return assigned===today;
++      };
++      const filtered=rows.filter(matchesBusinessDay);
++      const sorted=[...filtered].sort((a,b)=>Boolean(a.read_at)-Boolean(b.read_at)||Number(b.id||0)-Number(a.id||0)).slice(0,6);
++      if(!sorted.length){const empty=document.createElement('p');empty.textContent='برای امروز اعلانی وجود ندارد. اعلان‌های قدیمی در تاریخچه باقی می‌مانند.';items.append(empty);return}
+       for(const item of sorted){
+         const raw=String(item.target_url||'');
+         const safePath=raw.startsWith('/')&&!raw.startsWith('//')&&!raw.includes('\\')?appPath(raw):'';
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6603,3 +6603,82 @@
+ @media(max-width:700px){
+   .sc-shell__notify-wrap .sc-shell__notify-panel{position:fixed;left:12px;right:auto;top:64px;bottom:auto;width:min(370px,calc(100vw - 24px));max-height:calc(100dvh - 80px)}
+ }
++
++/* R311 QA: category/family reporting with a deliberately compact default flow. */
++.sc-item-sales-group-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:12px;margin-block:12px 16px}
++.sc-item-sales-group-filters>.sc-actions{grid-column:1 / -1;margin:0}
++.sc-item-sales-individual{border:1px solid var(--sc-border);border-radius:10px;padding:10px 14px;margin-block:8px 12px;background:var(--sc-surface-raised)}
++.sc-item-sales-individual>summary{cursor:pointer;font-weight:700;color:var(--sc-accent-strong);padding:4px 0}
++.sc-item-sales-individual[open]>summary{margin-bottom:12px}
++.sc-item-sales-individual .sc-item-sales-selection{margin-block:8px}
++@media(max-width:600px){
++ .sc-item-sales-group-filters{grid-template-columns:minmax(0,1fr);gap:10px}
++ .sc-item-sales-group-filters>.sc-actions{grid-column:auto}
++ .sc-item-sales-group-filters .sc-button,.sc-item-sales-individual .sc-button{inline-size:100%}
++ .sc-item-sales-table{min-width:0;width:100%;border:0}
++ .sc-item-sales-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
++ .sc-item-sales-table tbody{display:grid;gap:9px}
++ .sc-item-sales-table tbody tr{display:grid;gap:7px;padding:10px;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface-raised)}
++ .sc-item-sales-table td{display:flex;justify-content:space-between;align-items:baseline;gap:14px;min-width:0;padding:0;border:0;text-align:start}
++ .sc-item-sales-table td:before{content:attr(data-label);color:var(--sc-muted);font-size:.73rem;flex-shrink:0}
++ .sc-item-sales-table td:first-child{font-weight:800;justify-content:space-between;border-bottom:1px solid var(--sc-border);padding-block-end:7px}
++}
++
++/* R311 QA: progressive-disclosure printing editor. Reuse SCDS surface/border styles. */
++.sc-print-template-disclosure{border:1px solid var(--sc-border);border-radius:var(--sc-radius-3,12px);background:var(--sc-surface-raised);margin:0;padding:0;overflow:hidden}
++.sc-print-template-disclosure>summary{list-style:none;cursor:pointer;display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;flex-wrap:wrap;padding:1rem;min-width:0}
++.sc-print-template-disclosure>summary::-webkit-details-marker{display:none}
++.sc-print-template-disclosure>summary strong{font-weight:700}
++.sc-print-template-disclosure>summary small{color:var(--sc-text-muted);font-size:.82rem;line-height:1.6;max-width:29rem}
++.sc-print-template-disclosure>summary::after{content:'+';font-size:1.25rem;line-height:1.3;font-weight:600;color:var(--sc-text-muted)}
++.sc-print-template-disclosure[open]>summary::after{content:'−'}
++.sc-print-template-disclosure>section{border:0!important;border-top:1px solid var(--sc-border)!important;border-radius:0!important;margin:0!important;box-shadow:none!important}
++.sc-print-template-editor .sc-entity-editor__body>.sc-print-template-disclosure{grid-column:1/-1}
++.sc-print-template-editor .sc-entity-editor__body>.sc-print-template-disclosure[open]{min-width:0}
++.sc-template-live-paper .sc-template-live-note{margin:0 0 3px;font-size:var(--sc-draft-notes-size,12px);color:#555}
++.sc-template-live-paper .sc-template-live-amount{text-align:left;font-size:var(--sc-draft-item-size,12px)}
++.sc-template-live-paper .sc-template-live-total{font-weight:700}
++@media(max-width:620px){.sc-print-template-disclosure>summary{flex-direction:column;gap:2px;padding:.8rem}.sc-print-template-disclosure>summary::after{position:absolute;left:1rem}.sc-print-template-disclosure{position:relative}}
++/* R311 — keep the preview alongside the controls on wide displays. */
++@media(min-width:1080px){
++ .sc-print-template-editor .sc-entity-editor__form{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(290px,.83fr);grid-template-rows:auto auto minmax(0,1fr) auto;grid-template-areas:'heading heading' 'validation validation' 'controls preview' 'actions actions';height:min(88dvh,790px);max-height:88dvh;min-height:0}
++ .sc-print-template-editor .sc-entity-editor__head{grid-area:heading}
++ .sc-print-template-editor .sc-entity-editor__validation{grid-area:validation}
++ .sc-print-template-editor .sc-entity-editor__body{grid-area:controls;min-height:0;overflow:auto;grid-template-columns:1fr;padding:1rem 1.1rem}
++ .sc-print-template-editor .sc-entity-editor__body>.sc-entity-editor__section,.sc-print-template-editor .sc-entity-editor__body>.sc-print-template-disclosure{grid-column:1}
++ .sc-print-template-editor .sc-template-live-block{grid-area:preview;min-height:0;min-width:0;overflow:auto;margin:16px 16px 14px 0;align-self:stretch}
++ .sc-print-template-editor .sc-template-live-stage{max-height:none}
++ .sc-print-template-editor .sc-entity-editor__footer{grid-area:actions}
++}
++
++/* R311 — historical order view shares the native Reports/SCDS visual language. */
++.sc-history-order{margin:0 0 16px;scroll-margin-top:100px;overflow:hidden}
++.sc-history-order>.sc-card__body{display:grid;gap:16px}
++.sc-history-order__eyebrow{font-size:.74rem;font-weight:700;color:var(--sc-primary);margin:0 0 4px}
++.sc-history-order__header{align-items:center}
++.sc-history-order__header h2{font-size:1.1rem;margin:0}
++.sc-history-order__facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0}
++.sc-history-order__facts>div{padding:12px 14px;border:1px solid var(--sc-border);border-radius:var(--sc-radius-3);background:var(--sc-surface-subtle)}
++.sc-history-order__facts dt{font-size:.73rem;color:var(--sc-text-muted);margin-bottom:4px}
++.sc-history-order__facts dd{font-weight:700;margin:0;overflow-wrap:anywhere}
++.sc-history-order__section-head{margin:6px 0 0}
++.sc-history-order__table th,.sc-history-order__table td{vertical-align:middle}
++.sc-history-order__note{display:block;margin-top:4px;color:var(--sc-text-muted);font-weight:400}
++.sc-history-order__customer-note{background:var(--sc-surface-subtle);border-radius:var(--sc-radius-2);padding:12px;margin:0}
++.sc-history-order__invoices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
++.sc-history-order__invoice{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid var(--sc-border);border-radius:var(--sc-radius-3);background:var(--sc-surface-raised);padding:12px 14px;color:inherit;text-decoration:none;min-width:0}
++.sc-history-order__invoice:hover{border-color:var(--sc-primary)}
++.sc-history-order__invoice span:first-child{min-width:0;overflow-wrap:anywhere}
++.sc-history-order__invoice small{display:block;color:var(--sc-text-muted);margin-top:3px}
++.sc-history-order__invoice-state{font-size:.74rem;font-weight:650;color:var(--sc-primary)}
++@media(max-width:760px){
++ .sc-history-order__facts,.sc-history-order__invoices{grid-template-columns:repeat(2,minmax(0,1fr))}
++ .sc-history-order__table-wrap{overflow:visible}
++ .sc-history-order__table,.sc-history-order__table tbody{display:block;width:100%}
++ .sc-history-order__table thead{display:none}
++ .sc-history-order__table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 9px;padding:12px;margin-bottom:8px;border:1px solid var(--sc-border);border-radius:var(--sc-radius-3);background:var(--sc-surface-raised)}
++ .sc-history-order__table td{display:flex;flex-direction:column;gap:3px;min-width:0;word-break:break-word;padding:3px 0!important;border:0!important}
++ .sc-history-order__table td::before{content:attr(data-label);color:var(--sc-text-muted);font-size:.72rem}
++ .sc-history-order__table td:first-child{grid-column:1/-1}
++}
++@media(max-width:440px){.sc-history-order__facts,.sc-history-order__invoices{grid-template-columns:1fr 1fr}.sc-history-order__header{gap:9px}.sc-history-order__header .sc-button{width:100%}}
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -20,7 +20,28 @@
+ function metric(label,value,help,tone=''){const e=el('article','sc-card sc-report-metric'+(tone?' sc-report-metric--'+tone:''));const b=el('div','sc-card__body');b.append(el('span','sc-muted',label),el('strong','sc-number',value),el('small','sc-muted',help));e.append(b);return e}
+ function status(message,bad=false){const e=$('[data-status]');e.textContent=message||'';e.hidden=!message;e.className='sc-alert'+(bad?' sc-alert--danger':'')}
+ async function request(q,{emitMeta=true}={}){let r;try{r=await fetch(api+'?'+q,{cache:'no-store',credentials:'same-origin'})}catch{throw new Error('ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')}let j;try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error(j.message||'دریافت گزارش انجام نشد.');if(emitMeta&&j.staff_meta)window.SoknaStaffRuntime?.emitMeta?.('reports',j.staff_meta);return j}
+-function renderSettlementReconcile(s){const parent=$('[data-summary]');if(!parent)return;let panel=$('[data-finance-reconcile]');if(!panel){panel=el('section','sc-report-reconcile sc-alert sc-alert--info');panel.dataset.financeReconcile='';parent.after(panel)}const required=['net_sales','sales_without_tax','net_tax_amount','completed_amount','reversed_amount'];if(!required.every(key=>reportNumber(s,key)!==null)){panel.className='sc-report-reconcile sc-alert sc-alert--info';panel.textContent='جزئیات لازم برای تطبیق مبالغ این گزارش کامل یا معتبر نیست؛ نبود اطلاعات به معنی مغایرت مالی نیست.';return}const withTax=reportNumber(s,'net_sales'),withoutTax=reportNumber(s,'sales_without_tax'),tax=reportNumber(s,'net_tax_amount'),gross=reportNumber(s,'completed_amount'),reverse=reportNumber(s,'reversed_amount');const valid=Number.isSafeInteger(withoutTax+tax)&&Number.isSafeInteger(gross-reverse)&&withTax===withoutTax+tax&&withTax===gross-reverse;panel.className='sc-report-reconcile '+(valid?'sc-report-reconcile--compact':'sc-alert sc-alert--warning');panel.replaceChildren();let content=panel;if(valid){const details=el('details','sc-report-math-disclosure'),summary=el('summary','','تطبیق مبالغ و روش محاسبه');details.append(summary);panel.append(details);content=details}else{const heading=el('strong','','مغایرت در محاسبات مالی');panel.append(heading)}if(!valid){panel.append(el('p','', 'اجزای جمع فروش با هم برابر نیستند؛ این گزارش برای تصمیم‌گیری مالی نیازمند بررسی است.'));return}const line=el('p');line.textContent=`مبلغ تسویه‌ها پس از برگشت، با مالیات: ${displayMoney(withTax)} = فروش بدون مالیات ${displayMoney(withoutTax)} + مالیات خالص ${displayMoney(tax)}.`;content.append(line);const note=el('small','');note.textContent=`مبلغ سندهای ثبت‌شده ${displayMoney(gross)} منهای اسناد برگشتی ${displayMoney(reverse)}. «میانگین فاکتور» میانگین مبلغ اسناد تسویه تکمیل‌شده پیش از برگشت است؛ لزوماً میانگین حساب میز یا میانگین خالص پس از برگشت نیست.`;content.append(note)}
++function renderSettlementReconcile(s){
++ const parent=$('[data-summary]');if(!parent)return;
++ let panel=$('[data-finance-reconcile]');if(!panel){panel=el('section','sc-report-reconcile sc-alert sc-alert--info');panel.dataset.financeReconcile='';parent.after(panel)}
++ const keys=['net_sales','sales_without_tax','net_tax_amount','completed_amount','reversed_amount'];
++ if(!keys.every(key=>reportNumber(s,key)!==null)){
++   panel.className='sc-report-reconcile sc-alert sc-alert--info';panel.textContent='جزئیات لازم برای تطبیق مبالغ این گزارش کامل نیست؛ نبود اطلاعات به معنی مغایرت مالی نیست.';return;
++ }
++ const sale=reportNumber(s,'net_sales'),saleExTax=reportNumber(s,'sales_without_tax'),tax=reportNumber(s,'net_tax_amount');
++ const cashPaid=reportNumber(s,'completed_amount'),cashRefund=reportNumber(s,'reversed_amount');
++ const split=s.sales_date_basis==='table_session_open_business_date';
++ const cashNet=split?reportNumber(s,'cash_net_payment_day'):sale;
++ const salesValid=Number.isSafeInteger(saleExTax+tax)&&sale===saleExTax+tax;
++ const cashValid=cashNet!==null&&Number.isSafeInteger(cashPaid-cashRefund)&&cashNet===cashPaid-cashRefund;
++ const valid=salesValid&&cashValid;
++ panel.className='sc-report-reconcile '+(valid?'sc-report-reconcile--compact':'sc-alert sc-alert--warning');panel.replaceChildren();
++ if(!valid){panel.append(el('strong','','مغایرت در تطبیق مبالغ'));panel.append(el('p','', 'اجزای فروش یا جمع پرداخت‌های ثبت‌شده با مبنای خود تطبیق ندارند؛ پیش از تصمیم مالی باید بررسی شوند.'));return}
++ const disclosure=el('details','sc-report-math-disclosure'),summary=el('summary','','تطبیق مبالغ و روز کاری');disclosure.append(summary);panel.append(disclosure);
++ disclosure.append(el('p','',`فروش روز کاری: ${displayMoney(sale)} = فروش بدون مالیات ${displayMoney(saleExTax)} + مالیات ${displayMoney(tax)}.`));
++ disclosure.append(el('p','',`خالص دریافت وجه در تاریخ پرداخت: ${displayMoney(cashNet)} = پرداخت ${displayMoney(cashPaid)} − برگشت ${displayMoney(cashRefund)}.`));
++ const note=split?'تعلق فروش بر اساس تاریخ شروع حساب میز است؛ وجه دریافت‌شده بر اساس تاریخ واقعی تسویه. اختلاف این دو برای میزهای بین‌روزی الزاماً مغایرت نیست. میانگین فاکتور بر اساس کل خالص حساب‌های نهایی‌شده محاسبه می‌شود.':'این ارقام از اسناد مالی ثبت‌شده محاسبه می‌شوند.';
++ disclosure.append(el('small','',note));
++}
+ function renderDaily(rows){const box=$('[data-daily]');box.replaceChildren();if(!rows.length){box.append(el('div','sc-empty','در این بازه داده‌ای برای روند روزانه وجود ندارد.'));return}
+  const max=Math.max(1,...rows.map(r=>Math.abs(reportNumber(r,'net_sales')??0)));
+  rows.forEach(r=>{const amount=reportNumber(r,'net_sales'),count=reportCount(r,'settlement_count');const row=el('div','sc-report-trend-row'),date=el('div','sc-report-trend-row__date'),bar=el('div','sc-report-trend-row__bar'),fill=el('span'),value=el('div','sc-report-trend-row__value sc-number');
+@@ -33,6 +54,44 @@
+    run=$('[data-item-sales-run]'),exportButton=$('[data-item-sales-export]'),out=$('[data-item-sales-results]'),info=$('[data-item-sales-status]');
+  if(!input||!opts||!selected||!run||!out)return;
+  const items=new Map();let searchToken=0,reportToken=0,currentReport=null,lookupTimer=0;
++ const category=$('[data-item-sales-category]'),family=$('[data-item-sales-family]'),groupRun=$('[data-item-sales-group-run]');
++ let groups={categories:[],families:[]};
++ const groupOption=(value,label)=>{const option=document.createElement('option');option.value=String(value);option.textContent=label;return option};
++ function updateGroups(){if(!category||!family||!groupRun)return;
++   const selectedCategory=Number(category.value||0),oldFamily=family.value;
++   family.replaceChildren(groupOption('','تمام کالاهای دسته'));
++   for(const f of groups.families||[]){if(Number(f.category_id)!==selectedCategory)continue;family.append(groupOption(f.id,`${f.name} · ${L.integer(f.item_count)} کالا`))}
++   if([...family.options].some(o=>o.value===oldFamily))family.value=oldFamily;
++   groupRun.disabled=!selectedCategory;
++ }
++ async function loadGroups(){if(!category)return;try{
++   const j=await request(new URLSearchParams({action:'item_groups'}),{emitMeta:false});groups=j.groups||{categories:[],families:[]};
++   const old=category.value;category.replaceChildren(groupOption('','انتخاب دسته'));
++   for(const c of groups.categories||[])category.append(groupOption(c.id,`${c.name} · ${L.integer(c.item_count)} کالا`));
++   if([...category.options].some(o=>o.value===old))category.value=old;
++   updateGroups();
++ }catch(e){statusText('فهرست دسته‌ها در دسترس نیست؛ جست‌وجوی محصول تکی همچنان فعال است.',true)}}
++ category?.addEventListener('change',updateGroups);
++ family?.addEventListener('change',()=>{if(groupRun)groupRun.disabled=!Number(category?.value||0)});
++ groupRun?.addEventListener('click',async()=>{const cat=Number(category?.value||0),fam=Number(family?.value||0);if(!cat)return;
++   const token=++reportToken,form=$('[data-report-form]');groupRun.disabled=true;out.replaceChildren();exportButton.disabled=true;
++   statusText('در حال محاسبه فروش کل گروه…');
++   const q=new URLSearchParams({action:'item_sales_group',group_type:fam?'family':'category',group_id:String(fam||cat),from:form.elements.from.value,to:form.elements.to.value});
++   try{const j=await request(q,{emitMeta:false});if(token!==reportToken)return;
++     const report=j.item_sales||{};currentReport=report;renderItemSaleRows(report);
++     statusText(`گزارش ${report.group?.name||'گروه'}: ${L.integer(report.group?.count||0)} کالا بر مبنای عضویت فعلی کاتالوگ؛ فروش فقط از اسناد پرداخت/برگشت محاسبه شده است.`);
++     exportButton.disabled=false;
++   }catch(e){if(token===reportToken)statusText(e.message||'گزارش گروه آماده نشد.',true)}finally{if(token===reportToken)groupRun.disabled=!Number(category?.value||0)}
++ });
++ loadGroups();
++ function renderItemSaleRows(report){
++   const t=document.createElement('table');t.className='sc-item-sales-table';t.innerHTML='<thead><tr><th>محصول</th><th>تعداد خالص</th><th>تخفیف</th><th>فروش خالص</th></tr></thead><tbody></tbody>';
++   const columns=['محصول','تعداد خالص','تخفیف','فروش خالص'];
++   for(const row of report.rows||[]){const tr=document.createElement('tr');const values=[row.name,L.number(row.quantity||0),displayMoney(row.discount||0),displayMoney(row.net_sales||0)];for(let i=0;i<values.length;i++){const td=document.createElement('td');td.textContent=values[i];td.dataset.label=columns[i];tr.append(td)}t.tBodies[0].append(tr)}
++   const total=document.createElement('div');total.className='sc-item-sales-total';total.textContent=`جمع ${report.group?.name||'محصولات انتخابی'}: ${L.number(report.totals?.quantity||0)} عدد · ${displayMoney(report.totals?.net_sales||0)}`;
++   out.replaceChildren(t,total);
++ }
++
+  const htmlSafe=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+  function statusText(msg,error=false){info.textContent=msg;info.className='sc-alert '+(error?'sc-alert--warning':'sc-alert--info')}
+  function display(){selected.replaceChildren();for(const item of items.values()){
+@@ -49,15 +108,12 @@
+  run.addEventListener('click',async()=>{if(!items.size)return;const token=++reportToken;run.disabled=true;statusText('در حال دریافت فروش ثبت‌شده…');out.replaceChildren();
+    const form=$('[data-report-form]');const q=new URLSearchParams({action:'item_sales',from:form.elements.from.value,to:form.elements.to.value,ids:[...items.keys()].join(',')});
+    try{const j=await request(q,{emitMeta:false});if(token!==reportToken)return;const report=j.item_sales||{};currentReport=report;
+-     const t=document.createElement('table');t.className='sc-item-sales-table';t.innerHTML='<thead><tr><th>محصول</th><th>تعداد خالص</th><th>تخفیف</th><th>فروش خالص</th></tr></thead><tbody></tbody>';
+-     for(const row of report.rows||[]){const tr=document.createElement('tr');const values=[row.name,L.number(row.quantity||0),displayMoney(row.discount||0),displayMoney(row.net_sales||0)];for(const v of values){const td=document.createElement('td');td.textContent=v;tr.append(td)}t.tBodies[0].append(tr)}
+-     const total=document.createElement('div');total.className='sc-item-sales-total';total.textContent=`جمع محصولات انتخابی: ${L.number(report.totals?.quantity||0)} عدد · ${displayMoney(report.totals?.net_sales||0)}`;
+-     out.append(t,total);statusText('فقط اقلام ثبت‌شده در اسناد تسویه و برگشت شمرده شده‌اند؛ سفارش بازِ پرداخت‌نشده لحاظ نمی‌شود.');exportButton.disabled=false;
++     renderItemSaleRows(report);statusText('فقط اقلام ثبت‌شده در اسناد تسویه و برگشت شمرده شده‌اند؛ سفارش بازِ پرداخت‌نشده لحاظ نمی‌شود.');exportButton.disabled=false;
+    }catch(e){if(token===reportToken)statusText(e.message||'گزارش آماده نشد.',true)}finally{if(token===reportToken)run.disabled=!items.size}
+  });
+  const rangeForm=$('[data-report-form]');
+  rangeForm?.addEventListener('change',()=>{reportToken++;currentReport=null;out.replaceChildren();exportButton.disabled=true;statusText('بازه تغییر کرده است؛ برای مشاهده فروش جدید دوباره دکمه گزارش را بزنید.');});
+- exportButton.addEventListener('click',()=>{if(!currentReport)return;const csv=[['کد','محصول','تعداد خالص','تخفیف تومان','فروش خالص تومان'],...(currentReport.rows||[]).map(r=>[r.item_id,r.name,r.quantity,r.discount,r.net_sales])].map(row=>row.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='sokna-selected-item-sales.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
++ exportButton.addEventListener('click',()=>{if(!currentReport)return;const csv=[['کد','محصول','تعداد خالص','تخفیف تومان','فروش خالص تومان'],...(currentReport.rows||[]).map(r=>[r.item_id,r.name,r.quantity,r.discount,r.net_sales])].map(row=>row.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=currentReport.group?'sokna-group-item-sales.csv':'sokna-selected-item-sales.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+ }
+ function renderTop(rows){const box=$('[data-top]');box.replaceChildren();if(!rows.length){box.append(el('div','sc-empty','در این بازه آیتمی برای رتبه‌بندی وجود ندارد.'));return}
+  const max=Math.max(1,...rows.map(r=>Math.abs(reportNumber(r,'net_sales')??0)));
+--- a/public/index.php
++++ b/public/index.php
+@@ -80,6 +80,7 @@
+ $canReports=home_any($core,$user,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+ $canOps=home_any($core,$user,['orders_floor','cashier_accounts','shift_supervision']);
+ $canAccounts=home_any($core,$user,['cashier_accounts','shift_supervision']);
++$canAuditActivity=home_any($core,$user,['shift_supervision']);
+ $canInventory=home_any($core,$user,['inventory_operations','inventory_finalize','inventory_manage','preparation','shift_supervision']);
+ $dashboardRialMode=false; // Dashboards and reporting ALWAYS display toman; rial is confined to settlement UI.
+ $tzName='Asia/Tehran';try{$tz=new DateTimeZone($tzName);}catch(Throwable){$tz=new DateTimeZone('Asia/Tehran');}
+@@ -148,24 +149,24 @@
+     $attention[]=['tone'=>'warning','context'=>'پیگیری','status'=>'باز','title'=>$title?:'مورد نیازمند رسیدگی','subtitle'=>$body,'href'=>(string)($item['target_url']??'/notifications/')];
+     if(count($attention)>=4)break;
+ }}
+-// Keep the dashboard focused on the current operational day. Older *read* items
+-// remain available in the full notification history; unread work stays visible.
+-// Use the same BusinessClock cutoff and timezone as orders/settlements.
+-$recent=[];
+-foreach($notificationItems as $item){
+-    $id=(int)($item['id']??0);
+-    if(isset($usedNotificationIds[$id]))continue;
+-    $created=trim((string)($item['created_at']??''));
+-    $currentBusinessDay=false;
+-    if($created!==''){
+-        try{$currentBusinessDay=(string)$core->businessClock()->assignment($created)['business_date']===$todayKey;}
+-        catch(Throwable){$currentBusinessDay=true;} // Never silently discard records on clock failure.
++// Activity and notifications are different streams. The notification inbox is
++// unchanged; recent operational events are sourced from orders/drafts/ledger.
++$recent=[];$recentError=null;
++if($canReports||$canAccounts){
++    $activitySection=$core->snapshotGuard()->capture('dashboard','operational_activity',[],
++        'فعالیت‌های عملیاتی امروز فعلاً در دسترس نیست.',fn():array=>$core->reporting()->dashboardOperationalActivity());
++    $recentError=$activitySection['error'];
++    if($recentError===null){
++        foreach((array)$activitySection['value'] as $item){
++            $created=(string)($item['created_at']??'');if($created==='')continue;
++            try{$date=(string)$core->businessClock()->assignment($created)['business_date'];}
++            catch(Throwable){$recentError=['message'=>'تاریخ فعالیت‌ها فعلاً قابل اعتماد نیست.'];$recent=[];break;}
++            if($date!==$todayKey)continue;
++            $recent[]=$item;if(count($recent)>=5)break;
++        }
+     }
+-    if(!$currentBusinessDay)continue; // Older informational items stay in full history, regardless of unread state.
+-    $recent[]=$item;
+-    if(count($recent)>=5)break;
+ }
+-$attentionErrors=array_values(array_filter([$opsError])); /* Notification failure already appears in the recent-activity card. */
++$attentionErrors=array_values(array_filter([$opsError,$notificationsError])); /* Keep notification failures separate from the operational activity stream. */
+ $maxTrend=max(1,...array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily?:[['value'=>0]]));
+ $bottomPanels=($canReports?1:0)+($canInventory?1:0);
+ ?>
+--- a/public/printing/index.php
++++ b/public/printing/index.php
+@@ -54,13 +54,13 @@
+     <div class="sc-entity-editor__validation sc-alert sc-alert--danger" data-template-editor-validation role="status" aria-live="polite" hidden></div>
+     <div class="sc-entity-editor__body">
+       <section class="sc-entity-editor__section" aria-labelledby="print-template-meta"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-meta">نسخه و معرفی</h3><p>خانواده و نوع سند از نسخه مبنا ثابت می‌ماند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">نام قالب</span><input class="sc-control" name="name" maxlength="120" required></label><label class="sc-field"><span class="sc-field__label">نسخه جدید</span><input class="sc-control" name="version" dir="ltr" inputmode="text" pattern="[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?" required></label><label class="sc-field"><span class="sc-field__label">نوع سند</span><input class="sc-control" data-template-kind readonly></label><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">توضیح</span><textarea class="sc-control" name="description" rows="3" maxlength="500"></textarea></label></div></section>
+-      <section class="sc-entity-editor__section" aria-labelledby="print-template-typography"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-typography">اندازه و فاصله</h3><p>مقادیر خارج از محدوده مجاز ذخیره نمی‌شوند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">متن پایه</span><input class="sc-control" name="base_font_size" type="text" inputmode="numeric" data-fa-number="1" min="18" max="42"></label><label class="sc-field"><span class="sc-field__label">عنوان</span><input class="sc-control" name="title_font_size" type="text" inputmode="numeric" data-fa-number="1" min="22" max="60"></label><label class="sc-field"><span class="sc-field__label">اقلام</span><input class="sc-control" name="table_font_size" type="text" inputmode="numeric" data-fa-number="1" min="24" max="72"></label><label class="sc-field"><span class="sc-field__label">یادداشت‌ها</span><input class="sc-control" name="notes_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">متن پایانی</span><input class="sc-control" name="footer_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">جمع‌ها</span><input class="sc-control" name="totals_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">اطلاعات پرداخت</span><input class="sc-control" name="settlement_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">مشخصات و زمان</span><input class="sc-control" name="meta_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">فاصله خطوط</span><input class="sc-control" name="line_spacing" type="text" inputmode="numeric" data-fa-number="1" min="2" max="20"></label><label class="sc-field"><span class="sc-field__label">حاشیه</span><input class="sc-control" name="margin" type="text" inputmode="numeric" data-fa-number="1" min="2" max="30"></label></div></section>
++      <details class="sc-print-template-disclosure"><summary><strong>اندازهٔ نوشته‌ها و فاصله‌ها</strong><small>برای تغییر اندازهٔ عنوان، اقلام، توضیح یا متن پایانی باز کنید.</small></summary><section class="sc-entity-editor__section" aria-labelledby="print-template-typography"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-typography">اندازه و فاصله</h3><p>مقادیر خارج از محدوده مجاز ذخیره نمی‌شوند.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">متن پایه</span><input class="sc-control" name="base_font_size" type="text" inputmode="numeric" data-fa-number="1" min="18" max="42"></label><label class="sc-field"><span class="sc-field__label">عنوان</span><input class="sc-control" name="title_font_size" type="text" inputmode="numeric" data-fa-number="1" min="22" max="60"></label><label class="sc-field"><span class="sc-field__label">اقلام</span><input class="sc-control" name="table_font_size" type="text" inputmode="numeric" data-fa-number="1" min="24" max="72"></label><label class="sc-field"><span class="sc-field__label">یادداشت‌ها</span><input class="sc-control" name="notes_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">متن پایانی</span><input class="sc-control" name="footer_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">جمع‌ها</span><input class="sc-control" name="totals_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">اطلاعات پرداخت</span><input class="sc-control" name="settlement_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">مشخصات و زمان</span><input class="sc-control" name="meta_font_size" type="text" inputmode="numeric" data-fa-number="1" min="14" max="72"></label><label class="sc-field"><span class="sc-field__label">فاصله خطوط</span><input class="sc-control" name="line_spacing" type="text" inputmode="numeric" data-fa-number="1" min="2" max="20"></label><label class="sc-field"><span class="sc-field__label">حاشیه</span><input class="sc-control" name="margin" type="text" inputmode="numeric" data-fa-number="1" min="2" max="30"></label></div></section></details>
+       <section class="sc-entity-editor__section" aria-labelledby="print-template-content"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-content">محتوا</h3><p>اگر گزینه‌ای تعیین نشود، مقدار پیش‌فرض سامانه استفاده می‌شود.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">نام کاربر</span><select class="sc-control" name="show_actor"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">زمان</span><select class="sc-control" name="show_time"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">شماره سفارش</span><select class="sc-control" name="show_order_number"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">عنوان بخش‌ها</span><select class="sc-control" name="show_section_titles"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field"><span class="sc-field__label">قیمت‌ها</span><select class="sc-control" name="show_prices"><option value="">پیش‌فرض سامانه</option><option value="1">نمایش</option><option value="0">مخفی</option></select></label><label class="sc-field sc-entity-editor__span-2"><span class="sc-field__label">متن پایانی</span><textarea class="sc-control" name="footer" rows="2" maxlength="300"></textarea></label></div></section>
+-      <section class="sc-entity-editor__section" aria-labelledby="print-template-layout"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-layout">چیدمان</h3><p>این تنظیمات همان چیدمانی را مشخص می‌کنند که در چاپ واقعی استفاده می‌شود.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">تراکم</span><select class="sc-control" name="density"><option value="">پیش‌فرض سامانه</option><option value="compact">فشرده</option><option value="comfortable">راحت</option></select></label><label class="sc-field"><span class="sc-field__label">تراز سرصفحه</span><select class="sc-control" name="header_alignment"><option value="">پیش‌فرض سامانه</option><option value="right">راست</option><option value="center">وسط</option></select></label><label class="sc-field"><span class="sc-field__label">جداکننده</span><select class="sc-control" name="separator_style"><option value="">پیش‌فرض سامانه</option><option value="solid">خط ممتد</option><option value="dashed">خط‌چین</option><option value="minimal">حداقلی</option></select></label><label class="sc-field"><span class="sc-field__label">چیدمان آیتم</span><select class="sc-control" name="item_layout"><option value="">پیش‌فرض سامانه</option><option value="columnar">ستونی</option><option value="columnar-compact">ستونی فشرده</option><option value="two-line">دوخطی</option><option value="responsive-receipt">رسید واکنش‌گرا</option></select></label></div></section>
+-      <section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-sections"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-sections">ترتیب بخش‌ها</h3><p>اگر ترتیب سفارشی خاموش باشد، قرارداد پیش‌فرض سامانه دست‌نخورده می‌ماند.</p></div></div><label class="sc-inline"><input type="checkbox" data-template-custom-order> ترتیب سفارشی بخش‌ها</label><div class="sc-print-template-section-order" data-template-section-order></div></section>
+-      <section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-labels"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-labels">برچسب‌های اختیاری</h3><p>فقط برچسب‌هایی که لازم است با متن پیش‌فرض متفاوت باشند پر شوند.</p></div></div><div class="sc-entity-editor__fields" data-template-labels></div></section>
++      <section class="sc-entity-editor__section" aria-labelledby="print-template-layout"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-layout">ظاهر ردیف اقلام</h3><p>نوع نمایش را انتخاب کنید؛ نتیجهٔ دقیق به چاپگر و عرض کاغذ وابسته است.</p></div></div><div class="sc-entity-editor__fields"><label class="sc-field"><span class="sc-field__label">تراکم</span><select class="sc-control" name="density"><option value="">پیش‌فرض سامانه</option><option value="compact">فشرده</option><option value="comfortable">راحت</option></select></label><label class="sc-field"><span class="sc-field__label">تراز سرصفحه</span><select class="sc-control" name="header_alignment"><option value="">پیش‌فرض سامانه</option><option value="right">راست</option><option value="center">وسط</option></select></label><label class="sc-field"><span class="sc-field__label">جداکننده</span><select class="sc-control" name="separator_style"><option value="">پیش‌فرض سامانه</option><option value="solid">خط ممتد</option><option value="dashed">خط‌چین</option><option value="minimal">حداقلی</option></select></label><label class="sc-field"><span class="sc-field__label">نمایش هر قلم در فیش</span><select class="sc-control" name="item_layout"><option value="">پیش‌فرض سامانه</option><option value="columnar">ستونی؛ نام و تعداد در ستون‌های جدا</option><option value="columnar-compact">ستونی فشرده؛ مناسب فیش باریک</option><option value="two-line">دوخطی؛ متن قلم و یادداشت زیر آن</option><option value="responsive-receipt">خودکار؛ متناسب با عرض چاپگر</option></select></label></div></section>
++      <details class="sc-print-template-disclosure"><summary><strong>چیدمان پیشرفتهٔ بخش‌ها</strong><small>ترتیب بخش‌های فیش را در صورت نیاز تغییر دهید.</small></summary><section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-sections"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-sections">ترتیب بخش‌ها</h3><p>اگر ترتیب سفارشی خاموش باشد، قرارداد پیش‌فرض سامانه دست‌نخورده می‌ماند.</p></div></div><label class="sc-inline"><input type="checkbox" data-template-custom-order> ترتیب سفارشی بخش‌ها</label><div class="sc-print-template-section-order" data-template-section-order></div></section></details>
++      <details class="sc-print-template-disclosure"><summary><strong>تغییر متن‌های ثابت فیش</strong><small>برچسب‌های قابل تغییر مثل جمع، تخفیف و عنوان رسید را ویرایش کنید.</small></summary><section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-labels"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-labels">برچسب‌های اختیاری</h3><p>برچسب‌های موجود را تغییر دهید؛ حذف متن خودکار ممکن است به پشتیبانی موتور چاپ نیاز داشته باشد.</p></div></div><div class="sc-entity-editor__fields" data-template-labels></div></section></details>
+     </div>
+-    <aside class="sc-template-live-block" aria-label="پیش‌نمایش فوری چیدمان فیش"><div class="sc-entity-editor__section-head"><div><h3>پیش‌نمایش زنده چیدمان</h3><p>نمونه سریع برای بررسی چیدمان؛ پیش‌نمایش دقیق همین تغییرات را با موتور چاپ ویندوز ببین.</p></div></div><div class="sc-template-live-stage" data-template-live-preview aria-live="off"></div></aside>
++    <aside class="sc-template-live-block" aria-label="پیش‌نمایش فوری چیدمان فیش"><div class="sc-entity-editor__section-head"><div><h3>پیش‌نمایش فوری تغییرات</h3><p>نمونهٔ سریع و تقریبی است؛ برای تطبیق با کاغذ از «پیش‌نمایش دقیق پیش‌نویس» استفاده کنید.</p></div></div><div class="sc-template-live-stage" data-template-live-preview aria-live="off"></div></aside>
+     <footer class="sc-entity-editor__footer"><span class="sc-entity-editor__footer-hint">بازنشانی فقط تغییرات این فرم را برمی‌گرداند؛ نسخه مبنا در پایگاه داده هرگز تغییر نمی‌کند.</span><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-template-editor-reset>بازنشانی تغییرات</button><button class="sc-button sc-button--secondary" type="button" data-template-draft-preview>پیش‌نمایش دقیق پیش‌نویس</button><button class="sc-button" type="submit" value="submit">ذخیره به‌عنوان نسخه جدید</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></div></footer>
+   </form></dialog>
+   <dialog class="sc-dialog sc-print-preview-dialog sc-print-task-dialog" data-dialog="preview" aria-labelledby="sc-dialog-title-printing-preview" data-dialog-size="xl"><div class="sc-dialog-frame"><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-printing-preview" tabindex="-1">پیش‌نمایش قالب چاپ</h2><p data-preview-meta>در حال دریافت اطلاعات قالب…</p><small class="sc-muted" data-preview-detail></small></div><button class="sc-icon-button" type="button" data-preview-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body sc-print-preview-body"><div class="sc-segmented sc-print-preview-formats" aria-label="فرمت پیش‌نمایش"><button class="sc-button sc-button--secondary" type="button" data-preview-format="pdf" aria-pressed="true">PDF</button><button class="sc-button sc-button--secondary" type="button" data-preview-format="png" aria-pressed="false">تصویر</button></div><div class="sc-print-preview-stage"><div class="sc-empty" data-preview-empty>پیش‌نمایش در حال دریافت است…</div><iframe data-preview-pdf title="پیش‌نمایش PDF قالب چاپ" class="sc-print-preview sc-print-preview--pdf" hidden></iframe><img data-preview-image alt="پیش‌نمایش تصویری رسید چاپ" class="sc-print-preview sc-print-preview--image" hidden></div></div><footer class="sc-dialog-frame__foot"><span class="sc-muted">پیش‌نمایش با همان قالب واقعی چاپ ساخته می‌شود.</span><button class="sc-button sc-button--secondary" type="button" data-preview-close>بستن</button></footer></div></dialog>
+--- a/public/reports/api.php
++++ b/public/reports/api.php
+@@ -13,6 +13,16 @@
+     if($action==='item_lookup'){
+         WebAction::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+         WebAction::json(['success'=>true,'items'=>$core->reporting()->itemSalesLookup((string)($_GET['q']??''))]);
++    }
++    if($action==='item_groups'){
++        WebAction::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
++        WebAction::json(['success'=>true,'groups'=>$core->reporting()->itemSalesGroups()]);
++    }
++    if($action==='item_sales_group'){
++        WebAction::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
++        $type=(string)($_GET['group_type']??'');$groupId=filter_var($_GET['group_id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
++        if(!in_array($type,['category','family'],true)||$groupId===false)WebAction::json(['success'=>false,'code'=>'invalid_group','message'=>'دسته یا خانواده نامعتبر است.'],422);
++        WebAction::json(['success'=>true,'item_sales'=>$core->reporting()->itemSalesGroupReport((string)($_GET['from']??''),(string)($_GET['to']??''),$type,(int)$groupId)]);
+     }
+     if($action==='item_sales'){
+         WebAction::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+--- a/public/reports/index.php
++++ b/public/reports/index.php
+@@ -5,28 +5,40 @@
+ ProductShell::start($core,$user,'گزارش و تحلیل','reports','فروش، عملکرد و روندهای مجموعه را در یک نمای مدیریتی بررسی کن.');
+ $historyId=(int)($_GET['order_id']??0);$historyAllowed=(string)($user['role']??'')==='admin'||$core->auth()->hasCapability('cashier_accounts',$user)||$core->auth()->hasCapability('shift_supervision',$user);$historyOrder=null;$historyError=null;
+ if($historyId>0&&$historyAllowed){try{$historyOrder=$core->reporting()->historicalOrder($historyId);}catch(\Throwable $e){$historyError=($e instanceof \Sokna\Local\Domain\Reporting\ReportingException)?$e->getMessage():'جزئیات سفارش فعلاً در دسترس نیست.';}}
+-elseif($historyId>0){http_response_code(403);$historyError='دسترسی مشاهده جزئیات سفارش را ندارید.';}
+-
+-$civilToday=$core->time()->civilDate();$civilWeekStart=(new DateTimeImmutable($civilToday))->modify('-6 days')->format('Y-m-d');$to=(string)($_GET['to']??$civilToday);$from=(string)($_GET['from']??$civilWeekStart);$focus=preg_replace('/[^a-z_]/','',(string)($_GET['focus']??''));$canAudit=(string)($user['role']??'')==='admin'||$core->auth()->hasCapability('shift_supervision',$user);if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$from))$from=$civilWeekStart;if(!preg_match('/^\d{4}-\d{2}-\d{2}$/',$to))$to=$civilToday;
+-$workspaceApi='reports/api.php';$workspaceAsset=static fn(string $path):string=>ProductShell::asset($path);$workspaceExportCurrent='reports/export.php';$workspaceExportAnalytical='reports/export-analytical.php';$reportRangeEnabled=true;$pricingEnabled=$canAudit&&$core->auth()->hasCapability('inventory_cost_view',$user);
+-// Historical detail is a read-only panel, independently permission-gated from general trend reporting.
+-if($historyId>0){
++elseif($historyId>0){
+     $esc=static fn($v):string=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
+-    echo '<section id="order-history" class="sc-card" style="margin:16px 0"><div class="sc-card__body sc-stack">';
++    $fmt=static fn($v):string=>\Sokna\Local\UI\MoneyDisplay::money((int)$v);
++    $digits=static fn($v):string=>\Sokna\Local\UI\MoneyDisplay::digits((string)$v);
++    echo '<section id="order-history" class="sc-card sc-history-order" aria-labelledby="sc-history-order-title"><div class="sc-card__body">';
+     if($historyError!==null){echo '<div class="sc-alert sc-alert--warning">'.$esc($historyError).'</div>';}
+     elseif(is_array($historyOrder)){
+         $o=$historyOrder['order'];$id=(int)$o['id'];
+-        echo '<div class="sc-section-head"><div><h2>جزئیات سفارش تاریخی #'.$esc($id).'</h2><p>نمای فقط‌خواندنی · شماره سفارش روز: '.$esc($o['business_order_number']).' · تاریخ کاری '.$esc($o['business_date']).'</p></div><a class="sc-button sc-button--secondary" href="/reports/">بازگشت به گزارش‌ها</a></div>';
+-        echo '<p>میز ثبت‌شده در آخرین وضعیت سفارش: '.$esc($o['table_name']??'—').' · شناسه ثابت حساب: '.$esc($o['session_id']??'—').' · وضعیت سفارش: '.$esc($o['status']??'—').'</p>';
+-        echo '<div class="sc-report-compact-stats">';
+-        foreach($historyOrder['items'] as $item)echo '<div class="sc-card" style="padding:10px"><strong>'.$esc($item['item_name']).'</strong> · تعداد '.$esc($item['quantity']).' · '.$esc(number_format((int)$item['line_total'])).' تومان'.(!empty($item['item_note'])?' · یادداشت: '.$esc($item['item_note']):'').'</div>';
+-        echo '</div>';
++        echo '<header class="sc-section-head sc-history-order__header"><div><p class="sc-history-order__eyebrow">سوابق حساب و سفارش</p><h2 id="sc-history-order-title">جزئیات سفارش شماره '.$digits($o['business_order_number']??$id).'</h2><p>نمای فقط‌خواندنی؛ هیچ اطلاعات مالی از این صفحه تغییر نمی‌کند.</p></div><a class="sc-button sc-button--secondary" href="/reports/">بازگشت به گزارش‌ها</a></header>';
++        echo '<dl class="sc-history-order__facts">';
++        foreach([
++          'میز'=>(string)($o['table_name']??'—'),
++          'روز کاری'=>(string)($o['business_date']??'—'),
++          'وضعیت سفارش'=>(string)($o['status']??'—'),
++          'شناسه حساب'=>(string)($o['session_id']??'—'),
++        ] as $key=>$value)echo '<div><dt>'.$esc($key).'</dt><dd>'.$esc($digits($value)).'</dd></div>';
++        echo '</dl><div class="sc-section-head sc-history-order__section-head"><div><h3>اقلام سفارش</h3><p>قیمت‌ها به تومان و مطابق سند تاریخی‌اند.</p></div></div>';
++        echo '<div class="sc-table-wrap sc-history-order__table-wrap"><table class="sc-table sc-history-order__table"><thead><tr><th>کالا</th><th>تعداد</th><th>قیمت واحد</th><th>جمع ردیف</th></tr></thead><tbody>';
++        foreach($historyOrder['items'] as $item){
++            echo '<tr><td data-label="کالا"><strong>'.$esc($item['item_name']).'</strong>'.(!empty($item['item_note'])?'<small class="sc-history-order__note">'.$esc($item['item_note']).'</small>':'').'</td>';
++            echo '<td data-label="تعداد">'.$digits((int)$item['quantity']).'</td><td data-label="قیمت واحد">'.$esc($fmt($item['unit_price'])).'</td><td data-label="جمع ردیف">'.$esc($fmt($item['line_total'])).'</td></tr>';
++        }
++        if(!$historyOrder['items'])echo '<tr><td colspan="4">قلمی برای این سفارش ثبت نشده است.</td></tr>';
++        echo '</tbody></table></div>';
++        if(!empty($o['customer_note']))echo '<p class="sc-history-order__customer-note"><strong>یادداشت مهمان:</strong> '.$esc($o['customer_note']).'</p>';
++        echo '<div class="sc-section-head sc-history-order__section-head"><div><h3>اسناد پرداخت مرتبط</h3><p>هر پرداخت مستقل ثبت شده و فقط قابل مشاهده است.</p></div></div>';
+         if(!empty($historyOrder['invoices'])){
+-            echo '<p><strong>اسناد تسویه مرتبط با ردیف‌های این سفارش</strong></p><div class="sc-actions">';
+-            foreach($historyOrder['invoices'] as $invoice)echo '<a class="sc-button sc-button--secondary" href="/finance/?tab=receipts&amp;invoice_id='.$esc((int)$invoice['id']).'">'.$esc($invoice['invoice_number']).' ('.$esc($invoice['status']).')</a> ';
++            echo '<div class="sc-history-order__invoices">';
++            foreach($historyOrder['invoices'] as $invoice){
++                $href='/finance/?tab=receipts&amp;invoice_id='.(int)$invoice['id'];
++                echo '<a class="sc-history-order__invoice" href="'.$href.'"><span><strong>'.$esc($digits($invoice['invoice_number'])).'</strong><small>'.$esc($digits((string)($invoice['settled_at']??''))).'</small></span><span class="sc-history-order__invoice-state">'.$esc((string)$invoice['status']).'</span></a>';
++            }
+             echo '</div>';
+-        }
+-        echo '<p class="sc-field__hint">این صفحه فقط برای مشاهده است و هیچ سفارش یا سند مالی را تغییر نمی‌دهد.</p>';
++        }else echo '<p class="sc-empty">هنوز سند پرداخت مرتبطی ثبت نشده است.</p>';
+     }
+     echo '</div></section>';
+ }
+--- a/resources/shared-staff-ui/dashboard-workspace.php
++++ b/resources/shared-staff-ui/dashboard-workspace.php
+@@ -17,7 +17,7 @@
+     <section class="sc-card sc-dashboard-trend"><div class="sc-card__body"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>روند فروش</h2><p>برای دیدن مبلغ هر روز، روی ستون مکث کنید</p></div><a href="<?=$dashUrl('/reports/?from='.$weekFrom.'&to='.$todayKey.'&focus=trend')?>">گزارش کامل</a></div><?php if($reportsError): ?><?=$dashDegraded($reportsError,'روند فروش فعلاً در دسترس نیست.')?><?php else: ?><?php if(!empty($todayProjectionUnavailable)): ?><div class="sc-alert sc-alert--warning" role="status">اطلاعات امروز هنوز از Local همگام نشده است؛ فروش امروز نامعلوم است. روزهای قبلی از آخرین آرشیو معتبر نمایش داده می‌شوند.</div><?php endif; ?><div class="sc-dashboard-chart" aria-label="روند فروش هفت روز اخیر"><?php $trendIndex=0; $trendValues=array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily); $trendSigned=min(0,...$trendValues)<0; $trendScale=max(1,...array_map('abs',$trendValues)); $trendBase=$trendSigned?50:100; foreach($weekDaily as $row): ++$trendIndex; $trendValue=(int)$row['value']; $h=$trendValue!==0?max(5,(int)round((abs($trendValue)/$trendScale)*100))*($trendSigned?0.5:1):0; ?><div class="sc-dashboard-bar" tabindex="<?=$trendValue===0?'-1':'0'?>" role="group" aria-label="<?=$dashE((string)$row['label'])?>؛ <?=$dashMoney($trendValue)?>"><div class="sc-dashboard-bar__track"><?php if($trendValue!==0): ?><output class="sc-dashboard-bar__value" aria-hidden="true"><?=$dashMoney($trendValue)?></output><?php endif; ?><svg class="sc-dashboard-column <?=$h===0?'is-zero':($trendValue<0?'is-negative':'')?>" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="sc-trend-<?=$trendIndex?>" x1="0" x2="0" y1="0" y2="1"><stop class="sc-dashboard-column__start" offset="0"/><stop class="sc-dashboard-column__end" offset="1"/></linearGradient></defs><?php if($trendSigned): ?><line class="sc-dashboard-zero-axis" x1="0" y1="50" x2="100" y2="50"/><?php endif; ?><rect x="0" y="<?=$trendValue<0?$trendBase:$trendBase-$h?>" width="100" height="<?=$h?>" rx="20" ry="4" fill="url(#sc-trend-<?=$trendIndex?>)"/></svg></div><span<?php if(isset($row['known'])&&$row['known']===false): ?> class="is-missing" title="دادهٔ این روز همگام نشده است"<?php endif; ?>><?=$dashE($row['label'])?></span></div><?php endforeach; ?></div><?php endif; ?></div></section>
+     <?php endif; ?>
+ 
+-    <section class="sc-card sc-dashboard-recent"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>آخرین فعالیت‌ها</h2><p>رویدادهای اخیر این حساب</p></div><a href="<?=$dashUrl('/notifications/')?>">مشاهده همه</a></div><div class="sc-dashboard-feed"><?php if($notificationsError): ?><?=$dashDegraded($notificationsError,'فعالیت‌های اخیر فعلاً در دسترس نیست.')?><?php elseif(!$recent): ?><div class="sc-empty">فعالیت دیگری برای نمایش ثبت نشده است.</div><?php else: foreach($recent as $item): ?><a class="sc-dashboard-feed__item" href="<?=$dashUrl((string)(!empty($canAccounts)&&!empty($item['history_target_url'])?$item['history_target_url']:($item['target_url']??'/notifications/')) )?>"><span class="sc-dashboard-feed__icon"><?=$dashIcon($dashNotificationIcon($item))?></span><span class="sc-dashboard-feed__copy"><strong><?=$dashE($dashFaNum((string)($item['title']??'اعلان')))?></strong><small><?=$dashE($dashFaNum((string)($item['body']??'')))?></small></span><time><?=$dashClock((string)($item['created_at']??''),$tz)?></time></a><?php endforeach; endif; ?></div></div></section>
++    <section class="sc-card sc-dashboard-recent"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>آخرین فعالیت‌ها</h2><p>عملیات ثبت‌شده در روز کاری جاری</p></div><?php if(!empty($canAuditActivity)): ?><a href="<?=$dashUrl('/reports/?focus=activity')?>">تاریخچه</a><?php endif; ?></div><div class="sc-dashboard-feed"><?php if($recentError??null): ?><?=$dashDegraded($recentError??null,'فعالیت‌های امروز فعلاً در دسترس نیست.')?><?php elseif(!$recent): ?><div class="sc-empty">امروز هنوز فعالیت عملیاتی ثبت نشده است.</div><?php else: foreach($recent as $item): ?><a class="sc-dashboard-feed__item" href="<?=$dashUrl((string)(!empty($canAccounts)&&!empty($item['history_target_url'])?$item['history_target_url']:($item['target_url']??'/notifications/')) )?>"><span class="sc-dashboard-feed__icon"><?=$dashIcon($dashNotificationIcon($item))?></span><span class="sc-dashboard-feed__copy"><strong><?=$dashE($dashFaNum((string)($item['title']??'اعلان')))?></strong><small><?=$dashE($dashFaNum((string)($item['body']??'')))?></small></span><time><?=$dashClock((string)($item['created_at']??''),$tz)?></time></a><?php endforeach; endif; ?></div></div></section>
+ 
+     <section class="sc-card sc-dashboard-attention-panel"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>نیازمند اقدام</h2><p>فقط مواردی که تصمیم می‌خواهند</p></div></div><div class="sc-dashboard-attention"><?php if(!$attention&&$attentionErrors===[]): ?><div class="sc-dashboard-clear"><span><?=$dashIcon('check')?></span><div><strong>مورد بازی باقی نمانده</strong><small>در حال حاضر اقدامی برای این حساب لازم نیست.</small></div></div><?php else: foreach($attention as $item): ?><a class="sc-dashboard-attention__item" data-tone="<?=$dashE((string)$item['tone'])?>" href="<?=$dashUrl((string)$item['href'])?>"><i aria-hidden="true"></i><span class="sc-dashboard-attention__copy"><strong><?=$dashE($dashFaNum((string)$item['title']))?></strong><small><?=$dashE($dashFaNum((string)$item['subtitle']))?></small></span><span class="sc-dashboard-attention__tags"><span class="sc-dashboard-context"><?=$dashE($dashFaNum((string)$item['context']))?></span><span class="sc-badge sc-badge--<?=$dashE((string)$item['tone'])?>"><?=$dashE($dashFaNum((string)$item['status']))?></span></span><span class="sc-dashboard-chevron"><?=$dashIcon('chevron-left')?></span></a><?php endforeach; foreach($attentionErrors as $attentionError): ?><?=$dashDegraded($attentionError,'بخشی از موارد نیازمند اقدام فعلاً در دسترس نیست.')?><?php endforeach; endif; ?></div></div></section>
+   </div>
+--- a/resources/shared-staff-ui/reports-workspace.php
++++ b/resources/shared-staff-ui/reports-workspace.php
+@@ -120,17 +120,27 @@
+   </section>
+   <section class="sc-card sc-report-section-anchor" id="report-item-sales" data-report-section="item-sales">
+     <div class="sc-card__body sc-stack sc-item-sales-workspace">
+-      <div class="sc-section-head"><div><h2>فروش یک یا چند محصول</h2><p>انتخاب محصولات از کاتالوگ؛ تعداد و مبلغ خالص فروش تسویه‌شده پس از تخفیف و برگشت در بازه بالا.</p></div></div>
+-      <label class="sc-field"><span class="sc-field__label">جست‌وجوی محصول (نام یا کد)</span><input type="search" class="sc-control" data-item-sales-search placeholder="حداقل یک حرف از نام یا کد محصول" autocomplete="off" aria-controls="sc-item-sales-options"></label>
+-      <div data-item-sales-options id="sc-item-sales-options" class="sc-item-sales-options" aria-live="polite"></div>
+-      <div class="sc-item-sales-selection" data-item-sales-selection aria-label="محصولات انتخاب‌شده"></div>
+-      <div class="sc-actions"><button type="button" class="sc-button" data-item-sales-run disabled>نمایش فروش محصولات انتخابی</button><button type="button" class="sc-button sc-button--secondary" data-item-sales-export disabled>خروجی CSV</button></div>
+-      <div class="sc-alert sc-alert--info" data-item-sales-status role="status">برای گزارش دقیق، یک یا چند محصول را جست‌وجو و انتخاب کنید. حداکثر ۳۰ محصول.</div>
++      <div class="sc-section-head"><div><h2>فروش یک یا چند محصول</h2><p>انتخاب دسته، خانواده یا چند کالا؛ فروش تسویه‌شده به روز افتتاح حساب تعلق دارد و پس از برگشت محاسبه می‌شود.</p></div></div>
++      <div class="sc-entity-editor__fields sc-item-sales-group-filters" aria-label="گزارش گروهی محصولات">
++        <label class="sc-field"><span class="sc-field__label">دسته محصولات</span><select class="sc-control" data-item-sales-category><option value="">انتخاب دسته</option></select></label>
++        <label class="sc-field"><span class="sc-field__label">خانواده کالا (اختیاری)</span><select class="sc-control" data-item-sales-family><option value="">تمام کالاهای دسته</option></select></label>
++        <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-group-run disabled>نمایش فروش دسته / خانواده</button></div>
++      </div>
++      <details class="sc-item-sales-individual">
++        <summary>انتخاب محصولات مشخص (پیشرفته)</summary>
++        <p class="sc-muted">برای مقایسه چند محصول خاص، نام یا کد را جست‌وجو و تا ۳۰ قلم انتخاب کنید.</p>
++        <label class="sc-field"><span class="sc-field__label">جست‌وجوی محصول (نام یا کد)</span><input type="search" class="sc-control" data-item-sales-search placeholder="نام یا کد محصول" autocomplete="off" aria-controls="sc-item-sales-options"></label>
++        <div data-item-sales-options id="sc-item-sales-options" class="sc-item-sales-options" aria-live="polite"></div>
++        <div class="sc-item-sales-selection" data-item-sales-selection aria-label="محصولات انتخاب‌شده"></div>
++        <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-run disabled>مقایسه محصولات انتخابی</button></div>
++      </details>
++      <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-export disabled>خروجی CSV همین گزارش</button></div>
++      <div class="sc-alert sc-alert--info" data-item-sales-status role="status">دسته یا خانواده محصول را انتخاب کنید. برای مقایسه چند محصول مشخص، بخش پیشرفته را باز کنید.</div>
+       <div data-item-sales-results class="sc-item-sales-results"></div>
+     </div>
+   </section>
+   <div class="sc-report-grid sc-report-section-anchor" id="report-trends" data-report-section="trends">
+-    <section class="sc-card sc-report-panel sc-report-panel--trend"><div class="sc-card__body"><div class="sc-section-head"><div><h2>روند روزانه</h2><p>فروش خالص و تعداد تسویه در بازه انتخابی.</p></div></div><div class="sc-report-trends" data-daily></div></div></section>
++    <section class="sc-card sc-report-panel sc-report-panel--trend"><div class="sc-card__body"><div class="sc-section-head"><div><h2>روند روزانه</h2><p>فروش بر اساس روز افتتاح حساب و دریافت‌ها بر اساس تاریخ پرداخت در بازه انتخابی.</p></div></div><div class="sc-report-trends" data-daily></div></div></section>
+     <section class="sc-card sc-report-panel"><div class="sc-card__body"><div class="sc-section-head"><div><h2>آیتم‌های برتر</h2><p>آیتم‌هایی که بیشترین فروش را در این بازه ساخته‌اند.</p></div></div><div class="sc-report-ranking" data-top></div></div></section>
+   </div>
+ </section><script src="<?=htmlspecialchars($workspaceAsset('assets/staff-app/data-panels.js'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" defer></script>
+--- a/src/Domain/Reporting/ReportingService.php
++++ b/src/Domain/Reporting/ReportingService.php
+@@ -34,15 +34,48 @@
+         return $this->all('SELECT id,name,item_code,active FROM items WHERE name LIKE ? OR item_code LIKE ? ORDER BY active DESC,name,id LIMIT 40',[$like,$like]);
+     }
+ 
++    /** The current catalog's hierarchy is the filter source, independent of search text.
++     * Sales still use immutable item IDs in settled-line snapshots. A renamed item
++     * remains in its current family; no historical category is silently inferred.
++     */
++    public function itemSalesGroups(): array
++    {
++        $categories=$this->all("SELECT c.id,c.name,COUNT(i.id) item_count FROM categories c
++          JOIN items i ON i.category_id=c.id GROUP BY c.id,c.name ORDER BY c.name");
++        $families=$this->all("SELECT f.id,f.name,f.category_id,COUNT(m.item_id) item_count FROM item_variant_families f
++          JOIN item_variant_members m ON m.family_id=f.id GROUP BY f.id,f.name,f.category_id ORDER BY f.category_id,f.sort_order,f.id");
++        return ['categories'=>$categories,'families'=>$families,'source'=>'current_catalog_membership'];
++    }
++
++    /** One click for a whole category or variant family; never search by name prefix. */
++    public function itemSalesGroupReport(?string $from,?string $to,string $type,int $id): array
++    {
++        if($id<=0||!in_array($type,['category','family'],true))
++            throw new ReportingException('invalid_sales_group','گروه گزارش معتبر نیست.',422);
++        $field=$type==='category'?'category_id':'family_id';
++        $sql=$type==='category'
++          ?'SELECT id FROM items WHERE category_id=? ORDER BY id LIMIT 301'
++          :'SELECT item_id id FROM item_variant_members WHERE family_id=? ORDER BY item_id LIMIT 301';
++        $items=$this->all($sql,[$id]);
++        if(count($items)>300)throw new ReportingException('sales_group_too_large','گروه برای یک گزارش بیش از ۳۰۰ کالا دارد.',422);
++        if(!$items)throw new ReportingException('sales_group_empty','این گروه هیچ کالایی ندارد.',422);
++        $groupRow=$this->one($type==='category'?'SELECT name FROM categories WHERE id=?':'SELECT name FROM item_variant_families WHERE id=?',[$id]);
++        if(!$groupRow)throw new ReportingException('sales_group_not_found','گروه گزارش پیدا نشد.',404);
++        $report=$this->itemSalesReport($from,$to,array_column($items,'id'),300);
++        $report['group']=['type'=>$type,'id'=>$id,'name'=>(string)$groupRow['name'],'count'=>count($items)];
++        $report['membership']='current_catalog';
++        return $report;
++    }
++
+     /** A product-selection sales report over settled lines, never open orders.
+      * Stable item_id_snapshot keeps renamed products together; returns zeros for selected items without sales.
+      * Quantities and amounts are net of reversal settlement documents.
+      */
+-    public function itemSalesReport(?string $from,?string $to,array $rawIds): array
++    public function itemSalesReport(?string $from,?string $to,array $rawIds,int $maxItems=30): array
+     {
+         [$from,$to]=$this->range($from,$to);
+         $ids=array_values(array_unique(array_filter(array_map('intval',$rawIds),static fn(int $id):bool=>$id>0)));
+-        if(!$ids||count($ids)>30)throw new ReportingException('invalid_item_ids','از ۱ تا ۳۰ محصول را انتخاب کنید.',422);
++        if(!$ids||count($ids)>$maxItems)throw new ReportingException('invalid_item_ids','تعداد محصولات انتخاب‌شده معتبر نیست.',422);
+         $slots=implode(',',array_fill(0,count($ids),'?'));
+         $products=$this->all("SELECT id,name,item_code,active FROM items WHERE id IN ($slots)",$ids);
+         $byId=[];foreach($products as $row)$byId[(int)$row['id']]=$row;
+@@ -53,7 +86,8 @@
+           COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales,
+           COUNT(DISTINCT CASE WHEN r.status='completed' THEN r.id END) payment_documents
+           FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
+-          WHERE r.business_date BETWEEN ? AND ? AND l.item_id_snapshot IN ($slots)
++          JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ? AND l.item_id_snapshot IN ($slots)
+           GROUP BY l.item_id_snapshot",array_merge([$from,$to],$ids));
+         $bySales=[];foreach($raw as $row)$bySales[(int)$row['item_id']]=$row;
+         $rows=[];$totals=['quantity'=>0,'gross'=>0,'discount'=>0,'net_sales'=>0];
+@@ -66,27 +100,117 @@
+             foreach($totals as $key=>$_)$totals[$key]+=$row[$key];$rows[]=$row;
+         }
+         return ['range'=>['from'=>$from,'to'=>$to],'rows'=>$rows,'totals'=>$totals,
+-           'basis'=>'completed_and_reversal_settlement_lines_by_item_id_snapshot',
++           'basis'=>'completed_and_reversal_settlement_lines_by_item_id_snapshot_session_open_day',
+            'excludes'=>'unpaid_open_orders','currency'=>'IRT'];
+     }
+ 
++    /** Today's real operational events, not the user's notification inbox.
++     * The UI applies the official BusinessClock assignment to every timestamp.
++     * Bounded, read-only queries; no fabricated activity for missing source events.
++     */
++    public function dashboardOperationalActivity(): array
++    {
++        $rows=[];
++        $audit=$this->all("SELECT id,action,entity_type,entity_id,details_json,created_at,
++            COALESCE(actor_display_name_snapshot,'کاربر') actor_name FROM audit_log
++            WHERE action IN ('table_draft.created','table_draft.updated','table_draft.cancelled',
++              'order.status_changed','order.item_quantity_adjusted','order.item_preparation_adjusted',
++              'order.cancelled_unsettled_staff','order.cancelled_after_confirmed_cash_refund',
++              'settlement.completed','settlement.reversed','settlement.remaining_discount_granted')
++            ORDER BY created_at DESC,id DESC LIMIT 180");
++        $labels=[
++            'table_draft.created'=>'پیش‌نویس میز ثبت شد',
++            'table_draft.updated'=>'پیش‌نویس میز ویرایش شد',
++            'table_draft.cancelled'=>'پیش‌نویس میز لغو شد',
++            'order.status_changed'=>'وضعیت سفارش تغییر کرد',
++            'order.item_quantity_adjusted'=>'تعداد قلم سفارش اصلاح شد',
++            'order.item_preparation_adjusted'=>'آماده‌سازی سفارش اصلاح شد',
++            'order.cancelled_unsettled_staff'=>'سفارش لغو شد',
++            'order.cancelled_after_confirmed_cash_refund'=>'سفارش پس از برگشت وجه لغو شد',
++            'settlement.completed'=>'پرداخت حساب ثبت شد',
++            'settlement.reversed'=>'سند پرداخت برگشت خورد',
++            'settlement.remaining_discount_granted'=>'تخفیف مانده ثبت شد',
++        ];
++        foreach($audit as $a){
++            $action=(string)($a['action']??'');$orderId=str_starts_with($action,'order.')?(int)($a['entity_id']??0):0;
++            $details=json_decode((string)($a['details_json']??'{}'),true);
++            if($action==='table_draft.cancelled')$details=is_array($details)?$details:[];
++            $rows[]=['kind'=>'audit','event_key'=>'audit-'.$a['id'],'created_at'=>(string)$a['created_at'],
++                'title'=>$labels[$action]??'فعالیت عملیاتی','body'=>(string)($a['actor_name']??'کاربر'),
++                'target_url'=>$orderId>0?('/reports/?order_id='.$orderId.'#order-history'):'/operator/?view=open'];
++        }
++        // Orders can be saved without a separate audit action: read their source table.
++        $orders=$this->all("SELECT o.id,o.created_at,o.order_source,t.name table_name
++             FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id
++             WHERE COALESCE(o.order_context,'')<>'staff_consumption'
++             ORDER BY o.created_at DESC,o.id DESC LIMIT 100");
++        foreach($orders as $o)$rows[]=['kind'=>'order','event_key'=>'order-'.$o['id'],
++            'created_at'=>(string)$o['created_at'],'title'=>'سفارش ثبت شد',
++            'body'=>(string)($o['table_name']??'میز').' · '.((string)($o['order_source']??'')==='guest'?'مهمان':'پرسنل'),
++            'target_url'=>'/reports/?order_id='.(int)$o['id'].'#order-history'];
++        $sessions=$this->all("SELECT s.id,s.started_at,t.name table_name FROM table_sessions s
++            JOIN cafe_tables t ON t.id=s.table_id ORDER BY s.started_at DESC,s.id DESC LIMIT 80");
++        foreach($sessions as $s)$rows[]=['kind'=>'table','event_key'=>'session-'.$s['id'],
++            'created_at'=>(string)$s['started_at'],'title'=>'حساب میز باز شد',
++            'body'=>(string)($s['table_name']??'میز'),'target_url'=>'/operator/?view=open'];
++        usort($rows,static fn(array $a,array $b):int=>strcmp($b['created_at'],$a['created_at'])?:strcmp($b['event_key'],$a['event_key']));
++        return $rows;
++    }
++
+     public function report(?string $from=null,?string $to=null): array
+     {
+         [$from,$to]=$this->range($from,$to);$p=[$from,$to];
+-        $summary=$this->one("SELECT COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales,COALESCE(SUM(CASE WHEN status='completed' THEN subtotal WHEN status='reversal' THEN -subtotal ELSE 0 END),0) gross_sales,COALESCE(SUM(CASE WHEN status='completed' THEN discount WHEN status='reversal' THEN -discount ELSE 0 END),0) discount_total,SUM(status='completed') completed_settlements,SUM(status='reversal') reversals,COALESCE(AVG(CASE WHEN status='completed' THEN total END),0) avg_ticket,COALESCE(SUM(CASE WHEN status='completed' THEN total WHEN status='reversal' THEN -total ELSE 0 END),0) receipts_after_reversal,COALESCE(SUM(CASE WHEN status='completed' THEN tax_amount WHEN status='reversal' THEN -tax_amount ELSE 0 END),0) net_tax_amount,COALESCE(SUM(CASE WHEN status='completed' THEN total-tax_amount WHEN status='reversal' THEN -(total-tax_amount) ELSE 0 END),0) sales_without_tax,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE 0 END),0) completed_amount,COALESCE(SUM(CASE WHEN status='reversal' THEN total ELSE 0 END),0) reversed_amount FROM settlement_records WHERE business_date BETWEEN ? AND ?",$p);
++        // Never change the immutable receipt's business_date. This is the CASH date.
++        // Sales use the persisted opening Business Day on table_sessions.
++        $summary=$this->one("SELECT
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.subtotal ELSE -r.subtotal END),0) gross_sales,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.discount ELSE -r.discount END),0) discount_total,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.tax_amount ELSE -r.tax_amount END),0) net_tax_amount,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total-r.tax_amount ELSE -(r.total-r.tax_amount) END),0) sales_without_tax
++          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ?",$p);
++        $cashSummary=$this->one("SELECT SUM(status='completed') completed_settlements,
++          SUM(status='reversal') reversals,
++          COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE 0 END),0) completed_amount,
++          COALESCE(SUM(CASE WHEN status='reversal' THEN total ELSE 0 END),0) reversed_amount
++          FROM settlement_records WHERE business_date BETWEEN ? AND ?",$p);
+         $invoiceAggregate=$this->one("SELECT COALESCE(AVG(x.net_total),0) avg_ticket,COUNT(*) invoice_count FROM (
+           SELECT c.session_id, SUM(CASE WHEN r.status='completed' THEN r.total WHEN r.status='reversal' THEN -r.total ELSE 0 END) net_total
+           FROM settlement_records c
+           JOIN table_sessions ts ON ts.id=c.session_id AND ts.status='closed'
+           JOIN settlement_records r ON r.session_id=c.session_id
+-          WHERE c.status='completed' AND c.closes_session=1 AND c.business_date BETWEEN ? AND ?
++          WHERE c.status='completed' AND c.closes_session=1 AND ts.business_date BETWEEN ? AND ?
+           GROUP BY c.session_id
+         ) x",$p);
+         $orders=$this->one("SELECT SUM(CASE WHEN COALESCE(order_context,'')<>'staff_consumption' THEN 1 ELSE 0 END) order_count,COUNT(*) all_order_count,SUM(CASE WHEN order_context='staff_consumption' THEN 1 ELSE 0 END) staff_consumption_orders,SUM(status='cancelled' AND COALESCE(order_context,'')<>'staff_consumption') cancelled_orders,SUM(order_source='guest' AND COALESCE(order_context,'')<>'staff_consumption') guest_orders,SUM(order_source='staff' AND COALESCE(order_context,'')<>'staff_consumption') staff_orders FROM orders WHERE business_date BETWEEN ? AND ?",$p);
+         $expenses=$this->one("SELECT COALESCE(SUM(CASE WHEN status='reversal' THEN -amount ELSE amount END),0) net_expenses FROM expenses WHERE DATE(occurred_at) BETWEEN ? AND ?",$p);
+-        $daily=$this->all("SELECT business_date,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN subtotal WHEN status='reversal' THEN -subtotal ELSE 0 END),0) gross_sales,COALESCE(SUM(CASE WHEN status='completed' THEN discount WHEN status='reversal' THEN -discount ELSE 0 END),0) discount_total,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",$p);
+-        $destinations=$this->all("SELECT destination,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY destination ORDER BY net_sales DESC",$p);
+-        $top=$this->all("SELECT l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE r.business_date BETWEEN ? AND ? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 20",$p);
++        $salesDaily=$this->all("SELECT ts.business_date business_date,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.subtotal ELSE -r.subtotal END),0) gross_sales,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.discount ELSE -r.discount END),0) discount_total,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
++          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date ORDER BY ts.business_date",$p);
++        $cashDaily=$this->all("SELECT business_date,COUNT(*) settlement_count FROM settlement_records
++          WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",$p);
++        // The two daily axes are independent, including days with payments but no sales.
++        $byDay=[];
++        foreach($salesDaily as $row)$byDay[(string)$row['business_date']]=array_replace(['settlement_count'=>0],$row);
++        foreach($cashDaily as $row){$date=(string)$row['business_date'];
++            if(!isset($byDay[$date]))$byDay[$date]=['business_date'=>$date,'gross_sales'=>0,'discount_total'=>0,'net_sales'=>0];
++            $byDay[$date]['settlement_count']=(int)$row['settlement_count'];
++        }
++        ksort($byDay);$daily=array_values($byDay);
++        $destinations=$this->all("SELECT r.destination,COUNT(*) settlement_count,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
++          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ? GROUP BY r.destination ORDER BY net_sales DESC",$p);
++        $top=$this->all("SELECT l.item_name_snapshot item_name,
++          SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales
++          FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
++          JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 20",$p);
+         $waiter=$this->one("SELECT COUNT(*) waiter_calls,SUM(status='completed') completed_waiter_calls FROM waiter_calls WHERE business_date BETWEEN ? AND ?",$p);
+         $tenders=$this->tenderReport($from,$to);
+         $operations=$this->operationsReport($from,$to);
+@@ -94,7 +218,7 @@
+         $margin=$this->marginReport($from,$to);
+         $financialContext=$this->financialContextReport($from,$to);
+         $bundleUsage=$this->bundleComponentUsageReport($from,$to);
+-        return ['range'=>['from'=>$from,'to'=>$to],'summary'=>['net_sales'=>(int)($summary['net_sales']??0),'gross_sales'=>(int)($summary['gross_sales']??0),'discount_total'=>(int)($summary['discount_total']??0),'completed_settlements'=>(int)($summary['completed_settlements']??0),'reversals'=>(int)($summary['reversals']??0),'avg_ticket'=>(int)round((float)($invoiceAggregate['avg_ticket']??0)),'invoice_count'=>(int)($invoiceAggregate['invoice_count']??0),'avg_ticket_basis'=>'mean_net_closed_table_session','completed_amount'=>(int)($summary['completed_amount']??0),'reversed_amount'=>(int)($summary['reversed_amount']??0),'sales_without_tax'=>(int)($summary['sales_without_tax']??0),'net_tax_amount'=>(int)($summary['net_tax_amount']??0),'order_count'=>(int)($orders['order_count']??0),'all_order_count'=>(int)($orders['all_order_count']??0),'staff_consumption_orders'=>(int)($orders['staff_consumption_orders']??0),'cancelled_orders'=>(int)($orders['cancelled_orders']??0),'guest_orders'=>(int)($orders['guest_orders']??0),'staff_orders'=>(int)($orders['staff_orders']??0),'net_expenses'=>(int)($expenses['net_expenses']??0),'waiter_calls'=>(int)($waiter['waiter_calls']??0),'completed_waiter_calls'=>(int)($waiter['completed_waiter_calls']??0)],'daily'=>$daily,'destinations'=>$destinations,'top_items'=>$top,'tenders'=>$tenders,'operations'=>$operations,'inventory'=>$inventory,'margin'=>$margin,'financial_context'=>$financialContext,'bundle_component_usage'=>$bundleUsage,'generated_at'=>$this->time->nowUtcIso(),'civil_date'=>$this->time->civilDate()];
++        return ['range'=>['from'=>$from,'to'=>$to],'summary'=>['net_sales'=>(int)($summary['net_sales']??0),'gross_sales'=>(int)($summary['gross_sales']??0),'discount_total'=>(int)($summary['discount_total']??0),'completed_settlements'=>(int)($cashSummary['completed_settlements']??0),'reversals'=>(int)($cashSummary['reversals']??0),'avg_ticket'=>(int)round((float)($invoiceAggregate['avg_ticket']??0)),'invoice_count'=>(int)($invoiceAggregate['invoice_count']??0),'avg_ticket_basis'=>'mean_net_closed_table_session_open_day','sales_date_basis'=>'table_session_open_business_date','cash_date_basis'=>'settlement_record_business_date','completed_amount'=>(int)($cashSummary['completed_amount']??0),'reversed_amount'=>(int)($cashSummary['reversed_amount']??0),'cash_net_payment_day'=>(int)($cashSummary['completed_amount']??0)-(int)($cashSummary['reversed_amount']??0),'sales_without_tax'=>(int)($summary['sales_without_tax']??0),'net_tax_amount'=>(int)($summary['net_tax_amount']??0),'order_count'=>(int)($orders['order_count']??0),'all_order_count'=>(int)($orders['all_order_count']??0),'staff_consumption_orders'=>(int)($orders['staff_consumption_orders']??0),'cancelled_orders'=>(int)($orders['cancelled_orders']??0),'guest_orders'=>(int)($orders['guest_orders']??0),'staff_orders'=>(int)($orders['staff_orders']??0),'net_expenses'=>(int)($expenses['net_expenses']??0),'waiter_calls'=>(int)($waiter['waiter_calls']??0),'completed_waiter_calls'=>(int)($waiter['completed_waiter_calls']??0)],'daily'=>$daily,'destinations'=>$destinations,'top_items'=>$top,'tenders'=>$tenders,'operations'=>$operations,'inventory'=>$inventory,'margin'=>$margin,'financial_context'=>$financialContext,'bundle_component_usage'=>$bundleUsage,'generated_at'=>$this->time->nowUtcIso(),'civil_date'=>$this->time->civilDate()];
+     }
+ 
+ 
+@@ -141,7 +265,14 @@
+     {
+         $to=$this->time->civilDate();$from=(new DateTimeImmutable($to))->modify('-365 days')->format('Y-m-d');$p=[$from,$to];$days=[];
+         $merge=function(array $rows)use(&$days):void{foreach($rows as $r){$day=$r['date'];$days[$day]=array_merge($days[$day]??['date'=>$day],$r);}};
+-        $sales=$this->all("SELECT business_date date,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales,COALESCE(SUM(CASE WHEN status='completed' THEN subtotal WHEN status='reversal' THEN -subtotal ELSE 0 END),0) gross_sales,COALESCE(SUM(CASE WHEN status='completed' THEN discount WHEN status='reversal' THEN -discount ELSE 0 END),0) discount_total,SUM(status='completed') completed_settlements,SUM(status='reversal') reversals,SUM(CASE WHEN status='completed' THEN total ELSE 0 END) completed_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",$p);
++        $sales=$this->all("SELECT ts.business_date date,COUNT(*) settlement_count,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.subtotal ELSE -r.subtotal END),0) gross_sales,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.discount ELSE -r.discount END),0) discount_total,
++          SUM(r.status='completed') completed_settlements,SUM(r.status='reversal') reversals,
++          SUM(CASE WHEN r.status='completed' THEN r.total ELSE 0 END) completed_sales
++          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date ORDER BY ts.business_date",$p);
+         // Local alone knows the full ledger coverage. Emit *explicit* zero-sale rows
+         // so Public can distinguish a genuine zero from an omitted/missing read model.
+         $sales=self::completeDailySales($from,$to,$sales);$merge($sales);
+@@ -149,8 +280,16 @@
+         $merge($this->all("SELECT DATE(occurred_at) date,COALESCE(SUM(CASE WHEN status='reversal' THEN -amount ELSE amount END),0) net_expenses FROM expenses WHERE DATE(occurred_at) BETWEEN ? AND ? GROUP BY DATE(occurred_at)",$p));
+         $merge($this->all("SELECT business_date date,COUNT(*) waiter_calls,SUM(status='completed') completed_waiter_calls FROM waiter_calls WHERE business_date BETWEEN ? AND ? GROUP BY business_date",$p));
+         return ['from'=>$from,'to'=>$to,'summary'=>array_values($days),'sales'=>$sales,
+-            'destinations'=>$this->all("SELECT business_date date,destination,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date,destination",$p),
+-            'items'=>$this->all("SELECT r.business_date date,l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE r.business_date BETWEEN ? AND ? GROUP BY r.business_date,l.item_name_snapshot",$p)];
++            'destinations'=>$this->all("SELECT ts.business_date date,r.destination,COUNT(*) settlement_count,
++            COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
++            FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
++            WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date,r.destination",$p),
++            'items'=>$this->all("SELECT ts.business_date date,l.item_name_snapshot item_name,
++             SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,
++             COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales
++             FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
++             JOIN table_sessions ts ON ts.id=r.session_id
++             WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date,l.item_name_snapshot",$p)];
+     }
+ 
+     /** Fill gaps only within a *locally queried, complete* ledger date range.
+@@ -205,24 +344,29 @@
+     {
+         $today=$this->date($date?:$this->time->civilDate());$d=new DateTimeImmutable($today);$yesterday=$d->modify('-1 day')->format('Y-m-d');$weekFrom=$d->modify('-6 days')->format('Y-m-d');
+         $summary=function(string $day):array{
+-            $sales=$this->one("SELECT COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales,COALESCE(AVG(CASE WHEN status='completed' THEN total END),0) avg_ticket,SUM(status='completed') completed_settlements FROM settlement_records WHERE business_date=?",[$day]);
++            $sales=$this->one("SELECT COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales,
++              SUM(r.status='completed') completed_settlements FROM settlement_records r
++              JOIN table_sessions ts ON ts.id=r.session_id WHERE ts.business_date=?",[$day]);
+             $invoice=$this->one("SELECT COALESCE(AVG(x.net_total),0) avg_ticket,COUNT(*) invoice_count FROM (
+               SELECT c.session_id,SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END) net_total
+               FROM settlement_records c JOIN table_sessions ts ON ts.id=c.session_id AND ts.status='closed'
+               JOIN settlement_records r ON r.session_id=c.session_id
+-              WHERE c.status='completed' AND c.closes_session=1 AND c.business_date=? GROUP BY c.session_id
++              WHERE c.status='completed' AND c.closes_session=1 AND ts.business_date=? GROUP BY c.session_id
+             ) x",[$day]);
+             $orders=$this->one("SELECT COUNT(*) order_count FROM orders WHERE business_date=? AND COALESCE(order_context,'')<>'staff_consumption'",[$day]);
+             return ['net_sales'=>(int)($sales['net_sales']??0),'avg_ticket'=>(int)round((float)($invoice['avg_ticket']??0)),'invoice_count'=>(int)($invoice['invoice_count']??0),'completed_settlements'=>(int)($sales['completed_settlements']??0),'order_count'=>(int)($orders['order_count']??0)];
+         };
+-        $daily=$this->all("SELECT business_date,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",[$weekFrom,$today]);
++        $daily=$this->all("SELECT ts.business_date business_date,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
++          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date ORDER BY ts.business_date",[$weekFrom,$today]);
+         // Authoritative Local query coverage includes inactive days. Emit those zeros
+         // explicitly so Public never has to infer them from a missing projection row.
+         $byDay=[];foreach($daily as $row)$byDay[(string)$row['business_date']]=(int)$row['net_sales'];
+         $daily=[];for($day=new DateTimeImmutable($weekFrom);$day<=$d;$day=$day->modify('+1 day')){
+             $key=$day->format('Y-m-d');$daily[]=['business_date'=>$key,'net_sales'=>$byDay[$key]??0];
+         }
+-        $top=$this->all("SELECT l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE r.business_date=? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 5",[$today]);
++        $top=$this->all("SELECT l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id JOIN table_sessions ts ON ts.id=r.session_id WHERE ts.business_date=? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 5",[$today]);
+         return ['range'=>['from'=>$weekFrom,'to'=>$today],'today_summary'=>$summary($today),'yesterday_summary'=>$summary($yesterday),'daily'=>$daily,'top_items'=>$top,'generated_at'=>$this->time->nowUtcIso()];
+     }
+ 
+--- a/src/UI/ProductShell.php
++++ b/src/UI/ProductShell.php
+@@ -36,6 +36,11 @@
+         $groups=self::sidebarNavigationGroups($items);
+         $timezone=SCDS::e($core->time()->timezone());
+         $serverNow=SCDS::e($core->time()->nowUtcIso());
++        // Current business day and cutoff are server-authoritative for the quick bell.
++        // If an adapted Public staff core does not expose BusinessClock, do not fake a date.
++        $quickBellDay='';$quickBellCutoff='';
++        try{$biz=$core->businessClock()->assignment();$quickBellDay=SCDS::e((string)($biz['business_date']??''));$quickBellCutoff=SCDS::e((string)($biz['cutoff']??''));}catch(\Throwable){}
++        $quickBellHeading=$quickBellDay!==''?'اعلان‌های روز کاری جاری':'اعلان‌های اخیر';
+         $canOrder=$core->auth()->hasCapability('orders_floor',$user);
+         $baseHref=SCDS::e(LocalUrl::baseHref());
+         $appBase=SCDS::e(LocalUrl::basePath());
+@@ -88,7 +93,7 @@
+         $accountLink=$accountPath!==''?'<a class="sc-user-menu__link" href="'.$u($accountPath).'" data-user-menu-primary><span>'.self::icon('users').'</span><span><strong>حساب کاربری</strong><small>پروفایل و امنیت حساب</small></span></a>':'';
+         echo '<div class="sc-user-menu sc-theme-picker" data-theme-picker data-user-menu><button class="sc-shell__user-card sc-user-menu__trigger" type="button" data-theme-menu-toggle data-theme-menu-label="preserve" aria-label="منوی کاربر، '.$name.'" aria-haspopup="true" aria-expanded="false"><span class="sc-shell__user-copy"><strong>'.$name.'</strong><small>'.$safeRole.'</small></span><span class="sc-user-menu__chevron" aria-hidden="true">'.self::icon('chevron-down').'</span></button><div class="sc-theme-picker__menu sc-user-menu__menu" aria-label="منوی کاربر" hidden data-theme-menu data-user-menu-panel>'.$accountLink.'<div class="sc-user-menu__section"><span class="sc-user-menu__section-label">پوسته</span><div class="sc-user-menu__theme" role="radiogroup" aria-label="پوسته سامانه"><button type="button" role="radio" data-theme-option="light" aria-checked="false"><span>'.self::icon('sun').'</span><span>روشن</span></button><button type="button" role="radio" data-theme-option="dark" aria-checked="false"><span>'.self::icon('moon').'</span><span>تیره</span></button><button type="button" role="radio" data-theme-option="system" aria-checked="false"><span>'.self::icon('device').'</span><span>سیستم</span></button></div></div><a class="sc-user-menu__link sc-user-menu__link--logout" href="'.$u($logoutPath).'"><span>'.self::icon('logout').'</span><span><strong>خروج</strong><small>پایان نشست جاری</small></span></a></div></div>';
+         echo '<div class="sc-shell__date-card sc-shell__calendar-wrap" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><button type="button" class="sc-shell__calendar-toggle" data-shell-calendar-toggle aria-label="بازکردن تقویم شمسی" aria-haspopup="dialog" aria-controls="sokna-shell-calendar" aria-expanded="false"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></button><section id="sokna-shell-calendar" class="sc-shell__calendar-panel" data-shell-calendar-panel role="dialog" aria-modal="false" aria-label="تقویم شمسی" hidden><header><button type="button" class="sc-icon-button" data-shell-calendar-prev aria-label="ماه قبل">'.self::icon('chevron-right').'</button><strong data-shell-calendar-month>—</strong><button type="button" class="sc-icon-button" data-shell-calendar-next aria-label="ماه بعد">'.self::icon('chevron-left').'</button><button type="button" class="sc-icon-button" data-shell-calendar-close aria-label="بستن تقویم">'.self::icon('close').'</button></header><div class="sc-shell__calendar-weekdays" aria-hidden="true"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div><div class="sc-shell__calendar-days" data-shell-calendar-days></div><p class="sc-shell__calendar-detail" data-shell-calendar-detail aria-live="polite">برای مشاهده مناسبت، یک روز را انتخاب کنید.</p><footer><span data-shell-calendar-source>تقویم رسمی ۱۴۰۵؛ داده مناسبت‌ها در حال دریافت…</span></footer></section></div>';
+-        echo '<div class="sc-shell__notify-wrap" data-shell-notify-wrap><button class="sc-icon-button sc-shell__notify" type="button" data-shell-notify-toggle aria-haspopup="true" aria-expanded="false" aria-controls="sokna-shell-notify-panel" aria-label="اعلان‌ها">'.self::icon('bell').'</button><section id="sokna-shell-notify-panel" class="sc-shell__notify-panel" data-shell-notify-panel data-api="'.$u('/notifications/api.php').'" hidden aria-label="اعلان‌های اخیر"><header><strong>اعلان‌های اخیر</strong><button type="button" class="sc-icon-button" data-shell-notify-close aria-label="بستن اعلان‌ها">×</button></header><div class="sc-shell__notify-items" data-shell-notify-items aria-live="polite">در حال دریافت اعلان‌ها…</div><footer><a href="'.$u($notificationsPath).'" data-shell-notify-all>مشاهده همه اعلان‌ها</a></footer></section></div>';
++        echo '<div class="sc-shell__notify-wrap" data-shell-notify-wrap><button class="sc-icon-button sc-shell__notify" type="button" data-shell-notify-toggle aria-haspopup="true" aria-expanded="false" aria-controls="sokna-shell-notify-panel" aria-label="اعلان‌ها">'.self::icon('bell').'</button><section id="sokna-shell-notify-panel" class="sc-shell__notify-panel" data-shell-notify-panel data-business-date="'.$quickBellDay.'" data-business-cutoff="'.$quickBellCutoff.'" data-api="'.$u('/notifications/api.php').'" hidden aria-label="اعلان‌های اخیر"><header><strong>'.$quickBellHeading.'</strong><button type="button" class="sc-icon-button" data-shell-notify-close aria-label="بستن اعلان‌ها">×</button></header><div class="sc-shell__notify-items" data-shell-notify-items aria-live="polite">در حال دریافت اعلان‌ها…</div><footer><a href="'.$u($notificationsPath).'" data-shell-notify-all>مشاهده همه اعلان‌ها</a></footer></section></div>';
+         echo '</div>';
+         echo '<div class="sc-shell__top-spacer" aria-hidden="true"></div>';
+         echo '<div class="sc-shell__right-actions">';
