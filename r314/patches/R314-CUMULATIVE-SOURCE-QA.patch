@@ -1,0 +1,576 @@
+--- a/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
++++ b/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
+@@ -274,9 +274,17 @@
+         if(isset($wanted['inventory_cost']))$add('inventory_cost',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")]);
+         if(isset($wanted['operations_workspace']))$add('operations_workspace',$this->remoteOperationsWorkspace());
+         if(isset($wanted['subscribers']))$add('subscribers',$this->remoteSubscriberWorkspace());
+         if(isset($wanted['reports']))$add('reports',$this->remoteReportWorkspace());
+-        if(isset($wanted['notifications']))$add('notifications',['items'=>$this->notifications?->remoteRows()??[],'push'=>$this->notifications?->remotePushConfig()??['vapid_public_key'=>'','bridge_configured'=>false]]);
++        if(isset($wanted['notifications'])){
++            // The bell's daily scope must use the same Local business clock as all reports.
++            // Do not infer the cutoff from browser or Public server wall-clock settings.
++            $notificationClock=($this->businessClock??new BusinessClock($this->pdo))->assignment();
++            $add('notifications',['items'=>$this->notifications?->remoteRows()??[],
++                'business_clock'=>['business_date'=>(string)$notificationClock['business_date'],
++                    'cutoff'=>(string)$notificationClock['cutoff']],
++                'push'=>$this->notifications?->remotePushConfig()??['vapid_public_key'=>'','bridge_configured'=>false]]);
++        }
+         if(isset($wanted['deferred_context']))$add('deferred_context',[
+             'inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),
+             // Public displays purchase-unit choices, but Local remains the only conversion authority.
+             // Needs-review units must request an actual physical quantity, never extrapolate a stale factor.
+@@ -477,8 +485,13 @@
+                 if($this->reporting!==null)$activity=PublicOperationalActivityProjector::build(
+                     $this->reporting->dashboardOperationalActivity(),$businessDate,(string)$clock['cutoff']);
+             }catch(\Throwable){/* The reports projection must remain usable if audit activity is unavailable. */}
+             $report['dashboard_activity']=$activity;
++            // R314: explicit, bounded daily SKU facts. Public must not infer complete
++            // category sales from only the top-five items in the dashboard.
++            $sales=['format'=>'sokna-item-sales-daily-archive-v1','status'=>'unavailable'];
++            try{$sales=\Sokna\Local\Domain\Reporting\PublicItemSalesSnapshot::build($this->pdo,$businessDate,60);}catch(\Throwable){/* report KPIs remain independent */}
++            $report['item_sales_archive']=$sales;
+             $report['business_date']=$businessDate;
+             $report['business_clock']=['business_date'=>$businessDate,'civil_date'=>(string)$clock['civil_date'],'cutoff'=>(string)$clock['cutoff']];
+             if($owns)$this->pdo->commit();return $report;
+         }catch(\Throwable $e){if($owns&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+--- /dev/null
++++ b/local/src/Domain/Reporting/PublicItemSalesSnapshot.php
+@@ -0,0 +1,45 @@
++<?php
++declare(strict_types=1);
++namespace Sokna\Local\Domain\Reporting;
++use PDO;
++
++/** Read-only bounded SKU-by-business-day projection; never a payment ledger. */
++final class PublicItemSalesSnapshot
++{
++    public static function build(PDO $pdo,string $businessDate,int $days=60): array
++    {
++        $tz=new \DateTimeZone('Asia/Tehran');
++        $date=\DateTimeImmutable::createFromFormat('!Y-m-d',$businessDate,$tz);
++        if($date===false||$date->format('Y-m-d')!==$businessDate)throw new \InvalidArgumentException('business_date');
++        $days=max(1,min(90,$days));$from=$date->modify('-'.($days-1).' days')->format('Y-m-d');
++        $catalog=$pdo->query('SELECT i.id,i.name,i.item_code,i.category_id,c.name category_name FROM items i LEFT JOIN categories c ON c.id=i.category_id ORDER BY i.id LIMIT 3001')->fetchAll(PDO::FETCH_ASSOC)?:[];
++        if(count($catalog)>3000)throw new \OverflowException('catalog too large');
++        $groups=$pdo->query('SELECT id,name,category_id FROM item_variant_families ORDER BY id LIMIT 1001')->fetchAll(PDO::FETCH_ASSOC)?:[];
++        if(count($groups)>1000)throw new \OverflowException('families too large');
++        $members=$pdo->query('SELECT family_id,item_id FROM item_variant_members ORDER BY family_id,item_id LIMIT 5001')->fetchAll(PDO::FETCH_ASSOC)?:[];
++        if(count($members)>5000)throw new \OverflowException('members too large');
++        $stmt=$pdo->prepare("SELECT ts.business_date day,l.item_id_snapshot item_id,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END),0) quantity,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.gross_amount ELSE -l.gross_amount END),0) gross,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.discount_amount ELSE -l.discount_amount END),0) discount,
++          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales
++          FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
++          JOIN table_sessions ts ON ts.id=r.session_id
++          WHERE ts.business_date BETWEEN ? AND ?
++          GROUP BY ts.business_date,l.item_id_snapshot
++          ORDER BY ts.business_date,l.item_id_snapshot LIMIT 12001");
++        $stmt->execute([$from,$businessDate]);$rows=$stmt->fetchAll(PDO::FETCH_ASSOC)?:[];
++        if(count($rows)>12000)throw new \OverflowException('sales archive too large');
++        return ['format'=>'sokna-item-sales-daily-archive-v1','status'=>'available',
++          'basis'=>'completed_and_reversal_settlement_lines_by_item_id_snapshot_session_open_day',
++          'range'=>['from'=>$from,'to'=>$businessDate],
++          'catalog'=>array_map(static fn(array $r):array=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],
++              'item_code'=>(string)($r['item_code']??''),'category_id'=>(int)($r['category_id']??0),
++              'category_name'=>(string)($r['category_name']??'')],$catalog),
++          'families'=>array_map(static fn(array $r):array=>['id'=>(int)$r['id'],'name'=>(string)$r['name'],'category_id'=>(int)$r['category_id']],$groups),
++          'members'=>array_map(static fn(array $r):array=>['family_id'=>(int)$r['family_id'],'item_id'=>(int)$r['item_id']],$members),
++          'daily'=>array_map(static fn(array $r):array=>['day'=>(string)$r['day'],'item_id'=>(int)$r['item_id'],
++             'quantity'=>(float)$r['quantity'],'gross'=>(int)$r['gross'],'discount'=>(int)$r['discount'],'net_sales'=>(int)$r['net_sales']],$rows),
++          'currency'=>'IRT','excludes'=>'unpaid_open_orders','max_days'=>$days];
++    }
++}
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6208,4 +6208,55 @@
+ .sc-refresh-action:focus-visible{outline:2px solid var(--sc-accent)!important;outline-offset:2px;}
+ .sc-refresh-action:disabled{opacity:.5;cursor:not-allowed;}
+ body[data-page="finance"] [data-refresh].sc-refresh-action::before,body[data-page="integrations"] [data-refresh].sc-refresh-action::before{content:none!important;}
+ @media(max-width:640px){body[data-page="system"] .sc-shell__content>.sc-workspace>.sc-local-nav>.sc-actions>[data-refresh].sc-refresh-action{inline-size:44px!important;max-inline-size:44px!important;min-inline-size:44px!important;place-self:start!important;}body[data-page="finance"] .sc-shell__content>.sc-workspace>.sc-local-nav>[data-refresh].sc-refresh-action,body[data-page="integrations"] .sc-shell__content>.sc-workspace>.sc-local-nav>[data-refresh].sc-refresh-action{inline-size:44px!important;min-inline-size:44px!important;block-size:44px!important;min-block-size:44px!important;}}
++
++/* R314: Public-only compact bell, adopting existing Sokna tokenized surfaces. */
++body[data-staff-ui-mode="public"] .sc-shell__bell-wrap{position:relative;direction:rtl;display:flex;align-items:center;z-index:140}
++body[data-staff-ui-mode="public"] .sc-shell__bell-panel{position:absolute;inset-block-start:calc(100% + 10px);inset-inline-end:0;inline-size:min(350px,calc(100vw - 22px));max-block-size:min(440px,75vh);overflow-y:auto;padding:12px;border:1px solid var(--sc-border);border-radius:15px;background:var(--sc-surface-raised);box-shadow:var(--sc-shadow-raised);text-align:right;color:var(--sc-text);direction:rtl}
++body[data-staff-ui-mode="public"] .sc-shell__bell-panel[hidden]{display:none}
++body[data-staff-ui-mode="public"] .sc-shell__bell-head{display:flex;align-items:center;justify-content:space-between;gap:8px;border-block-end:1px solid var(--sc-border);padding-block-end:7px}
++body[data-staff-ui-mode="public"] .sc-shell__bell-head>strong{font-size:.85rem;color:var(--sc-text-strong)}
++body[data-staff-ui-mode="public"] .sc-shell__bell-head .sc-icon-button{inline-size:32px;block-size:32px;min-block-size:32px;border-radius:9px}
++body[data-staff-ui-mode="public"] .sc-shell__bell-head .sc-ui-icon{inline-size:16px;block-size:16px}
++body[data-staff-ui-mode="public"] .sc-shell__bell-status{font-size:.77rem;line-height:1.85;margin:12px 0;color:var(--sc-muted)}
++body[data-staff-ui-mode="public"] .sc-shell__bell-status[data-kind="warning"]{color:var(--sc-warning-strong,var(--sc-muted-strong))}
++body[data-staff-ui-mode="public"] .sc-shell__bell-count{font-size:.73rem;color:var(--sc-muted);margin:8px 0}
++body[data-staff-ui-mode="public"] .sc-shell__bell-items{display:grid;gap:6px}
++body[data-staff-ui-mode="public"] .sc-shell__bell-item{padding:9px 10px;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface)}
++body[data-staff-ui-mode="public"] .sc-shell__bell-item.is-unread{border-inline-start:3px solid var(--sc-accent)}
++body[data-staff-ui-mode="public"] .sc-shell__bell-item strong{display:block;font-size:.78rem;line-height:1.5;color:var(--sc-text-strong)}
++body[data-staff-ui-mode="public"] .sc-shell__bell-item p{font-size:.75rem;line-height:1.65;color:var(--sc-muted);margin:3px 0 0}
++body[data-staff-ui-mode="public"] .sc-shell__bell-all{display:flex;align-items:center;justify-content:center;min-block-size:38px;margin-block-start:9px;border-radius:9px;color:var(--sc-accent-strong);font-size:.77rem;font-weight:750;text-decoration:none;background:var(--sc-accent-soft)}
++@media(max-width:760px){body[data-staff-ui-mode="public"] .sc-shell__bell-wrap .sc-shell__notify{display:grid;place-items:center;inline-size:40px;min-block-size:40px}body[data-staff-ui-mode="public"] .sc-shell__bell-panel{position:fixed;inset-inline-end:10px;inset-block-start:72px;inline-size:min(350px,calc(100vw - 20px))}}
++
++/* R314: family sales workspace uses existing Local shared report semantics. */
++.sc-item-sales-workspace{min-inline-size:0}
++.sc-item-sales-options{display:grid;gap:4px;max-block-size:230px;overflow:auto}
++.sc-item-sales-option{display:block;text-align:start;inline-size:100%;padding:10px 13px;border:1px solid var(--sc-border);border-radius:9px;background:var(--sc-surface-raised);color:var(--sc-text);cursor:pointer;font:inherit}
++.sc-item-sales-option:hover,.sc-item-sales-option:focus-visible{border-color:var(--sc-accent);background:var(--sc-accent-soft)}
++.sc-item-sales-selection{display:flex;gap:7px;flex-wrap:wrap;min-block-size:26px}
++.sc-item-sales-chip{font-size:.78rem;max-inline-size:100%;white-space:normal}
++.sc-item-sales-results{overflow-x:auto}
++.sc-item-sales-table{width:100%;border-collapse:collapse;min-width:440px;text-align:start;font-variant-numeric:tabular-nums}
++.sc-item-sales-table th,.sc-item-sales-table td{padding:12px 9px;text-align:start;border-block-end:1px solid var(--sc-border)}
++.sc-item-sales-table th{background:var(--sc-surface-subtle)}
++.sc-item-sales-total{padding:12px;font-weight:800;background:var(--sc-accent-soft);border-radius:10px;margin-block:10px}
++
++.sc-item-sales-group-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;gap:12px;margin-block:12px 16px}
++.sc-item-sales-group-filters>.sc-actions{grid-column:1 / -1;margin:0}
++.sc-item-sales-individual{border:1px solid var(--sc-border);border-radius:10px;padding:10px 14px;margin-block:8px 12px;background:var(--sc-surface-raised)}
++.sc-item-sales-individual>summary{cursor:pointer;font-weight:700;color:var(--sc-accent-strong);padding:4px 0}
++.sc-item-sales-individual[open]>summary{margin-bottom:12px}
++.sc-item-sales-individual .sc-item-sales-selection{margin-block:8px}
++@media(max-width:760px){
++ .sc-item-sales-group-filters{grid-template-columns:minmax(0,1fr);gap:10px}
++ .sc-item-sales-group-filters>.sc-actions{grid-column:auto}
++ .sc-item-sales-group-filters .sc-button,.sc-item-sales-individual .sc-button{inline-size:100%}
++ .sc-item-sales-table{min-width:0;width:100%;border:0}
++ .sc-item-sales-table thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
++ .sc-item-sales-table tbody{display:grid;gap:9px}
++ .sc-item-sales-table tbody tr{display:grid;gap:7px;padding:10px;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface-raised)}
++ .sc-item-sales-table td{display:flex;justify-content:space-between;align-items:baseline;gap:14px;min-width:0;padding:0;border:0;text-align:start}
++ .sc-item-sales-table td:before{content:attr(data-label);color:var(--sc-muted);font-size:.73rem;flex-shrink:0}
++ .sc-item-sales-table td:first-child{font-weight:800;justify-content:space-between;border-bottom:1px solid var(--sc-border);padding-block-end:7px}
++}
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -3,17 +3,83 @@
+ const L=window.SoknaLocale||{integer:v=>new Intl.NumberFormat('fa-IR').format(Number(v||0)),number:v=>new Intl.NumberFormat('fa-IR').format(Number(v||0)),money:v=>new Intl.NumberFormat('fa-IR').format(Number(v||0))+' تومان',date:v=>String(v??''),civilDateNow:()=>''};
+ const field=(form,name)=>form?.elements?.namedItem?.(name)||null;
+ const displayMoney=v=>L.money?L.money(v):`${L.integer(v)} تومان`;
+ let reportSectionKey='overview',reportAvailableSections=null,reportInvalid=false,reportRequestId=0;const reportHiddenBefore=new WeakMap();
+-function reportSectionFromLocation(){const hash=String(location.hash||'').replace('#report-','');if(hash&&root.querySelector(`[data-report-section="${hash}"]`))return hash;const f=String(root.dataset.focus||'').trim(),map={sales:'overview',orders:'overview',avg_ticket:'overview',overview:'overview',operations:'operations',inventory:'inventory',margin:'margin',financial:'financial',activity:'activity',tenders:'tenders',trend:'trends',top:'trends'};const key=map[f]||'';return key&&root.querySelector(`[data-report-section="${key}"]`)?key:'overview'}
++function reportSectionFromLocation(){const hash=String(location.hash||'').replace('#report-','');if(hash&&root.querySelector(`[data-report-section="${hash}"]`))return hash;const f=String(root.dataset.focus||'').trim(),map={sales:'overview',orders:'overview',avg_ticket:'overview',overview:'overview',operations:'operations',inventory:'inventory',margin:'margin',financial:'financial',activity:'activity',tenders:'tenders',trend:'trends',top:'trends',item_sales:'item-sales'};const key=map[f]||'';return key&&root.querySelector(`[data-report-section="${key}"]`)?key:'overview'}
+ function applyReportSection(key=reportSectionKey,{scroll=false,historyMode=false}={}){const sections=$$('[data-report-section]'),links=$$('[data-report-section-nav] a');if(!sections.length)return;const existing=sections.some(x=>x.dataset.reportSection===key);reportSectionKey=existing?key:'overview';sections.forEach(x=>{const active=x.dataset.reportSection===reportSectionKey;x.hidden=!active||reportInvalid;x.setAttribute('aria-hidden',active?'false':'true')});links.forEach(a=>{const active=a.getAttribute('href')===`#report-${reportSectionKey}`;if(active)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');a.setAttribute('aria-selected',active?'true':'false');a.tabIndex=active?0:-1});const active=links.find(a=>a.getAttribute('href')===`#report-${reportSectionKey}`),nav=$('[data-report-section-nav]');if(active&&nav){const item=active.getBoundingClientRect(),box=nav.getBoundingClientRect(),margin=8;const dx=item.left<box.left+margin?item.left-box.left-margin:item.right>box.right-margin?item.right-box.right+margin:0;if(dx)nav.scrollBy({left:dx,behavior:'auto'})}if(historyMode)history.replaceState(null,'',`#report-${reportSectionKey}`);if(scroll)$('[data-report-section-nav]')?.scrollIntoView?.({block:'start'})}
+ function setupReportSections(){reportSectionKey=reportSectionFromLocation();applyReportSection(reportSectionKey);const links=$$('[data-report-section-nav] a');links.forEach((a,index)=>{a.addEventListener('click',e=>{const key=String(a.getAttribute('href')||'').replace('#report-','');if(!root.querySelector(`[data-report-section="${key}"]`))return;e.preventDefault();applyReportSection(key,{scroll:true,historyMode:true})});a.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','Home','End'].includes(e.key))return;e.preventDefault();let next=index;if(e.key==='Home')next=0;else if(e.key==='End')next=links.length-1;else next=(index+(e.key==='ArrowLeft'?1:-1)+links.length)%links.length;links[next]?.focus();links[next]?.click()})})}
+ 
+ const el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
+ function metric(label,value,help,tone=''){const e=el('article','sc-card sc-report-metric'+(tone?' sc-report-metric--'+tone:''));const b=el('div','sc-card__body');b.append(el('span','sc-muted',label),el('strong','sc-number',value),el('small','sc-muted',help));e.append(b);return e}
+ function status(message,bad=false){const e=$('[data-status]');e.textContent=message||'';e.hidden=!message;e.className='sc-alert'+(bad?' sc-alert--danger':'')}
+ async function request(q,{emitMeta=true}={}){let r;try{r=await fetch(api+'?'+q,{cache:'no-store',credentials:'same-origin'})}catch{throw new Error('ارتباط با سامانه برقرار نشد. دوباره تلاش کنید.')}let j;try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error(j.message||'دریافت گزارش انجام نشد.');if(emitMeta&&j.staff_meta)window.SoknaStaffRuntime?.emitMeta?.('reports',j.staff_meta);return j}
+ function renderDaily(rows){const box=$('[data-daily]');box.replaceChildren();if(!rows.length){box.append(el('div','sc-empty','در این بازه داده‌ای برای روند روزانه وجود ندارد.'));return}const max=Math.max(1,...rows.map(r=>Number(r.net_sales||0)));rows.forEach(r=>{const row=el('div','sc-report-trend-row'),date=el('div','sc-report-trend-row__date'),bar=el('div','sc-report-trend-row__bar'),fill=el('span'),value=el('div','sc-report-trend-row__value sc-number');date.append(el('strong','',L.date(r.business_date)),el('small','sc-muted',`${L.integer(r.settlement_count)} تسویه`));fill.style.inlineSize=`${Math.min(100,Math.max(0,Number(r.net_sales||0)/max*100))}%`;bar.append(fill);value.textContent=displayMoney(r.net_sales);row.append(date,bar,value);box.append(row)})}
++function setupItemSales(){
++ const input=$('[data-item-sales-search]'),opts=$('[data-item-sales-options]'),selected=$('[data-item-sales-selection]'),
++   run=$('[data-item-sales-run]'),exportButton=$('[data-item-sales-export]'),out=$('[data-item-sales-results]'),info=$('[data-item-sales-status]');
++ if(!input||!opts||!selected||!run||!out)return;
++ const items=new Map();let searchToken=0,reportToken=0,currentReport=null,lookupTimer=0;
++ const category=$('[data-item-sales-category]'),family=$('[data-item-sales-family]'),groupRun=$('[data-item-sales-group-run]');
++ let groups={categories:[],families:[]};
++ const groupOption=(value,label)=>{const option=document.createElement('option');option.value=String(value);option.textContent=label;return option};
++ function updateGroups(){if(!category||!family||!groupRun)return;
++   const selectedCategory=Number(category.value||0),oldFamily=family.value;
++   family.replaceChildren(groupOption('','تمام کالاهای دسته'));
++   for(const f of groups.families||[]){if(Number(f.category_id)!==selectedCategory)continue;family.append(groupOption(f.id,`${f.name} · ${L.integer(f.item_count)} کالا`))}
++   if([...family.options].some(o=>o.value===oldFamily))family.value=oldFamily;
++   groupRun.disabled=!selectedCategory;
++ }
++ async function loadGroups(){if(!category)return;try{
++   const j=await request(new URLSearchParams({action:'item_groups'}),{emitMeta:false});groups=j.groups||{categories:[],families:[]};
++   const old=category.value;category.replaceChildren(groupOption('','انتخاب دسته'));
++   for(const c of groups.categories||[])category.append(groupOption(c.id,`${c.name} · ${L.integer(c.item_count)} کالا`));
++   if([...category.options].some(o=>o.value===old))category.value=old;
++   updateGroups();
++ }catch(e){statusText('فهرست دسته‌ها در دسترس نیست؛ جست‌وجوی محصول تکی همچنان فعال است.',true)}}
++ category?.addEventListener('change',updateGroups);
++ family?.addEventListener('change',()=>{if(groupRun)groupRun.disabled=!Number(category?.value||0)});
++ groupRun?.addEventListener('click',async()=>{const cat=Number(category?.value||0),fam=Number(family?.value||0);if(!cat)return;
++   const token=++reportToken,form=$('[data-report-form]');groupRun.disabled=true;out.replaceChildren();exportButton.disabled=true;
++   statusText('در حال محاسبه فروش کل گروه…');
++   const q=new URLSearchParams({action:'item_sales_group',group_type:fam?'family':'category',group_id:String(fam||cat),from:form.elements.from.value,to:form.elements.to.value});
++   try{const j=await request(q,{emitMeta:false});if(token!==reportToken)return;
++     const report=j.item_sales||{};currentReport=report;renderItemSaleRows(report);
++     statusText(`گزارش ${report.group?.name||'گروه'}: ${L.integer(report.group?.count||0)} کالا بر مبنای عضویت فعلی کاتالوگ؛ فروش فقط از اسناد پرداخت/برگشت محاسبه شده است.`);
++     exportButton.disabled=false;
++   }catch(e){if(token===reportToken)statusText(e.message||'گزارش گروه آماده نشد.',true)}finally{if(token===reportToken)groupRun.disabled=!Number(category?.value||0)}
++ });
++ loadGroups();
++ function renderItemSaleRows(report){
++   const t=document.createElement('table');t.className='sc-item-sales-table';t.innerHTML='<thead><tr><th>محصول</th><th>تعداد خالص</th><th>تخفیف</th><th>فروش خالص</th></tr></thead><tbody></tbody>';
++   const columns=['محصول','تعداد خالص','تخفیف','فروش خالص'];
++   for(const row of report.rows||[]){const tr=document.createElement('tr');const values=[row.name,L.number(row.quantity||0),displayMoney(row.discount||0),displayMoney(row.net_sales||0)];for(let i=0;i<values.length;i++){const td=document.createElement('td');td.textContent=values[i];td.dataset.label=columns[i];tr.append(td)}t.tBodies[0].append(tr)}
++   const total=document.createElement('div');total.className='sc-item-sales-total';total.textContent=`جمع ${report.group?.name||'محصولات انتخابی'}: ${L.number(report.totals?.quantity||0)} عدد · ${displayMoney(report.totals?.net_sales||0)}`;
++   out.replaceChildren(t,total);
++ }
++
++ const htmlSafe=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
++ function statusText(msg,error=false){info.textContent=msg;info.className='sc-alert '+(error?'sc-alert--warning':'sc-alert--info')}
++ function display(){selected.replaceChildren();for(const item of items.values()){
++   const b=document.createElement('button');b.type='button';b.className='sc-button sc-button--secondary sc-item-sales-chip';b.textContent=`${item.name} ×`;b.title='حذف از انتخاب';b.addEventListener('click',()=>{items.delete(item.id);display()});selected.append(b);
++ }run.disabled=!items.size;exportButton.disabled=true;currentReport=null;out.replaceChildren();}
++ input.addEventListener('input',()=>{clearTimeout(lookupTimer);const token=++searchToken;opts.replaceChildren();const q=input.value.trim();if(!q)return;lookupTimer=setTimeout(async()=>{
++    try{const j=await request(new URLSearchParams({action:'item_lookup',q}),{emitMeta:false});if(token!==searchToken)return;
++      opts.replaceChildren();const found=(j.items||[]).filter(r=>!items.has(Number(r.id)));
++      if(!found.length){opts.textContent='محصول دیگری مطابق جست‌وجو پیدا نشد.';return;}
++      for(const item of found){const button=document.createElement('button');button.type='button';button.className='sc-item-sales-option';button.textContent=item.name+(item.item_code?' · '+item.item_code:'');button.addEventListener('click',()=>{if(items.size>=30){statusText('حداکثر ۳۰ محصول قابل انتخاب است.',true);return;}items.set(Number(item.id),{id:Number(item.id),name:String(item.name)});display();button.remove()});opts.append(button)}
++    }catch(e){if(token===searchToken)statusText(e.message||'جست‌وجو انجام نشد.',true)}
++   },230);
++ });
++ run.addEventListener('click',async()=>{if(!items.size)return;const token=++reportToken;run.disabled=true;statusText('در حال دریافت فروش ثبت‌شده…');out.replaceChildren();
++   const form=$('[data-report-form]');const q=new URLSearchParams({action:'item_sales',from:form.elements.from.value,to:form.elements.to.value,ids:[...items.keys()].join(',')});
++   try{const j=await request(q,{emitMeta:false});if(token!==reportToken)return;const report=j.item_sales||{};currentReport=report;
++     renderItemSaleRows(report);statusText('فقط اقلام ثبت‌شده در اسناد تسویه و برگشت شمرده شده‌اند؛ سفارش بازِ پرداخت‌نشده لحاظ نمی‌شود.');exportButton.disabled=false;
++   }catch(e){if(token===reportToken)statusText(e.message||'گزارش آماده نشد.',true)}finally{if(token===reportToken)run.disabled=!items.size}
++ });
++ const rangeForm=$('[data-report-form]');
++ rangeForm?.addEventListener('change',()=>{reportToken++;currentReport=null;out.replaceChildren();exportButton.disabled=true;statusText('بازه تغییر کرده است؛ برای مشاهده فروش جدید دوباره دکمه گزارش را بزنید.');});
++ exportButton.addEventListener('click',()=>{if(!currentReport)return;const csv=[['کد','محصول','تعداد خالص','تخفیف تومان','فروش خالص تومان'],...(currentReport.rows||[]).map(r=>[r.item_id,r.name,r.quantity,r.discount,r.net_sales])].map(row=>row.map(x=>'"'+String(x??'').replaceAll('"','""')+'"').join(',')).join('\r\n');const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=currentReport.group?'sokna-group-item-sales.csv':'sokna-selected-item-sales.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
++}
+ function renderTop(rows){const box=$('[data-top]');box.replaceChildren();if(!rows.length){box.append(el('div','sc-empty','در این بازه آیتمی برای رتبه‌بندی وجود ندارد.'));return}const max=Math.max(1,...rows.map(r=>Number(r.net_sales||0)));rows.forEach((r,i)=>{const row=el('div','sc-report-rank-row'),rank=el('span','sc-report-rank-row__rank',L.integer(i+1)),copy=el('div'),bar=el('div','sc-report-rank-row__bar'),fill=el('span'),val=el('div','sc-report-rank-row__value sc-number');copy.append(el('strong','',r.item_name),el('small','sc-muted',`${L.number(r.quantity)} عدد`));fill.style.inlineSize=`${Math.min(100,Math.max(0,Number(r.net_sales||0)/max*100))}%`;bar.append(fill);val.textContent=displayMoney(r.net_sales);row.append(rank,copy,val,bar);box.append(row)})}
+ function compactStat(label,value,help=''){const e=el('article','sc-report-compact-stat');e.append(el('span','',label),el('strong','sc-number',value));if(help)e.append(el('small','sc-muted',help));return e}
+ function renderOrderMix(s){const box=$('[data-order-mix]');box.replaceChildren(compactStat('سفارش مهمان',L.integer(s.guest_orders||0)),compactStat('سفارش پرسنل',L.integer(s.staff_orders||0)),compactStat('سفارش لغوشده',L.integer(s.cancelled_orders||0)),compactStat('فراخوان گارسون',L.integer(s.waiter_calls||0),`${L.integer(s.completed_waiter_calls||0)} تکمیل‌شده`))}
+ function destinationLabel(v){return v==='direct'?'پرداخت مستقیم':v==='subscriber'?'حساب مشتری':v==='accommodation'?'حساب اقامتگاه':String(v||'نامشخص')}
+@@ -96,9 +162,9 @@
+  case 'net_expenses':return {title:'هزینه خالص',note:'این عدد بر اساس تاریخ وقوع هزینه (نه لزوماً روز کاری تسویه) و پس از برگشت هزینه محاسبه می‌شود. جزئیات اسناد هزینه در این پاسخ موجود نیست.',columns:['شاخص','مقدار'],rows:[['هزینه خالص بازه',sum(s.net_expenses)]]};
+  case 'reversals':return {title:'برگشت سند',note:'تعداد اسناد برگشتی مالی در بازه انتخابی؛ این عدد با تعداد لغو سفارش یکسان نیست.',columns:['شاخص','تعداد'],rows:[['برگشت سند',count(s.reversals)],['سفارش لغوشده',count(s.cancelled_orders)]]};
+  default:return null}}
+ function renderKpiDrilldown(key,report){const summary=$('[data-summary]');if(!summary)return;let panel=$('[data-kpi-drilldown]');if(!panel){panel=el('section','sc-card sc-report-kpi-details');panel.dataset.kpiDrilldown='';panel.id='sc-report-kpi-details';panel.tabIndex=-1;panel.hidden=true;panel.setAttribute('aria-live','polite');summary.after(panel)}if(panel.dataset.kpi===key&&!panel.hidden){panel.hidden=true;panel.dataset.kpi='';for(const card of summary.querySelectorAll('[data-report-kpi]'))card.setAttribute('aria-expanded','false');summary.querySelector(`[data-report-kpi="${key}"]`)?.focus?.();return}const detail=reportKpiDetailRows(key,report);if(!detail)return;const form=$('[data-report-form]'),dates=form?`${form.elements.from.value} تا ${form.elements.to.value}`:'بازه انتخابی';panel.replaceChildren();panel.dataset.kpi=key;panel.setAttribute('aria-label',`جزئیات ${detail.title}`);const body=el('div','sc-card__body'),heading=el('div','sc-section-head'),copy=el('div'),close=el('button','sc-button sc-button--secondary','بستن جزئیات');close.type='button';close.addEventListener('click',()=>{panel.hidden=true;panel.dataset.kpi='';for(const card of summary.querySelectorAll('[data-report-kpi]'))card.setAttribute('aria-expanded','false');summary.querySelector(`[data-report-kpi="${key}"]`)?.focus?.()});copy.append(el('h2','',detail.title),el('p','',`بازه ${dates}`));heading.append(copy,close);body.append(heading,el('p','sc-muted',detail.note));const wrap=el('div','sc-table-wrap'),table=el('table','sc-table sc-table--responsive'),head=el('thead'),hr=el('tr'),tbody=el('tbody');detail.columns.forEach(h=>hr.append(el('th','',h)));head.append(hr);if(detail.rows.length){for(const row of detail.rows){const tr=el('tr');row.forEach((value,i)=>{const td=el('td','',value);td.dataset.label=detail.columns[i];tr.append(td)});tbody.append(tr)}}else{const tr=el('tr'),td=el('td','','در این بازه ردیفی برای نمایش وجود ندارد.');td.colSpan=detail.columns.length;tr.append(td);tbody.append(tr)}table.append(head,tbody);wrap.append(table);body.append(wrap);panel.append(body);panel.hidden=false;for(const card of summary.querySelectorAll('[data-report-kpi]'))card.setAttribute('aria-expanded',card.dataset.reportKpi===key?'true':'false');panel.focus?.()}
+-let initialFocusApplied=false;const focusTarget=()=>{const f=String(root.dataset.focus||'').trim();if(!f)return null;const map={sales:'overview',orders:'overview',avg_ticket:'overview',overview:'overview',operations:'operations',inventory:'inventory',margin:'margin',financial:'financial',activity:'activity',tenders:'tenders',trend:'trends',top:'trends'};return map[f]||null};function applyInitialFocus(){if(initialFocusApplied)return;initialFocusApplied=true;const key=focusTarget();if(key)applyReportSection(key)}
++let initialFocusApplied=false;const focusTarget=()=>{const f=String(root.dataset.focus||'').trim();if(!f)return null;const map={sales:'overview',orders:'overview',avg_ticket:'overview',overview:'overview',operations:'operations',inventory:'inventory',margin:'margin',financial:'financial',activity:'activity',tenders:'tenders',trend:'trends',top:'trends',item_sales:'item-sales'};return map[f]||null};function applyInitialFocus(){if(initialFocusApplied)return;initialFocusApplied=true;const key=focusTarget();if(key)applyReportSection(key)}
+ function renderSafe(key,fn,failures){if(reportAvailableSections&&['operations','inventory','margin','financial','tenders'].includes(key)&&!reportAvailableSections.includes(key))return true;try{fn();return true}catch(e){console.error(`[reports:${key}]`,e);failures.push(key);return false}}
+ async function load(){const f=$('[data-report-form]'),q=new URLSearchParams({from:f.elements.from.value,to:f.elements.to.value}),requestId=++reportRequestId;const kpiPanel=$('[data-kpi-drilldown]');if(kpiPanel){kpiPanel.hidden=true;kpiPanel.dataset.kpi='';for(const card of $('[data-summary]')?.querySelectorAll('[data-report-kpi]')||[])card.setAttribute('aria-expanded','false')}if($('[data-activity-form]')){++activityState.requestId;activityState.loading=false;activityState.offset=0;}root.setAttribute('aria-busy','true');status('');try{const j=await request(q,{emitMeta:false});if(requestId!==reportRequestId)return;if(j.staff_meta)window.SoknaStaffRuntime?.emitMeta?.('reports',j.staff_meta);const x=j.report||{},s=x.summary||{},box=$('[data-summary]'),P=window.SoknaStaffDataPanels,failures=[];reportInvalid=false;reportAvailableSections=x.available_sections||null;reportCoverage(x,j.staff_meta);renderSafe('summary',()=>{if(P)P.renderReportMetrics(box,x,{onDrilldown:key=>renderKpiDrilldown(key,x)});else box.replaceChildren(metric('فروش خالص',displayMoney(s.net_sales),'پس از تخفیف و برگشت','success'),metric('میانگین فاکتور',displayMoney(s.avg_ticket),'میانگین مبلغ تسویه'),metric('تسویه کامل',L.integer(s.completed_settlements),'سند ثبت‌شده','info'),metric('سفارش',L.integer(s.order_count),'سفارش ثبت‌شده'),metric('هزینه خالص',displayMoney(s.net_expenses),'هزینه ثبت‌شده','warning'),metric('برگشت سند',L.integer(s.reversals||0),'اسناد برگشتی'))},failures);renderSafe('order_mix',()=>renderOrderMix(s),failures);renderSafe('destinations',()=>renderDestinations(x.destinations||[]),failures);renderSafe('operations',()=>renderOperations(x.operations||{}),failures);renderSafe('inventory',()=>renderInventory(x.inventory||{}),failures);renderSafe('margin',()=>renderMargin(x.margin||{}),failures);renderSafe('financial',()=>renderFinancialContext(x.financial_context||{}),failures);renderSafe('tenders',()=>renderTenders(x.tenders||{}),failures);renderSafe('daily',()=>renderDaily(x.daily||[]),failures);renderSafe('top_items',()=>renderTop(x.top_items||[]),failures);if($('[data-activity-form]'))await loadActivity(true);applyInitialFocus();applyReportSection();if(failures.length)status('بخشی از گزارش کامل نمایش داده نشد. دوباره «نمایش گزارش» را بزنید.',true)}catch(e){if(requestId!==reportRequestId)return;console.error('[reports:load]',e);reportInvalid=true;applyReportSection();status(e.message||'گزارش دریافت نشد. دوباره تلاش کنید.',true)}finally{if(requestId===reportRequestId)root.removeAttribute('aria-busy')}}
+ function iso(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${day}`}
+ function syncReportRangePreset(){const f=$('[data-report-form]');if(!f)return;const from=String(f.elements.from.value||''),to=String(f.elements.to.value||'');let days=0;if(/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)){const begin=Date.parse(`${from}T12:00:00Z`),end=Date.parse(`${to}T12:00:00Z`),delta=(end-begin)/86400000;if(Number.isInteger(delta)&&delta>=0)days=delta+1;}$$('[data-range-days]').forEach(b=>b.classList.toggle('is-active',days>0&&days===Number(b.dataset.rangeDays)));}
+@@ -142,8 +208,8 @@
+   const body=el('p','',details||'جزئیات پوشش بیشتری برای این گزارش ثبت نشده است.');
+   disclosure.append(summary,body);notice.append(disclosure);
+ }
+ 
+-for(const section of $$('[data-report-section]')){const supported=!reportAvailableSections||reportAvailableSections.includes(section.dataset.reportSection);let message=section.querySelector('[data-report-unavailable]');if(!supported&&!message){message=el('div','sc-alert sc-alert--info','تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.');message.dataset.reportUnavailable='';section.prepend(message)}if(message)message.hidden=supported;for(const child of [...section.children]){if(child===message)continue;if(!supported){if(!reportHiddenBefore.has(child))reportHiddenBefore.set(child,child.hidden);child.hidden=true}else if(reportHiddenBefore.has(child)){child.hidden=reportHiddenBefore.get(child);reportHiddenBefore.delete(child)}}}}
+-
+-setupReportSections();load();
++for(const section of $$('[data-report-section]')){const supported=section.dataset.reportSection==='item-sales'||!reportAvailableSections||reportAvailableSections.includes(section.dataset.reportSection);let message=section.querySelector('[data-report-unavailable]');if(!supported&&!message){message=el('div','sc-alert sc-alert--info','تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.');message.dataset.reportUnavailable='';section.prepend(message)}if(message)message.hidden=supported;for(const child of [...section.children]){if(child===message)continue;if(!supported){if(!reportHiddenBefore.has(child))reportHiddenBefore.set(child,child.hidden);child.hidden=true}else if(reportHiddenBefore.has(child)){child.hidden=reportHiddenBefore.get(child);reportHiddenBefore.delete(child)}}}}
++
++setupReportSections();setupItemSales();load();
+ })();
+--- /dev/null
++++ b/public/assets/staff-app/public-bell.js
+@@ -0,0 +1,34 @@
++(()=>{'use strict';
++const root=document.querySelector('[data-public-bell]');if(!root)return;
++const button=root.querySelector('[data-public-bell-toggle]'),panel=root.querySelector('[data-public-bell-panel]'),
++ close=root.querySelector('[data-public-bell-close]'),status=root.querySelector('[data-public-bell-status]'),list=root.querySelector('[data-public-bell-items]');
++const history=()=>panel.querySelector('.sc-shell__bell-all');
++const digits=v=>String(v).replace(/\d/g,d=>'۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
++let serial=0;
++const showMessage=(msg,kind='info')=>{status.textContent=msg;status.dataset.kind=kind;status.hidden=false;};
++const render=payload=>{
++ list.replaceChildren();const snap=payload?.snapshot||{};
++ if(!snap.today_available){showMessage(snap.today_message||'اطلاعات امروز هنوز معتبر نیست.','warning');return;}
++ const rows=Array.isArray(snap.today_items)?snap.today_items:[];
++ if(!rows.length){showMessage('برای روز کاری جاری اعلان تازه‌ای ثبت نشده است.');return;}
++ status.hidden=true;
++ const meta=document.createElement('p');meta.className='sc-shell__bell-count';meta.textContent=`${digits(rows.length)} اعلان در روز کاری جاری`;list.append(meta);
++ rows.forEach(row=>{
++   const item=document.createElement('article');item.className='sc-shell__bell-item';
++   if(!row.read_at)item.classList.add('is-unread');
++   const title=document.createElement('strong');title.textContent=String(row.title||'اعلان');
++   const desc=document.createElement('p');desc.textContent=String(row.body||'');
++   item.append(title,desc);list.append(item);
++ });
++};
++async function load(){const s=++serial;showMessage('در حال دریافت اعلان‌های امروز…');list.replaceChildren();
++ try{const response=await fetch(root.dataset.api,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});const j=await response.json();if(s!==serial)return;
++ if(!response.ok||j.success===false)throw new Error(j.message||'دریافت اعلان‌ها انجام نشد.');
++ render(j);
++ }catch(e){if(s===serial)showMessage(e.message||'ارتباط با سامانه برقرار نیست.','warning');}}
++function open(){panel.hidden=false;button.setAttribute('aria-expanded','true');load();}
++function hide(){panel.hidden=true;button.setAttribute('aria-expanded','false');serial++;button.focus();}
++button.addEventListener('click',()=>panel.hidden?open():hide());close.addEventListener('click',hide);
++document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!panel.hidden){e.preventDefault();hide()}});
++document.addEventListener('pointerdown',e=>{if(!panel.hidden&&!root.contains(e.target)){panel.hidden=true;button.setAttribute('aria-expanded','false');serial++}});
++})();
+--- a/public/resources/shared-staff-ui/reports-workspace.php
++++ b/public/resources/shared-staff-ui/reports-workspace.php
+@@ -25,9 +25,9 @@
+     </form>
+   </section>
+   <div class="sc-alert" data-status hidden></div>
+   <nav class="sc-report-section-nav" aria-label="نوع گزارش" data-report-section-nav role="tablist">
+-    <a href="#report-overview" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" role="tab" aria-selected="false">انبار</a><a href="#report-margin" role="tab" aria-selected="false">حاشیه سود</a><a href="#report-financial" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" role="tab" aria-selected="false">روند</a>
++    <a href="#report-overview" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" role="tab" aria-selected="false">انبار</a><a href="#report-margin" role="tab" aria-selected="false">حاشیه سود</a><a href="#report-financial" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" role="tab" aria-selected="false">فروش محصولات</a>
+   </nav>
+   <section class="sc-report-section-anchor" id="report-overview" data-report-section="overview">
+   <div class="sc-summary-grid sc-report-summary" data-summary></div>
+   <div class="sc-report-insight-grid">
+@@ -102,8 +102,29 @@
+       <div class="sc-alert sc-alert--warning" data-tender-coverage hidden></div>
+       <div class="sc-report-cross-day" data-tender-cross-day></div>
+     </div>
+   </section>
++  <section class="sc-card sc-report-section-anchor" id="report-item-sales" data-report-section="item-sales">
++    <div class="sc-card__body sc-stack sc-item-sales-workspace">
++      <div class="sc-section-head"><div><h2>فروش یک یا چند محصول</h2><p>انتخاب دسته، خانواده یا چند کالا؛ فروش تسویه‌شده به روز افتتاح حساب تعلق دارد و پس از برگشت محاسبه می‌شود.</p></div></div>
++      <div class="sc-entity-editor__fields sc-item-sales-group-filters" aria-label="گزارش گروهی محصولات">
++        <label class="sc-field"><span class="sc-field__label">دسته محصولات</span><select class="sc-control" data-item-sales-category><option value="">انتخاب دسته</option></select></label>
++        <label class="sc-field"><span class="sc-field__label">خانواده کالا (اختیاری)</span><select class="sc-control" data-item-sales-family><option value="">تمام کالاهای دسته</option></select></label>
++        <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-group-run disabled>نمایش فروش دسته / خانواده</button></div>
++      </div>
++      <details class="sc-item-sales-individual">
++        <summary>انتخاب محصولات مشخص (پیشرفته)</summary>
++        <p class="sc-muted">برای مقایسه چند محصول خاص، نام یا کد را جست‌وجو و تا ۳۰ قلم انتخاب کنید.</p>
++        <label class="sc-field"><span class="sc-field__label">جست‌وجوی محصول (نام یا کد)</span><input type="search" class="sc-control" data-item-sales-search placeholder="نام یا کد محصول" autocomplete="off" aria-controls="sc-item-sales-options"></label>
++        <div data-item-sales-options id="sc-item-sales-options" class="sc-item-sales-options" aria-live="polite"></div>
++        <div class="sc-item-sales-selection" data-item-sales-selection aria-label="محصولات انتخاب‌شده"></div>
++        <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-run disabled>مقایسه محصولات انتخابی</button></div>
++      </details>
++      <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-export disabled>خروجی CSV همین گزارش</button></div>
++      <div class="sc-alert sc-alert--info" data-item-sales-status role="status">دسته یا خانواده محصول را انتخاب کنید. برای مقایسه چند محصول مشخص، بخش پیشرفته را باز کنید.</div>
++      <div data-item-sales-results class="sc-item-sales-results"></div>
++    </div>
++  </section>
+   <div class="sc-report-grid sc-report-section-anchor" id="report-trends" data-report-section="trends">
+     <section class="sc-card sc-report-panel sc-report-panel--trend"><div class="sc-card__body"><div class="sc-section-head"><div><h2>روند روزانه</h2><p>فروش خالص و تعداد تسویه در بازه انتخابی.</p></div></div><div class="sc-report-trends" data-daily></div></div></section>
+     <section class="sc-card sc-report-panel"><div class="sc-card__body"><div class="sc-section-head"><div><h2>آیتم‌های برتر</h2><p>آیتم‌هایی که بیشترین فروش را در این بازه ساخته‌اند.</p></div></div><div class="sc-report-ranking" data-top></div></div></section>
+   </div>
+--- a/public/src/Http/PublicStaffWorkspaceHttpAdapter.php
++++ b/public/src/Http/PublicStaffWorkspaceHttpAdapter.php
+@@ -113,8 +113,30 @@
+ 
+     private function reports(array $session,string $method,array $query): array
+     {
+         if($method!=='GET')return $this->readOnly();$model=$this->model($session,'reports');if(($model['ok']??false)!==true)return $model['response'];$action=(string)($query['action']??'report');
++        if(in_array($action,['item_groups','item_lookup','item_sales','item_sales_group'],true)){
++            $archive=is_array($model['payload']['item_sales_archive']??null)?$model['payload']['item_sales_archive']:[];
++            $svc=\Sokna\PublicEdge\Remote\PublicItemSalesArchive::class;
++            if(!$svc::validated($archive,$model['meta']))return $this->response(409,['success'=>false,'code'=>'item_sales_archive_unavailable','message'=>'گزارش فروش اقلام هنوز تازه و کامل همگام نشده است.','staff_meta'=>$model['meta']]);
++            if($action==='item_groups')return $this->response(200,['success'=>true,'groups'=>$svc::groups($archive),'staff_meta'=>$model['meta']]);
++            if($action==='item_lookup')return $this->response(200,['success'=>true,'items'=>$svc::lookup($archive,(string)($query['q']??'')),'staff_meta'=>$model['meta']]);
++            $from=(string)($query['from']??'');$to=(string)($query['to']??'');
++            $ids=[];$group=null;
++            if($action==='item_sales_group'){
++                $type=(string)($query['group_type']??'');$id=(int)($query['group_id']??0);
++                $name=$svc::groupName($archive,$type,$id);
++                if($name==='')return $this->response(404,['success'=>false,'code'=>'sales_group_not_found','message'=>'گروه گزارش پیدا نشد.']);
++                $ids=$svc::groupIds($archive,$type,$id);$group=['type'=>$type,'id'=>$id,'name'=>$name,'count'=>count($ids)];
++            }else{
++                $raw=(string)($query['ids']??'');
++                if(preg_match('/^\d{1,8}(?:,\d{1,8}){0,29}$/D',$raw)!==1)return $this->response(422,['success'=>false,'code'=>'invalid_item_ids','message'=>'محصولات انتخاب‌شده معتبر نیستند.']);
++                $ids=array_map('intval',explode(',',$raw));
++            }
++            $itemReport=$svc::report($archive,$from,$to,$ids,$group);
++            if($itemReport===null)return $this->response(409,['success'=>false,'code'=>'item_sales_scope_unavailable','message'=>'این گروه یا بازه زمانی در مدل همگام‌شده کامل نیست؛ بازه‌ای در ۶۰ روز اخیر انتخاب کنید.']);
++            return $this->response(200,['success'=>true,'item_sales'=>$itemReport,'staff_meta'=>$model['meta']]);
++        }
+         if($action==='activity'){
+             // Do not fabricate an empty audit history when Local has not projected one.
+             // The regular financial report remains available independently of activity.
+             $activity=$model['payload']['activity']??null;
+@@ -149,9 +171,11 @@
+ 
+     private function notifications(array $session,string $method,string $rawBody): array
+     {
+         if($method!=='GET')return $this->readOnly();$model=$this->model($session,'notifications');if(($model['ok']??false)!==true)return $model['response'];$items=array_values(array_filter((array)($model['payload']['items']??[]),'is_array'));$unread=0;foreach($items as &$row){$row['target_url']=$this->publicNotificationTarget((string)($row['target_url']??''));if(trim((string)($row['read_at']??''))==='')$unread++;}unset($row);
+-        return $this->response(200,['success'=>true,'snapshot'=>['items'=>$items,'unread'=>$unread],'staff_meta'=>$model['meta']]);
++        $today=\Sokna\PublicEdge\Remote\PublicNotificationToday::preview($model['payload'],$model['meta']);
++        // Keep all inbox items for the dedicated history page; never discard them.
++        return $this->response(200,['success'=>true,'snapshot'=>array_merge(['items'=>$items,'unread'=>$unread],$today),'staff_meta'=>$model['meta']]);
+     }
+ 
+     /** @return array{ok:bool,payload?:array,meta?:array,response?:array} */
+     private function model(array $session,string $key): array
+--- /dev/null
++++ b/public/src/Remote/PublicItemSalesArchive.php
+@@ -0,0 +1,86 @@
++<?php
++declare(strict_types=1);
++namespace Sokna\PublicEdge\Remote;
++
++/** Aggregate authoritative Local daily SKU facts for a Public Staff user. */
++final class PublicItemSalesArchive
++{
++    public static function validated(array $data,array $meta): bool
++    {
++        if(($meta['stale']??true)!==false||($data['format']??'')!=='sokna-item-sales-daily-archive-v1'
++          ||($data['status']??'')!=='available'||($data['basis']??'')!=='completed_and_reversal_settlement_lines_by_item_id_snapshot_session_open_day')return false;
++        $range=(array)($data['range']??[]);
++        return self::day((string)($range['from']??''))&&self::day((string)($range['to']??''))
++          &&is_array($data['catalog']??null)&&is_array($data['families']??null)
++          &&is_array($data['members']??null)&&is_array($data['daily']??null);
++    }
++    public static function lookup(array $data,string $q): array
++    {
++        $q=self::fold(trim($q));if($q==='')return [];
++        $result=[];foreach($data['catalog'] as $r){if(!is_array($r))continue;
++            if(str_contains(self::fold((string)($r['name']??'').' '.(string)($r['item_code']??'')),$q)){
++                $result[]=['id'=>(int)$r['id'],'name'=>(string)$r['name'],'item_code'=>(string)($r['item_code']??'')];
++                if(count($result)>=40)break;
++            }
++        }return $result;
++    }
++    public static function groups(array $data): array
++    {
++        $categories=[];$families=[];$count=[];
++        foreach($data['catalog'] as $r){if(!is_array($r))continue;
++          $c=(int)($r['category_id']??0);if($c<=0)continue;
++          if(!isset($categories[$c]))$categories[$c]=['id'=>$c,'name'=>(string)($r['category_name']??''),'item_count'=>0];
++          $categories[$c]['item_count']++;
++        }
++        foreach($data['members'] as $m){if(!is_array($m))continue;$fid=(int)($m['family_id']??0);
++          $count[$fid]=($count[$fid]??0)+1;}
++        foreach($data['families'] as $f){if(!is_array($f))continue;$fid=(int)$f['id'];
++          $families[]=['id'=>$fid,'name'=>(string)$f['name'],'category_id'=>(int)$f['category_id'],'item_count'=>$count[$fid]??0];}
++        return ['categories'=>array_values($categories),'families'=>$families,'source'=>'current_catalog_membership'];
++    }
++    public static function groupIds(array $data,string $type,int $id): array
++    {
++        if($id<=0||!in_array($type,['category','family'],true))return [];
++        $ids=[];
++        if($type==='category')foreach($data['catalog'] as $i){if(is_array($i)&&(int)($i['category_id']??0)===$id)$ids[]=(int)$i['id'];}
++        else foreach($data['members'] as $m){if(is_array($m)&&(int)($m['family_id']??0)===$id)$ids[]=(int)$m['item_id'];}
++        return array_values(array_unique(array_filter($ids,static fn(int $x):bool=>$x>0)));
++    }
++    public static function groupName(array $data,string $type,int $id): string
++    {
++        $rows=$type==='category'?self::groups($data)['categories']:$data['families'];
++        foreach($rows as $r)if(is_array($r)&&(int)($r['id']??0)===$id)return (string)($r['name']??'');
++        return '';
++    }
++    public static function report(array $data,string $from,string $to,array $ids,?array $group=null): ?array
++    {
++        $range=(array)($data['range']??[]);
++        if(!self::day($from)||!self::day($to)||$from>$to
++          ||$from<(string)$range['from']||$to>(string)$range['to'])return null;
++        $ids=array_values(array_unique(array_filter(array_map('intval',$ids),static fn(int $id):bool=>$id>0)));
++        if(!$ids||count($ids)>300)return null;
++        $catalog=[];foreach($data['catalog'] as $row)if(is_array($row))$catalog[(int)($row['id']??0)]=$row;
++        foreach($ids as $id)if(!isset($catalog[$id]))return null;
++        $byId=array_fill_keys($ids,['quantity'=>0,'gross'=>0,'discount'=>0,'net_sales'=>0]);
++        foreach($data['daily'] as $row){if(!is_array($row))continue;
++            $day=(string)($row['day']??'');$id=(int)($row['item_id']??0);
++            if($day<$from||$day>$to||!isset($byId[$id]))continue;
++            foreach(['quantity','gross','discount','net_sales'] as $field)$byId[$id][$field]+=(float)($row[$field]??0);
++        }
++        $rows=[];$total=['quantity'=>0,'gross'=>0,'discount'=>0,'net_sales'=>0];
++        foreach($ids as $id){$c=$catalog[$id];$vals=$byId[$id];
++          $r=['item_id'=>$id,'name'=>(string)$c['name'],'item_code'=>(string)($c['item_code']??''),'available_in_catalog'=>true,
++              'quantity'=>$vals['quantity'],'gross'=>(int)$vals['gross'],'discount'=>(int)$vals['discount'],'net_sales'=>(int)$vals['net_sales']];
++          foreach($total as $field=>$_)$total[$field]+=$r[$field];$rows[]=$r;
++        }
++        $result=['range'=>['from'=>$from,'to'=>$to],'rows'=>$rows,'totals'=>$total,
++          'basis'=>(string)$data['basis'],'membership'=>'current_catalog','currency'=>'IRT',
++          'excludes'=>'unpaid_open_orders'];if($group)$result['group']=$group;
++        return $result;
++    }
++    private static function day(string $s):bool
++    {return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D',$s,$m)===1&&checkdate((int)$m[2],(int)$m[3],(int)$m[1]);}
++    private static function fold(string $s):string
++    {$s=strtr($s,['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9','ي'=>'ی','ك'=>'ک']);
++     return function_exists('mb_strtolower')?mb_strtolower($s,'UTF-8'):strtolower($s);}
++}
+--- /dev/null
++++ b/public/src/Remote/PublicNotificationToday.php
+@@ -0,0 +1,44 @@
++<?php
++declare(strict_types=1);
++namespace Sokna\PublicEdge\Remote;
++
++/** Fail-closed day-scoped bell preview. Full inbox remains a separate historic view. */
++final class PublicNotificationToday
++{
++    public static function preview(array $payload,array $meta,?\DateTimeImmutable $now=null): array
++    {
++        $clock=is_array($payload['business_clock']??null)?$payload['business_clock']:[];
++        $day=(string)($clock['business_date']??'');$cutoff=(string)($clock['cutoff']??'');
++        $unavailable=['today_items'=>[],'today_unread'=>null,'today_available'=>false,
++            'today_status'=>'unavailable','today_business_date'=>$day,
++            'today_message'=>'اعلان‌های امروز هنوز با لوکال همگام نشده‌اند.'];
++        if(!self::validDay($day)||preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/D',$cutoff)!==1
++           ||($meta['stale']??true)!==false||!is_array($payload['items']??null))return $unavailable;
++        try{
++            $tz=new \DateTimeZone('Asia/Tehran');
++            $at=($now??new \DateTimeImmutable('now',$tz))->setTimezone($tz);
++            $start=new \DateTimeImmutable($day.' '.$cutoff.':00',$tz);
++            $today=$at<$at->setTime((int)substr($cutoff,0,2),(int)substr($cutoff,3,2))?$at->modify('-1 day')->format('Y-m-d'):$at->format('Y-m-d');
++            if($today!==$day)return $unavailable;
++            $end=$start->modify('+1 day');
++        }catch(\Throwable){return $unavailable;}
++        $items=[];$unread=0;
++        foreach($payload['items'] as $row){
++            if(!is_array($row))continue;
++            $stamp=trim((string)($row['created_at']??''));
++            $title=trim((string)($row['title']??''));
++            if($stamp===''||$title==='')continue;
++            try{$when=new \DateTimeImmutable($stamp,$tz);}catch(\Throwable){continue;}
++            if($when<$start||$when>=$end)continue;
++            if(trim((string)($row['read_at']??''))==='')$unread++;
++            if(count($items)<8)$items[]=['title'=>$title,'body'=>(string)($row['body']??''),
++                'created_at'=>$stamp,'read_at'=>(string)($row['read_at']??''),
++                'target_url'=>(string)($row['target_url']??'')];
++        }
++        return ['today_items'=>$items,'today_unread'=>$unread,'today_available'=>true,
++            'today_status'=>'fresh','today_business_date'=>$day,'today_message'=>''];
++    }
++    private static function validDay(string $s):bool
++    {return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D',$s,$m)===1
++        &&checkdate((int)$m[2],(int)$m[3],(int)$m[1]);}
++}
+--- a/public/src/Remote/RemoteStaffPageRenderer.php
++++ b/public/src/Remote/RemoteStaffPageRenderer.php
+@@ -160,9 +160,11 @@
+     {
+         $reportsRead=$this->core->remoteReadModels()->read($session,'reports');
+         $reportsModel=(int)($reportsRead['status']??0)===200&&is_array($reportsRead['body']['payload']??null)?(array)$reportsRead['body']:[];
+         $read=function(string $key) use ($session): array {$r=$this->core->remoteReadModels()->read($session,$key);return (int)($r['status']??0)===200&&is_array($r['body']['payload']??null)?(array)$r['body']['payload']:[];};
+-        $reports=(array)($reportsModel['payload']??[]);$operationsRead=$this->core->remoteReadModels()->read($session,'operations');$operationsModel=(int)($operationsRead['status']??0)===200&&is_array($operationsRead['body']['payload']??null)?(array)$operationsRead['body']:[];$operations=(array)($operationsModel['payload']??[]);$ops=is_array($operations['hall']??null)?$operations['hall']:[];$notifications=$read('notifications');$inventoryRead=$this->core->remoteReadModels()->read($session,'operations_workspace');$inventoryModel=(int)($inventoryRead['status']??0)===200&&is_array($inventoryRead['body']['payload']??null)?(array)$inventoryRead['body']:[];$inventoryWorkspace=(array)($inventoryModel['payload']??[]);$opsProjectionUnavailable=!self::dashboardProjectionAvailable($operationsRead);$inventoryProjectionUnavailable=!self::dashboardProjectionAvailable($inventoryRead);
++        $reports=(array)($reportsModel['payload']??[]);$operationsRead=$this->core->remoteReadModels()->read($session,'operations');$operationsModel=(int)($operationsRead['status']??0)===200&&is_array($operationsRead['body']['payload']??null)?(array)$operationsRead['body']:[];$operations=(array)($operationsModel['payload']??[]);$ops=is_array($operations['hall']??null)?$operations['hall']:[];$notificationRead=$this->core->remoteReadModels()->read($session,'notifications');
++        $notificationModel=(int)($notificationRead['status']??0)===200&&is_array($notificationRead['body']['payload']??null)?(array)$notificationRead['body']:[];
++        $notifications=(array)($notificationModel['payload']??[]);$inventoryRead=$this->core->remoteReadModels()->read($session,'operations_workspace');$inventoryModel=(int)($inventoryRead['status']??0)===200&&is_array($inventoryRead['body']['payload']??null)?(array)$inventoryRead['body']:[];$inventoryWorkspace=(array)($inventoryModel['payload']??[]);$opsProjectionUnavailable=!self::dashboardProjectionAvailable($operationsRead);$inventoryProjectionUnavailable=!self::dashboardProjectionAvailable($inventoryRead);
+         $canReports=$reports!==[];$canOps=$ops!==[];$inventoryItems=is_array($inventoryWorkspace['inventory']['items']??null)?$inventoryWorkspace['inventory']['items']:[];$canInventory=$inventoryItems!==[];
+         $dashboard=is_array($reports['dashboard']??null)?$reports['dashboard']:[];$range=is_array($dashboard['range']??null)?$dashboard['range']:[];$tz=new \DateTimeZone('Asia/Tehran');$today=new \DateTimeImmutable('now',$tz);$sourceBusinessDate=PublicDashboardFinance::businessDate($reports);
+         $businessDateUnavailable=$sourceBusinessDate===null||(string)($reports['business_clock']['business_date']??'')!==$sourceBusinessDate;
+         if($sourceBusinessDate!==null)$today=new \DateTimeImmutable($sourceBusinessDate,$tz);
+@@ -172,9 +174,14 @@
+         $todayHasReceipt=$financeView['today_has_receipt'];$yesterdayHasReceipt=$financeView['yesterday_has_receipt'];$todayProjectionStale=($reportsModel['stale']??true)===true;$todayProjectionUnavailable=$todayProjectionStale||$businessDateUnavailable||!$financeView['today_available'];
+         $publicSnapshot=PublicDashboardFinance::lastKnownSnapshot($reports,$reportsModel,$todayKey);
+         $publicDayContext=['business_day'=>$todayKey,'cutoff'=>(string)($reports['business_clock']['cutoff']??''),'old_snapshot'=>$businessDateUnavailable];
+         $weekDaily=[];$weekday=[1=>'دوشنبه',2=>'سه‌شنبه',3=>'چهارشنبه',4=>'پنجشنبه',5=>'جمعه',6=>'شنبه',7=>'یکشنبه'];for($i=6;$i>=0;$i--){$d=$today->modify('-'.$i.' days');$k=$d->format('Y-m-d');$coverage=$financeView['daily_coverage'];$known=array_key_exists($k,$map)&&$sourceBusinessDate!==null&&((!$businessDateUnavailable&&!$todayProjectionStale)||$k<$todayKey)&&!in_array($k,$financeConflictDays,true);$weekDaily[]=['label'=>$i===0?'امروز':($weekday[(int)$d->format('N')]??''),'value'=>$known?($map[$k]??0):0,'known'=>$known];}$topItems=(string)($range['to']??'')===$todayKey?array_slice((array)($dashboard['top_items']??[]),0,5):[];if(!$topItems&&is_array($reports['archive']['items']??null)){foreach($reports['archive']['items'] as $item){if(is_array($item)&&(string)($item['date']??'')===$todayKey)$topItems[]=$item;}usort($topItems,static fn(array $a,array $b):int=>(int)($b['net_sales']??0)<=>(int)($a['net_sales']??0));$topItems=array_slice($topItems,0,5);}
+-        $notificationItems=is_array($notifications['items']??null)?array_values(array_filter($notifications['items'],static function($row):bool{$title=trim((string)($row['title']??''));return !str_starts_with($title,'QA Notification ');})) : [];$reportsError=$canReports?null:['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.'];$opsError=!$canOps?['message'=>'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.']:($opsProjectionUnavailable?['message'=>'ارتباط زنده با لوکال برقرار نیست؛ داده‌های سالن ممکن است قدیمی باشند. برای عملیات و وضعیت جاری، اتصال باید دوباره برقرار شود.']:null);$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
++        $todayNotice=PublicNotificationToday::preview($notifications,
++            ['stale'=>!self::dashboardProjectionAvailable($notificationRead)]);
++        $notificationItems=($todayNotice['today_available']??false)===true
++            ?array_values(array_filter((array)($todayNotice['today_items']??[]),static function($row):bool{
++                $title=trim((string)($row['title']??''));return !str_starts_with($title,'QA Notification ');
++            })) : [];$reportsError=$canReports?null:['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.'];$opsError=!$canOps?['message'=>'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.']:($opsProjectionUnavailable?['message'=>'ارتباط زنده با لوکال برقرار نیست؛ داده‌های سالن ممکن است قدیمی باشند. برای عملیات و وضعیت جاری، اتصال باید دوباره برقرار شود.']:null);$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
+         $fa=static fn(string|int|float $v):string=>strtr((string)$v,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹',','=>'٬']);$money=static fn(int $v):string=>$fa(number_format($v)).' تومان';$delta=static fn(int $current,int $reference):?int=>$reference>0?(int)round((($current-$reference)/$reference)*100):null;$relative=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{$dt=(new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz);$now=new \DateTimeImmutable('now',$tz);$sec=max(0,$now->getTimestamp()-$dt->getTimestamp());if($sec<60)return 'همین حالا';if($sec<3600)return $fa(max(1,(int)floor($sec/60))).' دقیقه پیش';if($sec<86400)return $fa((int)floor($sec/3600)).' ساعت پیش';return $fa((int)floor($sec/86400)).' روز پیش';}catch(\Throwable){return '—';}};
+         $lastFinanceSyncAt=(string)($reportsModel['last_sync_at']??'');$financeAsOf=$todayProjectionStale?('آخرین گزارش دریافت‌شده'.($lastFinanceSyncAt!==''?' · '.$relative($lastFinanceSyncAt):'')):null;$metrics=[];$todayHas=$todayHasReceipt;$yesterdayHas=$yesterdayHasReceipt;if($canReports){$metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>($reportsError||$todayProjectionUnavailable)?'—':$money((int)$todaySummary['net_sales']),'delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas)?null:$delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':(!$todayHas?'تسویهٔ قطعی برای این روز ثبت نشده':(!$yesterdayHas?'دیروز تسویه‌ای ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];$metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>($reportsError||$todayProjectionUnavailable||!$financeView['today_orders_available'])?'—':$fa((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':'سفارش‌های مشتری؛ بدون مصرف پرسنل','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];}if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsProjectionUnavailable?'—':$fa((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsProjectionUnavailable?'منتظر همگام‌سازی وضعیت سالن':'نشست باز در سالن','href'=>'/operator/?view=open'];if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>!$reportsError&&!$todayProjectionUnavailable&&$todayHas&&$financeView['today_avg_available']?$money((int)$todaySummary['avg_ticket']):'—','delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas||!$financeView['today_avg_available']||!$financeView['yesterday_avg_available'])?null:$delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$todayProjectionUnavailable?'منتظر همگام‌سازی اطلاعات امروز':(!$todayHas?'هنوز تسویهٔ کامل ثبت نشده':(!$yesterdayHas?'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق':'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق · نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
+         $attention=[];if($financeAsOf!==null&&!$todayProjectionUnavailable){foreach($metrics as &$metric){if(in_array($metric['label'],['فروش خالص امروز','سفارش‌های امروز','میانگین فاکتور'],true)&&$metric['value']!=='—'){$metric['helper']=$financeAsOf;$metric['delta']=null;}}unset($metric);}$pending=$opsProjectionUnavailable?[]:(array)($ops['attention_orders']??[]);if($pending){$oldest=$pending[0]??[];$attention[]=['tone'=>'danger','context'=>'سفارش','status'=>'فوری','title'=>$fa(count($pending)).' سفارش منتظر رسیدگی','subtitle'=>$oldest?('قدیمی‌ترین · '.$relative((string)($oldest['created_at']??''))):'در صف بررسی','href'=>'/operator/?work=attention&attention_filter=orders#attention'];}$calls=$opsProjectionUnavailable?[]:(array)($ops['waiter_calls']??[]);if($calls){$oldest=$calls[0]??[];$attention[]=['tone'=>'warning','context'=>'سالن','status'=>'بررسی','title'=>$fa(count($calls)).' فراخوان مهمان باز','subtitle'=>$oldest?($fa((string)($oldest['table_name']??'')).' · '.$relative((string)($oldest['created_at']??''))):'نیازمند بررسی','href'=>'/operator/?work=attention&attention_filter=calls#attention'];}$used=[];if(count($attention)<4){foreach($notificationItems as $item){if(!empty($item['read_at']))continue;$id=(int)($item['id']??0);if($id>0)$used[$id]=true;$attention[]=['tone'=>'info','context'=>'اعلان','status'=>'جدید','title'=>(string)($item['title']??'اعلان جدید'),'subtitle'=>(string)($item['body']??''),'href'=>(string)($item['target_url']??'/notifications/')];if(count($attention)>=4)break;}}// R313: Notifications are not a substitute for operational activity.
+         // When the Local model has not yet projected this stream, show unavailable,
+--- a/public/src/UI/ProductShell.php
++++ b/public/src/UI/ProductShell.php
+@@ -45,9 +45,9 @@
+         $buildVersion=SCDS::e($rawBuildVersion);
+         $displayVersion=SCDS::e(self::displayVersion($rawBuildVersion));
+         $runtimeAdapter=$isPublicStaff?'/assets/staff-app/public-hall-transport.js':'/assets/staff-app/local-runtime-adapter.js';
+         $publicStaffCss=$isPublicStaff?'<link rel="stylesheet" media="screen and (max-width: 767px)" href="'.$asset('/assets/scds/remote-staff.css').'">':'';
+-        $publicDeviceScript=$isPublicStaff?'<script src="'.$asset('/assets/staff-app/public-device.js').'" defer></script>':'';
++        $publicDeviceScript=$isPublicStaff?'<script src="'.$asset('/assets/staff-app/public-device.js').'" defer></script><script src="'.$asset('/assets/staff-app/public-bell.js').'" defer></script>':'';
+ 
+         echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><base href="'.$baseHref.'">';
+         $brandAsset=static fn(string $variant): string=>SCDS::e(LocalUrl::path('/brand-asset.php').'?variant='.rawurlencode($variant).'&iv='.rawurlencode($identityVersion));
+         $brandManifest=SCDS::e(LocalUrl::path('/manifest.php').'?iv='.rawurlencode($identityVersion));
+@@ -88,9 +88,17 @@
+         echo '<div class="sc-shell__top-left">';
+         $accountLink=$accountPath!==''?'<a class="sc-user-menu__link" href="'.$u($accountPath).'" data-user-menu-primary><span>'.self::icon('users').'</span><span><strong>حساب کاربری</strong><small>پروفایل و امنیت حساب</small></span></a>':'';
+         echo '<div class="sc-user-menu sc-theme-picker" data-theme-picker data-user-menu><button class="sc-shell__user-card sc-user-menu__trigger" type="button" data-theme-menu-toggle data-theme-menu-label="preserve" aria-label="منوی کاربر، '.$name.'" aria-haspopup="true" aria-expanded="false"><span class="sc-shell__user-copy"><strong>'.$name.'</strong><small>'.$safeRole.'</small></span><span class="sc-user-menu__chevron" aria-hidden="true">'.self::icon('chevron-down').'</span></button><div class="sc-theme-picker__menu sc-user-menu__menu" aria-label="منوی کاربر" hidden data-theme-menu data-user-menu-panel>'.$accountLink.'<div class="sc-user-menu__section"><span class="sc-user-menu__section-label">پوسته</span><div class="sc-user-menu__theme" role="radiogroup" aria-label="پوسته سامانه"><button type="button" role="radio" data-theme-option="light" aria-checked="false"><span>'.self::icon('sun').'</span><span>روشن</span></button><button type="button" role="radio" data-theme-option="dark" aria-checked="false"><span>'.self::icon('moon').'</span><span>تیره</span></button><button type="button" role="radio" data-theme-option="system" aria-checked="false"><span>'.self::icon('device').'</span><span>سیستم</span></button></div></div><a class="sc-user-menu__link sc-user-menu__link--logout" href="'.$u($logoutPath).'"><span>'.self::icon('logout').'</span><span><strong>خروج</strong><small>پایان نشست جاری</small></span></a></div></div>';
+         echo '<div class="sc-shell__date-card" data-shell-clock data-timezone="'.$timezone.'" data-server-now="'.$serverNow.'"><span class="sc-shell__date-icon" aria-hidden="true">'.self::icon('calendar').'</span><span class="sc-shell__date-copy"><strong data-shell-date>—</strong><span data-shell-time>—</span></span></div>';
+-        echo '<a class="sc-icon-button sc-shell__notify" href="'.$u($notificationsPath).'" aria-label="اعلان‌ها">'.self::icon('bell').'</a>';
++        if($isPublicStaff){
++            $bellId='sc-public-bell-panel';
++            echo '<div class="sc-shell__bell-wrap" data-public-bell data-api="'.$u('/staff/notifications-adapter').'">';
++            echo '<button class="sc-icon-button sc-shell__notify" type="button" data-public-bell-toggle aria-label="اعلان‌های روز کاری" aria-controls="'.$bellId.'" aria-expanded="false" aria-haspopup="dialog">'.self::icon('bell').'</button>';
++            echo '<section id="'.$bellId.'" class="sc-shell__bell-panel" data-public-bell-panel role="dialog" aria-label="اعلان‌های روز کاری" hidden><div class="sc-shell__bell-head"><strong>اعلان‌های روز کاری</strong><button type="button" class="sc-icon-button" data-public-bell-close aria-label="بستن اعلان‌ها">'.self::icon('x').'</button></div><p class="sc-shell__bell-status" data-public-bell-status role="status">برای مشاهده اعلان‌ها، زنگوله را بزنید.</p><div class="sc-shell__bell-items" data-public-bell-items></div><a class="sc-shell__bell-all" href="'.$u($notificationsPath).'">مشاهده تاریخچه اعلان‌ها</a></section>';
++            echo '</div>';
++        }else{
++            echo '<a class="sc-icon-button sc-shell__notify" href="'.$u($notificationsPath).'" aria-label="اعلان‌ها">'.self::icon('bell').'</a>';
++        }
+         echo '</div>';
+         echo '<div class="sc-shell__top-spacer" aria-hidden="true"></div>';
+         echo '<div class="sc-shell__right-actions">';
+         echo '<button class="sc-shell__toggle" type="button" data-product-nav-toggle aria-label="باز کردن منو" aria-controls="productNav" aria-expanded="false">'.self::icon('menu').'</button>';
