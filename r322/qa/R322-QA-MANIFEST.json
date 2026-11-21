@@ -1,0 +1,43 @@
+{
+  "phase": "R322",
+  "scope": "Print Agent development QA only; no release/install",
+  "baseline": "R321, R307 installed source preserved",
+  "ci": {
+    "run_id": 44875961486,
+    "url": "https://github.com/mobaraki20/SoknaCafeV3/actions/runs/44875961486",
+    "sha": "80967d49c232e7a2205655bc203b5f5d24b7291d",
+    "windows_agent": "PASS - dotnet build Release, 0 warnings, 0 errors",
+    "windows_test_suite": "PASS",
+    "windows_contract_A18": "PASS",
+    "transport_A06": "PASS (13 assertions)",
+    "service_A12": "PASS (12 assertions)",
+    "fault_A25": "PASS (8 assertions)",
+    "fault_A26": "PASS (9 assertions)",
+    "fault_A27": "PASS (9 assertions)",
+    "static": "PASS",
+    "local_mariadb": "FAIL - historical schema test tries unbounded migrations and hits 0059 guard on unseeded DB",
+    "local_failure": "SQLSTATE[21000] 1242: Subquery returns more than 1 row; 0059_menu_business_reconciliation_v4 statement 1"
+  },
+  "root_cause": "M8 tests expected only migrations 0001..0026 but called migrate() unbounded against an unseeded database; 0059 explicitly checks item catalog preconditions. This alone does not prove a production migration defect.",
+  "r322_test_only_fix": [
+    "tests/local-mysql-migration-selftest.php",
+    "tests/local-m8-printing-selftest.php"
+  ],
+  "test_change": "Both tests now stop before 0027_auth_login_rate_limits, consistent with the historical 0026 expected schema. Production migration 0059 unchanged.",
+  "test_fix_status": "Committed to QA but NOT rerun on MariaDB. No PR reopened to avoid triggering release-qualification workflows.",
+  "remaining": [
+    "Retest isolated MariaDB historical M8 gate in controlled environment",
+    "Test latest production clean-install & upgrade migrations separately with required seeded catalog",
+    "Run actual 58/80mm renderer and inspect RTL, notes, station-order, one header, and account-preview badge",
+    "Verify full Local/Public print contract on authenticated QA",
+    "Final rollout/install testing deferred until all issues addressed"
+  ],
+  "github_qa_branch": "qa/sokna-r322-print-agent-build-mariadb-gate-20261121",
+  "pr": {
+    "url": "https://github.com/mobaraki20/SoknaCafeV3/pull/110",
+    "status": "closed draft without merge",
+    "reason": "PR automatically triggered broad unrelated release workflows; user deferred release qualification"
+  },
+  "production_affected": false,
+  "installable": false
+}
