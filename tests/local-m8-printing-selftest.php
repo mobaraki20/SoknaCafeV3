@@ -5,7 +5,7 @@ use Sokna\Local\Domain\Printing\PrintException;
 function m8f(string $m):never{fwrite(STDERR,$m.PHP_EOL);exit(1);} function m8a(bool $c,string $m):void{if(!$c)m8f($m);}
 $dataRoot=sys_get_temp_dir().'/sokna-m8-'.bin2hex(random_bytes(3));
 $core=sokna_local_bootstrap(['app'=>['timezone'=>'Asia/Tehran','data_dir'=>$dataRoot],'runtime'=>['local_base_url'=>'http://127.0.0.1:18080/','local_token'=>str_repeat('l',64)],'db'=>['host'=>(string)(getenv('SOKNA_TEST_DB_HOST')?:'127.0.0.1'),'port'=>(string)(getenv('SOKNA_TEST_DB_PORT')?:'3306'),'name'=>(string)(getenv('SOKNA_TEST_DB_NAME')?:'sokna_m2'),'charset'=>'utf8mb4','user'=>(string)(getenv('SOKNA_TEST_DB_USER')?:'sokna'),'pass'=>(string)(getenv('SOKNA_TEST_DB_PASS')?:'sokna')]]);
-$core->migrations()->migrate();$pdo=$core->database();
+// M8 print contract targets the schema through 0026 only.\n// Do not run newer catalog-data migrations on an unseeded isolated test DB.\n$core->migrations()->migrate('0027_auth_login_rate_limits');$pdo=$core->database();
 $pdo->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')->execute(['m8-admin',password_hash('x',PASSWORD_DEFAULT),'M8 Admin','admin']);$aid=(int)$pdo->lastInsertId();$admin=['id'=>$aid,'role'=>'admin','active'=>1];
 @mkdir($dataRoot.'/secrets',0700,true);file_put_contents($dataRoot.'/secrets/runtime-health.token',str_repeat('h',64),LOCK_EX);
 $agent=$core->printing()->createAgent('M8 Agent',$admin);m8a(strlen($agent['token'])===64,'agent token invalid');
