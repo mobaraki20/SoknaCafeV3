@@ -1,0 +1,189 @@
+{
+  "schema": "sokna-r316-design-language-source-qa-v1",
+  "date": "2026-11-21",
+  "parent": "R315 cumulative QA",
+  "source_type": "R315 exact extracted QA source + R315 installed baseline files",
+  "scope": "cross-page design language audit and first canonical preparation tab refactor",
+  "environment": "QA ONLY - NOT INSTALL",
+  "installed_local_unchanged": "231fw/R307",
+  "installed_public_unchanged": "35in/R306",
+  "changed_paths": [
+    {
+      "path": "local/assets/staff-app/preparation-workspace.js",
+      "base_sha256": "e3579629282a55ba9a07ada6ff174cbcbcdf4268756e1070dfe3efd544689b70",
+      "candidate_sha256": "ab9378e0e6ba3d1b2f3fbba08524540b03a85350a0dca67ec0d176d726b66f6c",
+      "source_bytes": 13536,
+      "patch_lines": 25
+    },
+    {
+      "path": "local/assets/product-ui.css",
+      "base_sha256": "ae50a4386ff1833258b89bc40bc9deafd4a1711b68ecd12d961361ef195343ef",
+      "candidate_sha256": "649840ce8df679918446a387247fd1555862bc370532c60c4750885fed1a99b4",
+      "source_bytes": 674807,
+      "patch_lines": 55
+    },
+    {
+      "path": "public/assets/staff-app/preparation-workspace.js",
+      "base_sha256": "58f0da1c23440206750918b040c37accf961c5f22dc8e6c734f05bc29cee9a7d",
+      "candidate_sha256": "9c1310b921bc58a4b728fa8d13133e73adbe6a5ad3a65d1455bfee614d78d33f",
+      "source_bytes": 13751,
+      "patch_lines": 24
+    },
+    {
+      "path": "public/assets/product-ui.css",
+      "base_sha256": "ecec8ed86cadc7894c754328bccdcd132a2268bb9e4b6b7318c18970fd6addff",
+      "candidate_sha256": "a744218453eb4db09ee4bd694a6d33f0546d0f1ee480f084b74c975d30b3b832",
+      "source_bytes": 640022,
+      "patch_lines": 38
+    }
+  ],
+  "test": {
+    "node_check_local": true,
+    "node_check_public": true,
+    "preparation_tabs_click_before_after_mobile_desktop": true,
+    "screenshots_source_derived": 18,
+    "tested_viewports": [
+      "390x844",
+      "430x932",
+      "1280x800",
+      "1366x900",
+      "1440x900"
+    ],
+    "js_errors": 0,
+    "horizontal_overflow": 0,
+    "limits": [
+      "Fixtures use exact source component classes and CSS with sample data, but are not authenticated full-page production captures",
+      "No MariaDB, two-host, print, or live system tested",
+      "Reports, Printing, Operations screen inconsistencies audited but not patched in this change"
+    ]
+  },
+  "evidence": [
+    {
+      "file": "R316-preparation-mobile-before-source-QA.png",
+      "viewport": "mobile",
+      "page": "preparation",
+      "phase": "before",
+      "sha256": "c0c753f71b87a367b41ae7bc8acddbed297326b8f205ed3890f93b508ad0d732"
+    },
+    {
+      "file": "R316-preparation-mobile-after-source-QA.png",
+      "viewport": "mobile",
+      "page": "preparation",
+      "phase": "after",
+      "sha256": "841dc73d92247e457d2b2432f0183e9ea4ee1e05cc1ba7c8a3dddd38be9de965"
+    },
+    {
+      "file": "R316-preparation-desktop-before-source-QA.png",
+      "viewport": "desktop",
+      "page": "preparation",
+      "phase": "before",
+      "sha256": "4712d65ae623adf5b33dc9b0a39a1e1d164563db67d13a1760a6e202f6eea5c0"
+    },
+    {
+      "file": "R316-preparation-desktop-after-source-QA.png",
+      "viewport": "desktop",
+      "page": "preparation",
+      "phase": "after",
+      "sha256": "eca02f9c50945618339e427f34c721037f6dcab80de8ef4f596bd0ed89086181"
+    },
+    {
+      "file": "R316-connections-mobile-source-source-QA.png",
+      "viewport": "mobile",
+      "page": "connections",
+      "phase": "source",
+      "sha256": "f9ec65654a19e2d75f24ec6affeb3c9cf8cce32599d0c210041f0e594a4958a2"
+    },
+    {
+      "file": "R316-connections-desktop-source-source-QA.png",
+      "viewport": "desktop",
+      "page": "connections",
+      "phase": "source",
+      "sha256": "f914fbb0662921f194f0de8e9c29f0524111bbe58004859c035310ba94e71d8e"
+    },
+    {
+      "file": "R316-reports-mobile-source-source-QA.png",
+      "viewport": "mobile",
+      "page": "reports",
+      "phase": "source",
+      "sha256": "2f90feebe1c654c689da84c87d16f73f22b6863c6f2399eb6a7fe60e3d7098fc"
+    },
+    {
+      "file": "R316-reports-desktop-source-source-QA.png",
+      "viewport": "desktop",
+      "page": "reports",
+      "phase": "source",
+      "sha256": "4936fc4d321d063a333e294de454c5f2a131bbb2fda7661b88431f639ad52e7d"
+    },
+    {
+      "file": "R316-printing-mobile-source-source-QA.png",
+      "viewport": "mobile",
+      "page": "printing",
+      "phase": "source",
+      "sha256": "a8d3999d3b9fe97b264416a2530019a69cd80e61c2875cafabc7a1117d0ea14b"
+    },
+    {
+      "file": "R316-printing-desktop-source-source-QA.png",
+      "viewport": "desktop",
+      "page": "printing",
+      "phase": "source",
+      "sha256": "77be28233760b8b9d4a6ed524ec79f9af0c3be5356313bdfa286998636128fb7"
+    },
+    {
+      "file": "R316-operations-mobile-source-source-QA.png",
+      "viewport": "mobile",
+      "page": "operations",
+      "phase": "source",
+      "sha256": "af3eb2830217a72d05da320707d65725460683667c2dc5176d9d606714994d3c"
+    },
+    {
+      "file": "R316-operations-desktop-source-source-QA.png",
+      "viewport": "desktop",
+      "page": "operations",
+      "phase": "source",
+      "sha256": "208a158a91f33ef1d379c4c0076b6246cf9a54352c5c44a8155ff88a29b793cf"
+    },
+    {
+      "file": "R316-preparation-mobile430-before-source-QA.png",
+      "viewport": "mobile430",
+      "page": "preparation",
+      "phase": "before",
+      "sha256": "bba5292f1127c217dfa798f0f9f40d2875bc002e98c2c5e4519489d84479c2be"
+    },
+    {
+      "file": "R316-preparation-mobile430-after-source-QA.png",
+      "viewport": "mobile430",
+      "page": "preparation",
+      "phase": "after",
+      "sha256": "220405d03276c9145759d5c3820a2dcc4769e5ee07d780ddf6cc73d19cd3626e"
+    },
+    {
+      "file": "R316-preparation-desktop1440-before-source-QA.png",
+      "viewport": "desktop1440",
+      "page": "preparation",
+      "phase": "before",
+      "sha256": "2fd8c873066db9de5c567f38a67df18a691549f5484b073189a7f5ff53fab607"
+    },
+    {
+      "file": "R316-preparation-desktop1440-after-source-QA.png",
+      "viewport": "desktop1440",
+      "page": "preparation",
+      "phase": "after",
+      "sha256": "1ee5354a0df48cccb4e92380c91c63f2d05c966735038ca498f817a403bc2f64"
+    },
+    {
+      "file": "R316-preparation-desktop1280-before-source-QA.png",
+      "viewport": "desktop1280",
+      "page": "preparation",
+      "phase": "before",
+      "sha256": "dad677f2740dd8e99731b868cbf747e7682cdab3fa564c49607bcdf67e39fa6a"
+    },
+    {
+      "file": "R316-preparation-desktop1280-after-source-QA.png",
+      "viewport": "desktop1280",
+      "page": "preparation",
+      "phase": "after",
+      "sha256": "f9af36a9b445bdf851d40adabb92f83102ec27653824b2854a3c6094d799ca79"
+    }
+  ],
+  "patch_sha256": "b1fa33d24984fcbf61b6955e981176ecffcb2b33b71f1930f38edeedc1967132"
+}
