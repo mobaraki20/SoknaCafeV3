@@ -253,11 +253,12 @@ final class PrintService
         $this->requireTx();
         try{
             $stmt=$this->pdo->prepare(
-                'SELECT o.id,o.business_order_number,o.public_code,o.customer_note,o.created_at,o.order_context,o.table_id,'.
+                'SELECT o.id,o.business_order_number,o.public_code,o.customer_note,o.created_at,o.order_context,o.accounting_origin,o.table_id,'.
                 't.name table_name,sc.consumer_personnel_id,sc.consumer_name_snapshot '.
                 'FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id LEFT JOIN staff_consumptions sc ON sc.order_id=o.id WHERE o.id=? LIMIT 1'
             );
             $stmt->execute([$orderId]);$order=$stmt->fetch(PDO::FETCH_ASSOC);if(!is_array($order))return null;
+            if((string)($order['accounting_origin']??'regular')==='late_served')return null;
             $context=(string)($order['order_context']??'table_service');
             if($context==='staff_consumption'&&(int)($order['consumer_personnel_id']??0)<1)return null;
             $rows=$this->preparationRowsForOrder($orderId);if(!$rows)return null;
@@ -270,7 +271,7 @@ final class PrintService
                 'consumer_name'=>$context==='staff_consumption'?$consumer:null,'customer_note'=>$order['customer_note'],
                 // Keep top-level `items` during rolling upgrades, but the canonical
                 // renderer contract is sections[].items[] with name/note fields.
-                'items'=>$rows,'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
+                'items'=>self::sortPreparationRows($rows),'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
             ];
             $payload=$this->templates->applyActive($payload);
             $r=$this->enqueueTx('preparation','prep_shared',$payload,'order',(string)$orderId,$actorUserId,'prep:order:'.$orderId,false);
@@ -332,24 +333,132 @@ final class PrintService
     {
         $this->requireTx();$requestId=self::requestId($requestId);
         $stmt=$this->pdo->prepare(
-            'SELECT o.id,o.business_order_number,o.customer_note,o.created_at,o.order_context,o.table_id,t.name table_name ' .
+            'SELECT o.id,o.business_order_number,o.customer_note,o.created_at,o.order_context,o.accounting_origin,o.table_id,t.name table_name ' .
             'FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id WHERE o.id=? LIMIT 1 FOR UPDATE'
         );
         $stmt->execute([$orderId]);$order=$stmt->fetch(PDO::FETCH_ASSOC);
         if(!is_array($order))throw new PrintException('order_not_found','سفارش برای چاپ مجدد پیدا نشد.',404);
+        if((string)($order['accounting_origin']??'regular')==='late_served')throw new PrintException('already_served','قلم تحویل‌شده فیش آماده‌سازی ندارد.',409);
         if((string)($order['order_context']??'table_service')!=='table_service')throw new PrintException('reprint_not_supported','چاپ مجدد این نوع سفارش از سالن پشتیبانی نمی‌شود.',409);
         $rows=$this->preparationRowsForOrder($orderId);
         if(!$rows)throw new PrintException('nothing_to_reprint','این سفارش قلمی برای فیش آماده‌سازی ندارد.',409);
         $payload=[
             'schema'=>'sokna-print-document-v2','document_kind'=>'preparation','order_id'=>$orderId,'order_number'=>(int)$order['business_order_number'],
             'order_context'=>'table_service','table_name'=>self::faDigits((string)($order['table_name']??'')),'badge'=>'چاپ مجدد · فیش آماده‌سازی',
-            'customer_note'=>$order['customer_note'],'items'=>$rows,'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
+            'customer_note'=>$order['customer_note'],'items'=>self::sortPreparationRows($rows),'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
             'reprint'=>true,'reprint_request_id'=>$requestId,'reprint_requested_by_user_id'=>$actorUserId,
         ];
         $payload=$this->templates->applyActive($payload);
         $job=$this->enqueueTx('preparation_reprint','prep_shared',$payload,'order_reprint',(string)$orderId,$actorUserId,'prep:reprint:order:'.$orderId.':'.$requestId,false);
         $this->audit('printing.order_reprint_enqueued','print_job',(int)($job['job_id']??0),$actorUserId,['order_id'=>$orderId,'request_id'=>$requestId,'status'=>(string)($job['status']??'')]);
         return $job+['order_id'=>$orderId,'request_id'=>$requestId];
+    }
+
+    /**
+     * One PRINT JOB for all printable, accounted rounds in ONE active table session.
+     * No previous table session, unapproved order, served-late item, stock or payment action.
+     * A request_id has durable idempotency through print_jobs, just like a single-round reprint.
+     */
+    public function enqueueAccountPreparationReprintTx(int $sessionId,int $tableId,int $actorUserId,string $requestId): array
+    {
+        $this->requireTx();$requestId=self::requestId($requestId);
+        if($sessionId<1||$tableId<1)throw new PrintException('invalid_session','حساب باز معتبر نیست.',422);
+        $stmt=$this->pdo->prepare('SELECT s.id,s.status,s.table_id,t.name table_name FROM table_sessions s JOIN cafe_tables t ON t.id=s.table_id WHERE s.id=? FOR UPDATE');
+        $stmt->execute([$sessionId]);$session=$stmt->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($session)||(string)($session['status']??'')!=='active'||(int)$session['table_id']!==$tableId)
+            throw new PrintException('session_changed','حساب میز تغییر کرده یا بسته شده است؛ صفحه را تازه کنید.',409);
+        // Accounted rows only. This deliberately excludes historical sessions on the same table.
+        $orders=$this->pdo->prepare("SELECT id,business_order_number,customer_note,created_at FROM orders WHERE session_id=? AND table_id=? AND status='accounted' AND order_context='table_service' AND accounting_origin<>'late_served' ORDER BY created_at,id FOR UPDATE");
+        $orders->execute([$sessionId,$tableId]);$rounds=$orders->fetchAll(PDO::FETCH_ASSOC)?:[];
+        if(count($rounds)>150)throw new PrintException('too_many_rounds','تعداد نوبت‌ها برای چاپ یکپارچه بیش از حد است؛ نوبت‌ها را جدا چاپ کنید.',409);
+        $allRows=[];$printedRounds=[];$notes=[];$firstDate='';
+        foreach($rounds as $round){
+            $rows=$this->preparationRowsForOrder((int)$round['id']);
+            if(!$rows)continue;
+            if(count($allRows)+count($rows)>3000)throw new PrintException('too_many_items','تعداد اقلام برای چاپ یکپارچه بیش از حد است؛ نوبت‌ها را جدا چاپ کنید.',409);
+            $roundNumber=count($printedRounds)+1;
+            $printedRounds[]=['order_id'=>(int)$round['id'],'order_number'=>(int)$round['business_order_number'],'item_count'=>count($rows)];
+            $allRows=array_merge($allRows,$rows);
+            if($firstDate==='')$firstDate=(string)$round['created_at'];
+            $note=trim((string)($round['customer_note']??''));
+            if($note!=='')$notes[]='سفارش '.self::faDigits((string)$round['business_order_number']).': '.$note;
+        }
+        if(!$allRows)throw new PrintException('nothing_to_reprint','این حساب قلم قابل چاپ آماده‌سازی ندارد.',409);
+        $payload=[
+            'schema'=>'sokna-print-document-v2','document_kind'=>'preparation',
+            'document_role'=>'preparation_full_account_reprint',
+            'order_number'=>'همه نوبت‌ها','order_id'=>null,
+            'session_id'=>$sessionId,'table_id'=>$tableId,
+            'table_name'=>self::faDigits((string)$session['table_name']),
+            'badge'=>'چاپ مجدد · کل فیش آماده‌سازی',
+            'customer_note'=>$notes?implode("
+",$notes):null,
+            'items'=>self::sortPreparationRows($allRows),
+            'sections'=>self::preparationSections($allRows),
+            'created_at'=>\Sokna\Shared\IranTime::iso($firstDate),'display_date'=>\Sokna\Shared\IranTime::display($firstDate),
+            'reprint'=>true,'full_account_reprint'=>true,'round_count'=>count($printedRounds),
+            'rounds'=>$printedRounds,'reprint_request_id'=>$requestId,
+            'reprint_requested_by_user_id'=>$actorUserId,
+        ];
+        $payload=$this->templates->applyActive($payload);
+        $job=$this->enqueueTx('preparation_reprint','prep_shared',$payload,'session_preparation_reprint',(string)$sessionId,
+            $actorUserId,'prep:reprint:all:session:'.$sessionId.':'.$requestId,false);
+        $this->audit('printing.account_preparation_reprint_enqueued','print_job',(int)($job['job_id']??0),$actorUserId,[
+            'session_id'=>$sessionId,'table_id'=>$tableId,'round_count'=>count($printedRounds),
+            'order_ids'=>array_column($printedRounds,'order_id'),'request_id'=>$requestId,'status'=>(string)($job['status']??'')
+        ]);
+        return $job+['scope'=>'all','session_id'=>$sessionId,'table_id'=>$tableId,'round_count'=>count($printedRounds),'request_id'=>$requestId];
+    }
+
+    /** Prints a dated, immutable snapshot of the CURRENT open bill only.
+     * No invoice_number, settlement record or payment/stock mutation exists here.
+     */
+    public function enqueueOpenAccountPreviewTx(array $account,int $actorUserId,string $requestId): array
+    {
+        $this->requireTx();$requestId=self::requestId($requestId);
+        $sessionId=(int)($account['session']['id']??0);
+        if($sessionId<1||$actorUserId<1)throw new PrintException('invalid_account_preview','اطلاعات صورتحساب اولیه معتبر نیست.',422);
+        $items=[];
+        foreach((array)($account['items']??[]) as $line){
+            $quantity=(int)($line['quantity']??0);
+            if($quantity<1)continue;
+            $items[]=[
+                'name'=>(string)($line['item_name']??'—'),'quantity'=>$quantity,
+                'unit_price'=>(int)($line['unit_price']??0),'line_total'=>(int)($line['line_total']??0),
+                'note'=>trim((string)($line['item_note']??''))?:null
+            ];
+        }
+        if($items===[])throw new PrintException('no_lines','صورتحساب اولیه هیچ قلم معتبری ندارد.',409);
+        $paid=max(0,(int)($account['paid_total']??0));$remaining=max(0,(int)($account['remaining_total']??0));
+        $footer='این برگه صورتحساب اولیه است؛ فاکتور رسمی یا رسید پرداخت نیست. مبلغ ممکن است تا زمان تسویه تغییر کند.';
+        if($paid>0)$footer.=' پرداخت‌شده: '.self::faDigits(number_format($paid)).' تومان؛ مانده: '.self::faDigits(number_format($remaining)).' تومان.';
+        $session=$account['session'];
+        // The invoice_number field is deliberately an empty string: no invoice ID is minted or implied.
+        $payload=[
+            'schema'=>'sokna-print-document-v2','document_kind'=>'customer','document_role'=>'account_preview',
+            'title'=>'کافه سکنا — صورتحساب اولیه (تسویه نشده)','invoice_number'=>'',
+            'badge'=>'حساب باز · تسویه نشده','table_name'=>self::faDigits((string)($session['table_name']??$session['table_id']??'')),
+            'created_at'=>gmdate('c'),'currency'=>'تومان','sections'=>[['items'=>$items]],
+            'subtotal'=>(int)$account['subtotal'],'discount'=>(int)$account['discount'],
+            'taxable'=>(int)$account['taxable'],'tax'=>(int)$account['tax'],'total'=>(int)$account['total'],
+            'settlement_label'=>$paid>0?'بخشی پرداخت شده؛ حساب همچنان باز است':'پرداخت نهایی ثبت نشده',
+            'footer'=>$footer
+        ];
+        $payload=$this->templates->applyActive($payload);
+        // The active customer template may define its own footer. This job-specific warning
+        // must remain visible even when the template footer has been customized.
+        if(is_array($payload['template']??null)){
+            $normal=(string)($payload['template']['footer']??'');
+            $payload['template']['footer']=trim($normal!==''?$normal.' · '.$footer:$footer);
+            // Some customized customer templates exclude footer entirely. A prepayment
+            // document MUST show its non-receipt warning even under those templates.
+            $order=$payload['template']['design']['section_order']??null;
+            if(is_array($order)&&$order!==[]&&!in_array('footer',$order,true)){
+                $order[]='footer';$payload['template']['design']['section_order']=$order;
+            }
+        }
+        return $this->enqueueTx('customer_account_preview','customer_receipt',$payload,'account_preview',(string)$sessionId,$actorUserId,
+            'account:preview:session:'.$sessionId.':'.$requestId,false);
     }
 
     public function enqueueSettlementTx(int $settlementId,?int $actorUserId=null): ?int
@@ -461,7 +570,7 @@ final class PrintService
     {
         $this->pdo->beginTransaction();
         try{
-            $actor=$this->assertAdmin($user);$action=trim($action);$reason=self::cut(trim($reason),500);if($reason==='')throw new PrintException('reason_required','دلیل اقدام چاپ لازم است.',422);
+            $actor=$this->assertAdmin($user);$action=trim($action);$reason=self::cut(trim($reason),500);if($reason===''&&$action==='cancel')$reason='لغو توسط مدیر، پیش از تحویل قطعی به چاپگر';if($reason==='')throw new PrintException('reason_required','دلیل اقدام چاپ لازم است.',422);
             $stmt=$this->pdo->prepare('SELECT * FROM print_jobs WHERE id=? FOR UPDATE');$stmt->execute([$jobId]);$job=$stmt->fetch(PDO::FETCH_ASSOC);if(!is_array($job))throw new PrintException('job_not_found','کار چاپ پیدا نشد.',404);
             $status=(string)$job['status'];$safe=in_array($status,['pending','failed','blocked'],true);if(!$safe)throw new PrintException('job_action_unsafe','این کار چاپ در وضعیتی است که Retry/Reroute/Cancel خودکار می‌تواند چاپ تکراری ایجاد کند؛ از تعیین وضعیت ابهام استفاده کن.',409,['status'=>$status]);
             if($action==='cancel'){
@@ -569,15 +678,48 @@ final class PrintService
     /** @return list<array<string,mixed>> */
     private function preparationRowsForOrder(int $orderId): array
     {
-        $stmt=$this->pdo->prepare("SELECT id,item_name,quantity,item_note,fulfillment_mode,preparation_station FROM order_items WHERE order_id=? AND quantity>0 ORDER BY id");
+        $stmt=$this->pdo->prepare("SELECT id,item_id,unit_price,item_name,quantity,item_note,fulfillment_mode,preparation_station FROM order_items WHERE order_id=? AND quantity>0 ORDER BY id");
         $stmt->execute([$orderId]);$parents=$stmt->fetchAll(PDO::FETCH_ASSOC)?:[];if($parents===[])return [];
         $comp=$this->pdo->prepare('SELECT item_name_snapshot,quantity,preparation_station_snapshot,component_mode,choice_label_snapshot FROM order_item_bundle_components WHERE order_item_id=? ORDER BY id');$out=[];
         foreach($parents as $parent){
             $comp->execute([(int)$parent['id']]);$rows=$comp->fetchAll(PDO::FETCH_ASSOC)?:[];
-            if($rows===[]){if((string)$parent['preparation_station']!=='none')$out[]=['item_name'=>(string)$parent['item_name'],'quantity'=>(int)$parent['quantity'],'item_note'=>$parent['item_note'],'fulfillment_mode'=>(string)$parent['fulfillment_mode'],'preparation_station'=>(string)$parent['preparation_station']];continue;}
-            foreach($rows as $row){$note=trim((string)($parent['item_note']??''));$ctx='از ترکیب «'.(string)$parent['item_name'].'»';$note=$note!==''?$ctx.' · '.$note:$ctx;$out[]=['item_name'=>(string)$row['item_name_snapshot'],'quantity'=>(int)$row['quantity'],'item_note'=>$note,'fulfillment_mode'=>(string)$parent['fulfillment_mode'],'preparation_station'=>(string)$row['preparation_station_snapshot']];}
+            // Identical display names can represent different catalog items. Only coalesce
+            // notes when the underlying catalog identity (and price snapshot) match.
+            // Legacy/custom rows without an item_id are deliberately lossless.
+            $itemId=(int)($parent['item_id']??0);
+            // Each independently stored order row owns its note, even if the same catalog item, price and text occur in both fulfillment modes.
+            // Only component rows expanded from this same parent can share an identity.
+            $identity='order-row:'.(int)$parent['id'].':catalog:'.$itemId.':price:'.(int)$parent['unit_price'];
+            if($rows===[]){if((string)$parent['preparation_station']!=='none')$out[]=['item_name'=>(string)$parent['item_name'],'quantity'=>(int)$parent['quantity'],'item_note'=>$parent['item_note'],'fulfillment_mode'=>(string)$parent['fulfillment_mode'],'preparation_station'=>(string)$parent['preparation_station'],'_note_identity'=>$identity];continue;}
+            array_push($out,...self::bundlePreparationRows($parent,$rows,$identity));
         }
         return self::oncePerSplitFulfillmentNote($out);
+    }
+
+    /** Bundle parent notes are shared by components of one preparation station.
+     * A second station must independently receive the note; independent order rows remain independent.
+     * This never merges based on similar product names. */
+    private static function bundlePreparationRows(array $parent,array $components,string $identity): array
+    {
+        $rows=[];$noteByStation=[];
+        $parentNote=trim((string)($parent['item_note']??''));
+        $context='از ترکیب «'.(string)($parent['item_name']??'') . '»';
+        foreach($components as $index=>$component){
+            if(!is_array($component))continue;
+            $station=trim((string)($component['preparation_station_snapshot']??'other'));
+            if($station==='none')continue;
+            if($station==='')$station='other';
+            $firstForStation=!isset($noteByStation[$station]);
+            if($firstForStation)$noteByStation[$station]=true;
+            // One contextual preparation note per parent and station, even when no free-text note exists.
+            $itemNote=$firstForStation?($context.($parentNote!==''?' · '.$parentNote:'')):null;
+            $part=hash('sha256',self::json([$index,(string)($component['item_name_snapshot']??''),$station,(string)($component['component_mode']??''),(string)($component['choice_label_snapshot']??'')]));
+            $rows[]=['item_name'=>(string)($component['item_name_snapshot']??'—'),
+                'quantity'=>max(1,(int)($component['quantity']??1)),
+                'item_note'=>$itemNote,'fulfillment_mode'=>(string)($parent['fulfillment_mode']??'dine_in'),
+                'preparation_station'=>$station,'_note_identity'=>$identity.':part:'.$part];
+        }
+        return $rows;
     }
 
     /** Keep independent same-mode notes, but print one shared note when a product is split into dine-in and takeaway. */
@@ -585,10 +727,12 @@ final class PrintService
     {
         $notedModes=[];
         foreach($rows as &$row){
+            $identity=trim((string)($row['_note_identity']??''));
+            unset($row['_note_identity']); // Never expose internal grouping metadata to Print Agent.
             $note=trim((string)($row['item_note']??''));
-            if($note==='')continue;
+            if($note===''||$identity==='')continue; // No identity: never drop a possibly independent note.
             $mode=(string)($row['fulfillment_mode']??'dine_in');
-            $key=hash('sha256',json_encode([(string)($row['item_name']??''),(string)($row['preparation_station']??''),$note],JSON_UNESCAPED_UNICODE));
+            $key=hash('sha256',self::json([$identity,(string)($row['item_name']??''),(string)($row['preparation_station']??''),$note]));
             if(isset($notedModes[$key])&&$notedModes[$key]!==$mode){$row['item_note']=null;continue;}
             $notedModes[$key]=$mode;
         }
@@ -611,31 +755,57 @@ final class PrintService
         return $items;
     }
 
-    private static function preparationSections(array $rows): array
+    /**
+     * Stable printing order, also applied to the legacy top-level `items` payload
+     * for rolling Print Agent upgrades. Unknown historical stations are retained.
+     */
+    private static function sortPreparationRows(array $rows): array
     {
-        $groups=[];$order=[];$position=0;
+        $kitchen=[];$bar=[];$legacy=[];
         foreach($rows as $row){
             if(!is_array($row))continue;
-            $station=trim((string)($row['preparation_station']??'other'));if($station==='')$station='other';
-            if(!isset($groups[$station])){$groups[$station]=[];$order[]=$station;}
-            // Preserve the original cross-station item order even though legacy
-            // preparation documents group rows by destination station.
-            $groups[$station][]=[
+            $station=trim((string)($row['preparation_station']??'other'));
+            if($station==='kitchen')$kitchen[]=$row;
+            elseif(in_array($station,['bar','hot_bar','cold_bar'],true))$bar[]=$row;
+            else $legacy[]=$row;
+        }
+        return array_merge($kitchen,$bar,$legacy);
+    }
+
+    /**
+     * One continuous preparation item list: kitchen then hot/cold/bar together,
+     * no printed section name and no extra print job or separator between areas.
+     * Notes remain attached to their own line; established template is unchanged.
+     */
+    private static function preparationSections(array $rows): array
+    {
+        // Input rows are in original order_items / bundle-component order.
+        // The legacy print layout remains kitchen-first, as before R321.
+        // Per-item order_index permits an explicitly selected template to
+        // reconstruct original cross-station order in the Print Agent.
+        $indexed=[];
+        foreach($rows as $row){
+            if(!is_array($row))continue;
+            $row['_print_order_index']=count($indexed);
+            $indexed[]=$row;
+        }
+        $items=[];
+        foreach(self::sortPreparationRows($indexed) as $row){
+            $station=trim((string)($row['preparation_station']??'other'));
+            if($station==='')$station='other';
+            $items[]=[
                 'name'=>(string)($row['item_name']??$row['name']??'—'),
                 'quantity'=>max(1,(int)($row['quantity']??1)),
                 'note'=>self::nullable($row['item_note']??$row['note']??null,500),
                 'fulfillment_mode'=>(string)($row['fulfillment_mode']??'dine_in'),
                 'station'=>$station,
-                'order_index'=>$position++,
+                'order_index'=>(int)$row['_print_order_index'],
             ];
         }
-        $titles=['kitchen'=>'آشپزخانه','bar'=>'بار','other'=>'سایر'];$out=[];
-        foreach($order as $station)$out[]=[
-            'title'=>$titles[$station]??'آماده‌سازی',
-            'station'=>$station,
-            'items'=>$groups[$station],
-        ];
-        return $out;
+        // Keep one unlabelled section and one column heading in the default
+        // layout. Explicit station ordering is applied by the renderer only
+        // when that mode is selected in a template.
+        return $items===[]?[]:[['title'=>'','items'=>$items]];
     }
 
     private static function faDigits(string $value): string
