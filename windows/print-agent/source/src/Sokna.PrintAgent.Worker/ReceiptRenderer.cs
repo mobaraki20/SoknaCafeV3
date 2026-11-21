@@ -2,6 +2,8 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Text.Json;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace Sokna.PrintAgent.Worker;
 
@@ -92,8 +94,6 @@ internal static class ReceiptRenderer
                 var items=sourceItems.EnumerateArray().ToList();
                 if(_stationOrder is "as_ordered" or "bar_first" or "kitchen_first")
                 {
-                    var originalPositions=new Dictionary<int,int>();
-                    for(int i=0;i<items.Count;i++)originalPositions[i]=i;
                     items=items.Select((item,i)=>(item,index:i)).OrderBy(pair=>{
                         var station=Get(pair.item,"station","other");
                         var kitchen=station=="kitchen";var bar=station is "bar" or "hot_bar" or "cold_bar";
