@@ -14,7 +14,7 @@ const blocks=[];
 let assertions=0;
 for(const [rel,expected] of paths){
  const data=fs.readFileSync(path.join(root,rel));
- const blob=crypto.createHash('sha1').update('blob '+data.length+'\\0').update(data).digest('hex');
+ const blob=crypto.createHash('sha1').update('blob '+data.length+String.fromCharCode(0)).update(data).digest('hex');
  assert.equal(blob,expected,rel+' must match tested source');assertions++;
  const source=data.toString('utf8'),a=source.indexOf(term),b=source.indexOf(end,a);
  assert(a>=0&&b>a);assertions++;
