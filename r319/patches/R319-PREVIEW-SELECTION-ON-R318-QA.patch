@@ -1,0 +1,148 @@
+--- a/local/public/assets/printing-workspace.js
++++ b/local/public/assets/printing-workspace.js
+@@ -169,6 +169,51 @@
+ function moveTemplateSection(index,delta){const next=index+delta;if(next<0||next>=templateSectionOrder.length)return;[templateSectionOrder[index],templateSectionOrder[next]]=[templateSectionOrder[next],templateSectionOrder[index]];renderTemplateSectionOrder();renderTemplateDraftPreview()}
+ function renderTemplateLabels(contract,values={}){const box=$('[data-template-labels]');box.replaceChildren();(contract.label_fields||[]).forEach(key=>{const label=el('label','sc-field'),span=el('span','sc-field__label',templateLabelLabels[key]||key),input=document.createElement('input');input.className='sc-control';input.name='label_'+key;input.maxLength=80;input.value=values?.[key]??'';label.append(span,input);box.append(label)})}
+ 
++// Source-based interactive map: a printed value stays read-only; selecting it opens the correct template control.
++const previewEditMap={
++ title:{field:'header_title',label:'عنوان اصلی'},
++ subtitle:{field:'header_subtitle',label:'زیرعنوان'},
++ order:{field:'show_order_number',label:'شماره سفارش'},
++ time:{field:'show_time',label:'زمان ثبت'},
++ actor:{field:'show_actor',label:'ثبت‌کننده'},
++ section:{field:'show_section_titles',label:'عنوان بخش اقلام'},
++ columns:{field:'item_layout',label:'چیدمان ستون‌های اقلام'},
++ items:{field:'table_font_size',label:'اندازه نوشته اقلام'},
++ note:{field:'notes_font_size',label:'اندازه یادداشت‌های اقلام'},
++ total:{field:'totals_font_size',label:'اندازه جمع حساب'},
++ settlement:{field:'show_settlement_label',label:'سطر روش پرداخت'},
++ footer:{field:'footer',label:'متن انتهای فیش'}
++};
++let selectedPreviewPart='';
++function markPreviewPart(node,key){
++ const target=previewEditMap[key];if(!node||!target)return node;
++ node.dataset.previewEdit=key;node.tabIndex=0;node.setAttribute('role','button');
++ node.setAttribute('aria-label','ویرایش '+target.label+(key==='items'||key==='note'?'؛ '+node.textContent.trim().slice(0,48):''));node.title='برای ویرایش «'+target.label+'» انتخاب کنید';
++ node.classList.add('sc-print-preview-target');
++ if(key===selectedPreviewPart)node.classList.add('is-selected');
++ return node;
++}
++function selectPreviewPart(key,focus=true){
++ const target=previewEditMap[key],form=$('[data-template-editor-form]');
++ if(!target||!form)return false;
++ const field=form.elements.namedItem(target.field);
++ if(!field||typeof field.focus!=='function')return false;
++ selectedPreviewPart=key;
++ const group=field.closest('details');if(group)group.open=true;
++ const area=$('[data-template-live-preview]');area?.querySelectorAll('[data-preview-edit]').forEach(node=>node.classList.toggle('is-selected',node.dataset.previewEdit===key));
++ const hint=$('[data-template-preview-selected]');
++ if(hint)hint.textContent='در حال ویرایش: '+target.label+' · این تغییرات فقط پیش‌نویس است';
++ if(focus){field.scrollIntoView({block:'center',behavior:'auto'});requestAnimationFrame(()=>{if(selectedPreviewPart===key&&field.isConnected)field.focus({preventScroll:true});});}
++ return true;
++}
++function previewPartFromEvent(event){
++ const area=$('[data-template-live-preview]');
++ const target=event.target?.closest?.('[data-preview-edit]');
++ if(!target||!area?.contains(target))return;
++ if(event.type==='keydown'&&!['Enter',' '].includes(event.key))return;
++ event.preventDefault();
++ selectPreviewPart(target.dataset.previewEdit);
++}
+ function renderTemplateDraftPreview(){
+  const form=$('[data-template-editor-form]'),area=$('[data-template-live-preview]');if(!form||!area||!templateEditorBase)return;
+  const f=form.elements,base=templateEditorBase.package?.template||{},design=base.design||{},kind=templateEditorBase.package?.document_kind||'customer';
+@@ -188,33 +233,33 @@
+  const visible=(key,otherwise=true)=>{const raw=textValue(key);if(raw==='1')return true;if(raw==='0')return false;return Object.prototype.hasOwnProperty.call(base,key)?base[key]!==false:otherwise};
+  const label=(k,fallback)=>textValue('label_'+k).trim()||String(design.labels?.[k]??'')||fallback;
+  const titleText=textValue('header_title')||String(base.header_title||'')||(kind==='preparation'?'کافه سکنا':'کافه سکنا');
+- const heading=el('h4','sc-print-r318-title',titleText);heading.style.fontSize=(titleFont*scale)+'px';heading.style.textAlign=alignment==='center'?'center':'right';sample.append(heading);
+- const subtitle=textValue('header_subtitle');if(subtitle.trim()){const sub=el('p','sc-print-r318-subtitle',subtitle);sub.style.fontSize=(subtitleFont*scale)+'px';sub.style.textAlign=alignment==='center'?'center':'right';sample.append(sub)}
+- const line=(a,b,cls='')=>{const node=el('div','sc-template-live-row '+cls);node.append(el('span','',a),el('span','',b));sample.append(node);return node};
+- if(visible('show_order_number'))line('سفارش','۱۲۳','sc-template-live-meta');if(visible('show_time'))line('زمان','۱۲:۳۰','sc-template-live-meta');if(visible('show_actor'))line('ثبت‌کننده','پرسنل','sc-template-live-meta');
++ const heading=el('h4','sc-print-r318-title',titleText);heading.style.fontSize=(titleFont*scale)+'px';heading.style.textAlign=alignment==='center'?'center':'right';sample.append(markPreviewPart(heading,'title'));
++ const subtitle=textValue('header_subtitle');if(subtitle.trim()){const sub=el('p','sc-print-r318-subtitle',subtitle);sub.style.fontSize=(subtitleFont*scale)+'px';sub.style.textAlign=alignment==='center'?'center':'right';sample.append(markPreviewPart(sub,'subtitle'))}
++ const line=(a,b,cls='',part='')=>{const node=el('div','sc-template-live-row '+cls);node.append(el('span','',a),el('span','',b));sample.append(part?markPreviewPart(node,part):node);return node};
++ if(visible('show_order_number'))line('سفارش','۱۲۳','sc-template-live-meta','order');if(visible('show_time'))line('زمان','۱۲:۳۰','sc-template-live-meta','time');if(visible('show_actor'))line('ثبت‌کننده','پرسنل','sc-template-live-meta','actor');
+  const money=visible('show_prices',kind!=='preparation');
+  let rows=kind==='preparation'?[{name:'چای ساده',station:'hot_bar',qty:'۲',note:'کم‌رنگ',i:0},{name:'پیتزا',station:'kitchen',qty:'۱',note:'بدون پیاز',i:1},{name:'لیموناد',station:'cold_bar',qty:'۱',note:'',i:2}]:[{name:'قهوه دمی',qty:'۱',price:'۱۵۰٬۰۰۰',note:'',i:0},{name:'چای',qty:'۲',price:'۲۰۰٬۰۰۰',note:'',i:1}];
+  if(kind==='preparation'&&stationOrder!=='as_ordered'){
+    const group=(x)=>x.station==='kitchen'?0:['bar','hot_bar','cold_bar'].includes(x.station)?1:2;
+    rows=rows.slice().sort((a,b)=>{const A=group(a),B=group(b);if(stationOrder==='bar_first'){const rank=v=>v===1?0:v===0?1:2;return rank(A)-rank(B)||a.i-b.i}return A-B||a.i-b.i});
+  }
+- if(visible('show_section_titles')){const h=el('h5','sc-print-r318-items-heading',kind==='preparation'?'اقلام آماده‌سازی':'اقلام فیش');sample.append(h)}
++ if(visible('show_section_titles')){const h=el('h5','sc-print-r318-items-heading',kind==='preparation'?'اقلام آماده‌سازی':'اقلام فیش');sample.append(markPreviewPart(h,'section'))}
+  const three=kind==='preparation'&&layout==='columnar-notes'&&paper==='80';
+  const column=kind==='preparation'&&['columnar','columnar-compact','columnar-notes','responsive-receipt'].includes(layout);
+- if(column){const header=el('div','sc-print-r318-columns'+(three?' is-three':''));header.append(el('strong','','شرح'),el('strong','','تعداد'));if(three)header.append(el('strong','','یادداشت'));sample.append(header)}
++ if(column){const header=el('div','sc-print-r318-columns'+(three?' is-three':''));header.append(el('strong','','شرح'),el('strong','','تعداد'));if(three)header.append(el('strong','','یادداشت'));sample.append(markPreviewPart(header,'columns'))}
+  for(const r of rows){
+-   if(column){const row=el('div','sc-print-r318-columns sc-print-r318-item'+(three?' is-three':''));row.style.fontSize=(itemFont*scale)+'px';row.append(el('span','',r.name),el('span','',r.qty));if(three)row.append(el('span','',r.note));sample.append(row)}
+-   else{const row=line(r.name,r.qty+' ×'+(money?' · '+r.price:''),'sc-print-r318-item');row.style.fontSize=(itemFont*scale)+'px'}
+-   if(r.note&&!three){const n=el('p','sc-template-live-note',r.note);n.style.fontSize=(noteFont*scale)+'px';sample.append(n)}
++   if(column){const row=el('div','sc-print-r318-columns sc-print-r318-item'+(three?' is-three':''));row.style.fontSize=(itemFont*scale)+'px';row.append(el('span','',r.name),el('span','',r.qty));if(three)row.append(el('span','',r.note));sample.append(markPreviewPart(row,'items'))}
++   else{const row=line(r.name,r.qty+' ×'+(money?' · '+r.price:''),'sc-print-r318-item','items');row.style.fontSize=(itemFont*scale)+'px'}
++   if(r.note&&!three){const n=el('p','sc-template-live-note',r.note);n.style.fontSize=(noteFont*scale)+'px';sample.append(markPreviewPart(n,'note'))}
+  }
+  if(kind==='customer'){
+-   const totals=line(label('total','جمع حساب'),'۳۵۰٬۰۰۰ تومان','sc-template-live-total');totals.style.fontSize=(totalFont*scale)+'px';
+-   if(visible('show_settlement_label')){const x=line(label('settlement','روش پرداخت'),'کارت‌خوان','sc-template-live-settle');x.style.fontSize=(settleFont*scale)+'px'}
++   const totals=line(label('total','جمع حساب'),'۳۵۰٬۰۰۰ تومان','sc-template-live-total','total');totals.style.fontSize=(totalFont*scale)+'px';
++   if(visible('show_settlement_label')){const x=line(label('settlement','روش پرداخت'),'کارت‌خوان','sc-template-live-settle','settlement');x.style.fontSize=(settleFont*scale)+'px'}
+  }
+- const footer=textValue('footer');if(footer.trim()){const foot=el('p','sc-template-live-footer',footer);foot.style.fontSize=(footerFont*scale)+'px';sample.append(foot)}
+-}
+-
+-function fillTemplateEditor(details){templateEditorBase=structuredClone(details);const form=$('[data-template-editor-form]'),pkg=details.package||{},template=pkg.template||{},design=template.design||{},contract=details.contract||{};form.reset();editorValidation();setEditorValue(form,'name',pkg.name||'');setEditorValue(form,'version',details.suggested_version||'');setEditorValue(form,'description',pkg.description||'');$('[data-template-kind]').value=pkg.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';for(const key of ['base_font_size','title_font_size','header_subtitle_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices','show_settlement_label'])setTriState(form,key,template);for(const key of ['header_title','header_subtitle','footer'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['density','header_alignment','separator_style','item_layout','preparation_station_order'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(design,key)?design[key]:'');const allowed=[...(contract.sections?.[pkg.document_kind]||[])],saved=Array.isArray(design.section_order)?design.section_order:[];templateSectionOrder=[...saved,...allowed.filter(x=>!saved.includes(x))];templateSectionEnabled=new Set(saved.length?saved:allowed);$('[data-template-custom-order]').checked=saved.length>0;renderTemplateSectionOrder();renderTemplateLabels(contract,design.labels||{});root.querySelectorAll('[data-template-preparation-field]').forEach(x=>x.hidden=pkg.document_kind!=='preparation');root.querySelectorAll('[data-template-customer-field]').forEach(x=>x.hidden=pkg.document_kind==='preparation');$('[data-template-editor-context]').textContent=`مبنا: ${pkg.name||'قالب'} · نسخه ${pkg.version||'—'} · ذخیره فقط نسخه جدید می‌سازد.`;renderTemplateDraftPreview()}
++ const footer=textValue('footer');if(footer.trim()){const foot=el('p','sc-template-live-footer',footer);foot.style.fontSize=(footerFont*scale)+'px';sample.append(markPreviewPart(foot,'footer'))}
++}
++
++function fillTemplateEditor(details){templateEditorBase=structuredClone(details);selectedPreviewPart='';const selection=$('[data-template-preview-selected]');if(selection)selection.textContent='بخشی انتخاب نشده است.';const form=$('[data-template-editor-form]'),pkg=details.package||{},template=pkg.template||{},design=template.design||{},contract=details.contract||{};form.reset();editorValidation();setEditorValue(form,'name',pkg.name||'');setEditorValue(form,'version',details.suggested_version||'');setEditorValue(form,'description',pkg.description||'');$('[data-template-kind]').value=pkg.document_kind==='preparation'?'آماده‌سازی':'فیش مشتری';for(const key of ['base_font_size','title_font_size','header_subtitle_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices','show_settlement_label'])setTriState(form,key,template);for(const key of ['header_title','header_subtitle','footer'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(template,key)?template[key]:'');for(const key of ['density','header_alignment','separator_style','item_layout','preparation_station_order'])setEditorValue(form,key,Object.prototype.hasOwnProperty.call(design,key)?design[key]:'');const allowed=[...(contract.sections?.[pkg.document_kind]||[])],saved=Array.isArray(design.section_order)?design.section_order:[];templateSectionOrder=[...saved,...allowed.filter(x=>!saved.includes(x))];templateSectionEnabled=new Set(saved.length?saved:allowed);$('[data-template-custom-order]').checked=saved.length>0;renderTemplateSectionOrder();renderTemplateLabels(contract,design.labels||{});root.querySelectorAll('[data-template-preparation-field]').forEach(x=>x.hidden=pkg.document_kind!=='preparation');root.querySelectorAll('[data-template-customer-field]').forEach(x=>x.hidden=pkg.document_kind==='preparation');$('[data-template-editor-context]').textContent=`مبنا: ${pkg.name||'قالب'} · نسخه ${pkg.version||'—'} · ذخیره فقط نسخه جدید می‌سازد.`;renderTemplateDraftPreview()}
+ async function openTemplateEditor(id){try{status('در حال دریافت نسخه قالب…');const j=await request(`${api}?action=print_template_details&package_id=${encodeURIComponent(Number(id))}`);fillTemplateEditor(j.result);{const d=$('[data-dialog="template-editor"]');if(!window.SoknaUI?.showDialog?.(d,{focusTitle:true}))d?.showModal?.()};status('')}catch(e){sectionState(e.message||'جزئیات قالب چاپ دریافت نشد.',true);status('')}}
+ function buildTemplateEditorPackage(){const form=$('[data-template-editor-form]'),template={},design={};for(const key of ['base_font_size','title_font_size','header_subtitle_font_size','table_font_size','notes_font_size','footer_font_size','totals_font_size','settlement_font_size','meta_font_size','line_spacing','margin']){const value=String(form.elements[key]?.value||'').trim();if(value!=='')template[key]=Number(value)}for(const key of ['show_actor','show_time','show_order_number','show_section_titles','show_prices','show_settlement_label']){const value=String(form.elements[key]?.value??'');if(value!=='')template[key]=value==='1'}for(const key of ['header_title','header_subtitle','footer'])template[key]=String(form.elements[key]?.value??'');for(const key of ['density','header_alignment','separator_style','item_layout','preparation_station_order']){const value=String(form.elements[key]?.value||'');if(value!=='')design[key]=value}if($('[data-template-custom-order]').checked){const order=templateSectionOrder.filter(key=>templateSectionEnabled.has(key));if(!order.length)throw new Error('برای ترتیب سفارشی حداقل یک بخش را فعال نگه دار.');design.section_order=order}const labels={};for(const key of templateEditorBase?.contract?.label_fields||[]){const value=String(form.elements['label_'+key]?.value||'').trim();if(value!=='')labels[key]=value}if(Object.keys(labels).length)design.labels=labels;if(Object.keys(design).length)template.design=design;return{name:String(form.elements.name.value||'').trim(),version:String(form.elements.version.value||'').trim(),description:String(form.elements.description.value||'').trim(),template}}
+ async function saveTemplateVersion(e){e.preventDefault();const form=e.currentTarget;if(!(e.submitter instanceof HTMLButtonElement)||e.submitter.value!=='submit'){form.closest('dialog').close();return}if(!form.reportValidity())return;editorValidation();let packageData;try{packageData=buildTemplateEditorPackage()}catch(err){editorValidation(err.message||'تنظیمات قالب کامل نیست.');return}await SoknaUI.busy(form,async()=>{try{const j=await post({action:'print_template_version_save',base_package_id:Number(templateEditorBase?.package_id||0),package:packageData});form.closest('dialog').close();await refresh(j.result.deduplicated?'همین نسخه قبلاً ثبت شده است؛ قالب فعال تغییر نکرد.':'نسخه جدید ذخیره شد اما هنوز فعال نیست؛ پس از بررسی پیش‌نمایش، آن را فعال کن.');activatePrintTab('templates')}catch(err){editorValidation(err.message||'ذخیره نسخه جدید قالب انجام نشد.')}})}
+@@ -270,7 +315,15 @@
+ root.querySelectorAll('[data-install-standard]').forEach(b=>b.addEventListener('click',()=>installStandardTemplate(String(b.dataset.installStandard||''))));
+ $('[data-template-custom-order]')?.addEventListener('change',()=>{if($('[data-template-custom-order]').checked&&!templateSectionEnabled.size)templateSectionEnabled=new Set(templateSectionOrder);renderTemplateSectionOrder()});
+ $('[data-template-editor-reset]')?.addEventListener('click',()=>{if(templateEditorBase)fillTemplateEditor(templateEditorBase)});
+-$('[data-template-preview-paper]')?.addEventListener('change',renderTemplateDraftPreview);$('[data-template-editor-form]')?.addEventListener('submit',saveTemplateVersion);$('[data-template-editor-form]')?.addEventListener('input',renderTemplateDraftPreview);$('[data-template-editor-form]')?.addEventListener('change',renderTemplateDraftPreview);
++$('[data-template-preview-paper]')?.addEventListener('change',renderTemplateDraftPreview);
++$('[data-template-live-preview]')?.addEventListener('pointerdown',event=>{if(event.target?.closest?.('[data-preview-edit]'))event.preventDefault()});
++$('[data-template-live-preview]')?.addEventListener('click',previewPartFromEvent);
++$('[data-template-live-preview]')?.addEventListener('keydown',previewPartFromEvent);
++$('[data-template-editor-form]')?.addEventListener('focusin',event=>{
++ const name=event.target?.name;
++ const found=Object.entries(previewEditMap).find(([key,value])=>value.field===name);
++ if(found)selectPreviewPart(found[0],false);
++});$('[data-template-editor-form]')?.addEventListener('submit',saveTemplateVersion);$('[data-template-editor-form]')?.addEventListener('input',renderTemplateDraftPreview);$('[data-template-editor-form]')?.addEventListener('change',renderTemplateDraftPreview);
+ $('[data-preview-close]').addEventListener('click',()=>{clearPreviewArtifact();$('[data-dialog="preview"]').close()});
+ $('[data-template-draft-preview]')?.addEventListener('click',()=>{try{if(!templateEditorBase||!$('[data-template-editor-form]').reportValidity())return;const draft=buildTemplateEditorPackage();previewPrintTemplate({id:templateEditorBase.package_id,display_name:draft.name+' — پیش‌نویس'},null,'pdf',draft)}catch(err){editorValidation(err.message||'پیش‌نویس معتبر نیست.')}});
+ root.querySelectorAll('[data-preview-format]').forEach(b=>b.addEventListener('click',()=>{if(previewContext)previewPrintTemplate(previewContext.row,previewContext.dest,String(b.dataset.previewFormat||'pdf'),previewContext.draftPackage)}));
+--- a/local/public/printing/index.php
++++ b/local/public/printing/index.php
+@@ -75,7 +75,7 @@
+       <details class="sc-print-template-disclosure"><summary><strong>چیدمان پیشرفتهٔ بخش‌ها</strong><small>ترتیب بخش‌های فیش را در صورت نیاز تغییر دهید.</small></summary><section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-sections"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-sections">ترتیب بخش‌ها</h3><p>اگر ترتیب سفارشی خاموش باشد، قرارداد پیش‌فرض سامانه دست‌نخورده می‌ماند.</p></div></div><label class="sc-inline"><input type="checkbox" data-template-custom-order> ترتیب سفارشی بخش‌ها</label><div class="sc-print-template-section-order" data-template-section-order></div></section></details>
+       <details class="sc-print-template-disclosure"><summary><strong>تغییر متن‌های ثابت فیش</strong><small>برچسب‌های قابل تغییر مثل جمع، تخفیف و عنوان رسید را ویرایش کنید.</small></summary><section class="sc-entity-editor__section sc-entity-editor__wide" aria-labelledby="print-template-labels"><div class="sc-entity-editor__section-head"><div><h3 id="print-template-labels">برچسب‌های اختیاری</h3><p>برچسب‌های موجود را تغییر دهید؛ حذف متن خودکار ممکن است به پشتیبانی موتور چاپ نیاز داشته باشد.</p></div></div><div class="sc-entity-editor__fields" data-template-labels></div></section></details>
+     </div>
+-    <aside class="sc-template-live-block" aria-label="پیش‌نمایش فوری چیدمان فیش"><div class="sc-entity-editor__section-head"><div><h3>پیش‌نمایش فوری تغییرات</h3><p>نمونهٔ سریع و تقریبی است؛ برای تطبیق با کاغذ از «پیش‌نمایش دقیق پیش‌نویس» استفاده کنید.</p></div></div><label class="sc-print-preview-paper-choice">کاغذ نمونه <select class="sc-control" data-template-preview-paper><option value="58">۵۸ میلی‌متر</option><option value="80" selected>۸۰ میلی‌متر</option></select></label><div class="sc-template-live-stage" data-template-live-preview aria-live="off"></div></aside>
++    <aside class="sc-template-live-block" aria-label="پیش‌نمایش فوری چیدمان فیش"><div class="sc-entity-editor__section-head"><div><h3>پیش‌نمایش فوری تغییرات</h3><p>نمونهٔ سریع و تقریبی است؛ برای تطبیق با کاغذ از «پیش‌نمایش دقیق پیش‌نویس» استفاده کنید.</p></div></div><label class="sc-print-preview-paper-choice">کاغذ نمونه <select class="sc-control" data-template-preview-paper><option value="58">۵۸ میلی‌متر</option><option value="80" selected>۸۰ میلی‌متر</option></select></label><p class="sc-print-preview-help" id="sc-print-preview-help">روی بخش موردنظر فیش بزنید تا تنظیم مربوط به آن باز شود. این پیش‌نمایش نمونه است، نه فیش نهایی چاپ‌شده.</p><p class="sc-print-preview-selection" data-template-preview-selected role="status" aria-live="polite">بخشی انتخاب نشده است.</p><div class="sc-template-live-stage" data-template-live-preview aria-live="off"></div></aside>
+     <footer class="sc-entity-editor__footer"><span class="sc-entity-editor__footer-hint">بازنشانی فقط تغییرات این فرم را برمی‌گرداند؛ نسخه مبنا در پایگاه داده هرگز تغییر نمی‌کند.</span><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-template-editor-reset>بازنشانی تغییرات</button><button class="sc-button sc-button--secondary" type="button" data-template-draft-preview>پیش‌نمایش دقیق پیش‌نویس</button><button class="sc-button" type="submit" value="submit">ذخیره به‌عنوان نسخه جدید</button><button class="sc-button sc-button--secondary" type="button" data-dialog-close value="cancel">انصراف</button></div></footer>
+   </form></dialog>
+   <dialog class="sc-dialog sc-print-preview-dialog sc-print-task-dialog" data-dialog="preview" aria-labelledby="sc-dialog-title-printing-preview" data-dialog-size="xl"><div class="sc-dialog-frame"><header class="sc-dialog-frame__head"><div><h2 id="sc-dialog-title-printing-preview" tabindex="-1">پیش‌نمایش قالب چاپ</h2><p data-preview-meta>در حال دریافت اطلاعات قالب…</p><small class="sc-muted" data-preview-detail></small></div><button class="sc-icon-button" type="button" data-preview-close aria-label="بستن"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></header><div class="sc-dialog-frame__body sc-print-preview-body"><div class="sc-segmented sc-print-preview-formats" aria-label="فرمت پیش‌نمایش"><button class="sc-button sc-button--secondary" type="button" data-preview-format="pdf" aria-pressed="true">PDF</button><button class="sc-button sc-button--secondary" type="button" data-preview-format="png" aria-pressed="false">تصویر</button></div><div class="sc-print-preview-stage"><div class="sc-empty" data-preview-empty>پیش‌نمایش در حال دریافت است…</div><iframe data-preview-pdf title="پیش‌نمایش PDF قالب چاپ" class="sc-print-preview sc-print-preview--pdf" hidden></iframe><img data-preview-image alt="پیش‌نمایش تصویری رسید چاپ" class="sc-print-preview sc-print-preview--image" hidden></div></div><footer class="sc-dialog-frame__foot"><span class="sc-muted">پیش‌نمایش با همان قالب واقعی چاپ ساخته می‌شود.</span><button class="sc-button sc-button--secondary" type="button" data-preview-close>بستن</button></footer></div></dialog>
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -6620,6 +6620,14 @@
+ .sc-print-r318-item{font-weight:600}
+ .sc-print-r318-paper .sc-template-live-note{margin:1px 0 7px;font-weight:400}
+ .sc-print-r318-paper .sc-template-live-footer{white-space:pre-line}
++
++/* R319: template-preview selection is semantic and keyboard-accessible, with no separate control language. */
++.sc-print-template-editor .sc-print-preview-help{margin:4px 0;color:var(--sc-muted,#596c68);font-size:12px;line-height:1.8}
++.sc-print-template-editor .sc-print-preview-selection{margin:4px 0 8px;color:var(--sc-primary,#0e7466);font-weight:600;font-size:12px}
++.sc-print-r318-paper .sc-print-preview-target{cursor:pointer;border-radius:5px;outline-offset:2px;transition:background-color .1s ease,box-shadow .1s ease}
++.sc-print-r318-paper .sc-print-preview-target:hover,.sc-print-r318-paper .sc-print-preview-target:focus-visible{outline:2px solid var(--sc-primary,#0e7466);background:rgba(16,122,105,.07)}
++.sc-print-r318-paper .sc-print-preview-target.is-selected{outline:2px solid var(--sc-primary,#0e7466);background:rgba(16,122,105,.09)}
++
+ @media(max-width:700px){.sc-print-template-editor .sc-print-template-user-text .sc-entity-editor__fields{grid-template-columns:minmax(0,1fr)}}
+ /* R318 mobile dialog: reserve visible space for live preview; keep settings independently scrollable. */
+ @media(max-width:700px){
