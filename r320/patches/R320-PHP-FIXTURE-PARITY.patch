@@ -1,0 +1,47 @@
+--- r318/source-changes/local/src/Domain/Printing/PrintTemplatePackageService.php	2026-11-21 04:05:58.000000000 +0000
++++ source/src/Domain/Printing/PrintTemplatePackageService.php	2026-11-21 05:16:07.119473459 +0000
+@@ -308,10 +308,42 @@
+         }
+         return $out;
+     }
++    /**
++     * Renderer-grade fixtures, not decorative mock rows.  The preparation example
++     * carries all print-station and original-order metadata that live jobs use.
++     * The submitted section ordering intentionally starts kitchen-first, as the
++     * default production preparation payload does.  The original order_index
++     * values differ, so all three operator choices visibly differ in Print Agent.
++     */
+     private function fixture(string $kind): array
+     {
+-        if($kind==='preparation')return ['schema'=>'sokna-print-document-v2','document_kind'=>'preparation','title'=>'کافه سکنا','badge'=>'پیش‌نمایش قالب','table_name'=>'میز ۲','order_number'=>'2048','created_at'=>date('Y-m-d H:i:s'),'sections'=>[['title'=>'بار گرم','items'=>[['name'=>'قهوه دمی','quantity'=>2,'note'=>'بدون شکر'],['name'=>'کیک روز','quantity'=>1,'fulfillment_mode'=>'takeaway']]]],'customer_note'=>'مهمان عجله دارد'];
+-        return ['schema'=>'sokna-print-document-v2','document_kind'=>'customer','title'=>'کافه سکنا','invoice_number'=>'INV-2048','table_name'=>'میز ۲','created_at'=>date('Y-m-d H:i:s'),'currency'=>'تومان','sections'=>[['items'=>[['name'=>'قهوه دمی','quantity'=>2,'unit_price'=>180000,'line_total'=>360000],['name'=>'کیک روز','quantity'=>1,'unit_price'=>220000,'line_total'=>220000]]]],'subtotal'=>580000,'discount'=>0,'tax'=>0,'total'=>580000,'settlement_label'=>'کارتخوان'];
++        if($kind==='preparation'){
++            $items=[
++                ['name'=>'پیتزا مخصوص','quantity'=>1,'note'=>'بدون پیاز؛ سس جداگانه','station'=>'kitchen','order_index'=>1],
++                ['name'=>'سیب‌زمینی','quantity'=>1,'note'=>null,'station'=>'kitchen','order_index'=>3],
++                ['name'=>'چای ساده','quantity'=>2,'note'=>'کم‌رنگ','station'=>'hot_bar','order_index'=>0],
++                ['name'=>'لیموناد','quantity'=>1,'note'=>'بدون یخ','station'=>'cold_bar','order_index'=>2],
++            ];
++            return [
++                'schema'=>'sokna-print-document-v2','document_kind'=>'preparation',
++                'title'=>'کافه سکنا','badge'=>'پیش‌نمایش قالب','table_name'=>'میز ۲',
++                'order_number'=>'2048','created_at'=>date('Y-m-d H:i:s'),
++                'sections'=>[['title'=>'','items'=>$items]],
++                'customer_note'=>'مهمان عجله دارد',
++            ];
++        }
++        return [
++            'schema'=>'sokna-print-document-v2','document_kind'=>'customer',
++            'document_role'=>'receipt_preview','title'=>'کافه سکنا',
++            'invoice_number'=>'INV-2048','table_name'=>'میز ۲','created_at'=>date('Y-m-d H:i:s'),
++            'currency'=>'تومان',
++            'sections'=>[['items'=>[
++                ['name'=>'قهوه دمی','quantity'=>2,'unit_price'=>180000,'line_total'=>360000],
++                ['name'=>'کیک روز','quantity'=>1,'unit_price'=>220000,'line_total'=>220000],
++            ]]],
++            'subtotal'=>580000,'discount'=>0,'tax'=>0,'total'=>580000,
++            'settlement_label'=>'کارتخوان',
++        ];
+     }
+     private function payloadKind(array $payload): string{$kind=(string)($payload['document_kind']??'');return $kind==='preparation'?'preparation':'customer';}
+     private function destinationKind(string $type): string{return $type==='preparation'?'preparation':'customer';}
