@@ -1,6 +1,6 @@
 --- a/windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs
 +++ b/windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs
-@@ -58,3 +58,11 @@
+@@ -58,3 +58,12 @@
              var kind=Get(root,"document_kind",Get(root,"job_type","").StartsWith("prep",StringComparison.Ordinal)?"preparation":"customer");var prep=kind=="preparation"||Get(root,"job_type","").StartsWith("prep",StringComparison.Ordinal);
              var header=Get(_template,"header_title","");if(string.IsNullOrWhiteSpace(header))header=Get(root,"title","کافه سکنا");if(!string.IsNullOrWhiteSpace(header))Text(header,_title,true,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);var subtitle=Get(_template,"header_subtitle","");if(!string.IsNullOrWhiteSpace(subtitle))Text(subtitle,Math.Clamp(GetInt(_template,"header_subtitle_font_size",Math.Max(12,_base-6)),12,60),false,_headerAlignment=="right"?StringAlignment.Far:StringAlignment.Center,2);
 +            // A preliminary open-account slip is NOT a paid receipt. Its short
