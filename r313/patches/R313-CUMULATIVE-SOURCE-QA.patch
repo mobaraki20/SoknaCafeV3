@@ -1,0 +1,141 @@
+--- a/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
++++ b/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
+@@ -468,6 +468,16 @@
+                 $report['dashboard']=$this->reporting->dashboardSnapshot($businessDate);
+                 $report['archive']=$this->reporting->remoteArchive();
+             }
++            // R313: Public must receive genuine operational activity independently
++            // from the notification inbox. This projection is read-only, bounded and
++            // intentionally fail-soft: a missing activity log cannot break sales sync.
++            $activity=['format'=>'sokna-dashboard-operational-activity-v1','status'=>'unavailable',
++                'business_date'=>$businessDate,'cutoff'=>(string)$clock['cutoff'],'items'=>[]];
++            try{
++                if($this->reporting!==null)$activity=PublicOperationalActivityProjector::build(
++                    $this->reporting->dashboardOperationalActivity(),$businessDate,(string)$clock['cutoff']);
++            }catch(\Throwable){/* The reports projection must remain usable if audit activity is unavailable. */}
++            $report['dashboard_activity']=$activity;
+             $report['business_date']=$businessDate;
+             $report['business_clock']=['business_date'=>$businessDate,'civil_date'=>(string)$clock['civil_date'],'cutoff'=>(string)$clock['cutoff']];
+             if($owns)$this->pdo->commit();return $report;
+--- /dev/null
++++ b/local/src/Domain/PublicEdge/PublicOperationalActivityProjector.php
+@@ -0,0 +1,37 @@
++<?php
++declare(strict_types=1);
++namespace Sokna\Local\Domain\PublicEdge;
++/** Pure, bounded business-date projection. Never create operational events from notifications. */
++final class PublicOperationalActivityProjector
++{
++    public static function build(array $events,string $businessDate,string $cutoff): array
++    {
++        $result=['format'=>'sokna-dashboard-operational-activity-v1','status'=>'unavailable',
++            'business_date'=>$businessDate,'cutoff'=>$cutoff,'items'=>[]];
++        if(preg_match('/^\d{4}-\d{2}-\d{2}$/D',$businessDate)!==1
++            ||preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/D',$cutoff)!==1)return $result;
++        try{
++            $tz=new \DateTimeZone('Asia/Tehran');
++            $start=new \DateTimeImmutable($businessDate.' '.$cutoff.':00',$tz);
++            if($start->format('Y-m-d')!==$businessDate)return $result;
++            $end=$start->modify('+1 day');
++        }catch(\Throwable){return $result;}
++        $out=[];
++        foreach($events as $event){
++            if(!is_array($event))continue;
++            $stamp=trim((string)($event['created_at']??''));
++            $title=trim((string)($event['title']??''));
++            if($stamp===''||$title==='')continue;
++            try{$at=new \DateTimeImmutable($stamp,$tz);}catch(\Throwable){continue;}
++            if($at<$start||$at>=$end)continue;
++            $out[]=['event_key'=>(string)($event['event_key']??''),'created_at'=>$stamp,
++                'title'=>$title,'body'=>(string)($event['body']??''),
++                // Public has no historical invoice deep-link yet. Do not expose
++                // broken Local-only links through this projected dashboard feed.
++                'target_url'=>'/operator/?view=open'];
++            if(count($out)>=8)break;
++        }
++        $result['status']='available';$result['items']=$out;
++        return $result;
++    }
++}
+--- a/public/src/Remote/RemoteStaffPageRenderer.php
++++ b/public/src/Remote/RemoteStaffPageRenderer.php
+@@ -176,7 +176,14 @@
+         $notificationItems=is_array($notifications['items']??null)?array_values(array_filter($notifications['items'],static function($row):bool{$title=trim((string)($row['title']??''));return !str_starts_with($title,'QA Notification ');})) : [];$reportsError=$canReports?null:['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.'];$opsError=!$canOps?['message'=>'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.']:($opsProjectionUnavailable?['message'=>'ارتباط زنده با لوکال برقرار نیست؛ داده‌های سالن ممکن است قدیمی باشند. برای عملیات و وضعیت جاری، اتصال باید دوباره برقرار شود.']:null);$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
+         $fa=static fn(string|int|float $v):string=>strtr((string)$v,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹',','=>'٬']);$money=static fn(int $v):string=>$fa(number_format($v)).' تومان';$delta=static fn(int $current,int $reference):?int=>$reference>0?(int)round((($current-$reference)/$reference)*100):null;$relative=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{$dt=(new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz);$now=new \DateTimeImmutable('now',$tz);$sec=max(0,$now->getTimestamp()-$dt->getTimestamp());if($sec<60)return 'همین حالا';if($sec<3600)return $fa(max(1,(int)floor($sec/60))).' دقیقه پیش';if($sec<86400)return $fa((int)floor($sec/3600)).' ساعت پیش';return $fa((int)floor($sec/86400)).' روز پیش';}catch(\Throwable){return '—';}};
+         $lastFinanceSyncAt=(string)($reportsModel['last_sync_at']??'');$financeAsOf=$todayProjectionStale?('آخرین گزارش دریافت‌شده'.($lastFinanceSyncAt!==''?' · '.$relative($lastFinanceSyncAt):'')):null;$metrics=[];$todayHas=$todayHasReceipt;$yesterdayHas=$yesterdayHasReceipt;if($canReports){$metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>($reportsError||$todayProjectionUnavailable)?'—':$money((int)$todaySummary['net_sales']),'delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas)?null:$delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':(!$todayHas?'تسویهٔ قطعی برای این روز ثبت نشده':(!$yesterdayHas?'دیروز تسویه‌ای ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];$metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>($reportsError||$todayProjectionUnavailable||!$financeView['today_orders_available'])?'—':$fa((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':'سفارش‌های مشتری؛ بدون مصرف پرسنل','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];}if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsProjectionUnavailable?'—':$fa((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsProjectionUnavailable?'منتظر همگام‌سازی وضعیت سالن':'نشست باز در سالن','href'=>'/operator/?view=open'];if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>!$reportsError&&!$todayProjectionUnavailable&&$todayHas&&$financeView['today_avg_available']?$money((int)$todaySummary['avg_ticket']):'—','delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas||!$financeView['today_avg_available']||!$financeView['yesterday_avg_available'])?null:$delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$todayProjectionUnavailable?'منتظر همگام‌سازی اطلاعات امروز':(!$todayHas?'هنوز تسویهٔ کامل ثبت نشده':(!$yesterdayHas?'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق':'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق · نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
+-        $attention=[];if($financeAsOf!==null&&!$todayProjectionUnavailable){foreach($metrics as &$metric){if(in_array($metric['label'],['فروش خالص امروز','سفارش‌های امروز','میانگین فاکتور'],true)&&$metric['value']!=='—'){$metric['helper']=$financeAsOf;$metric['delta']=null;}}unset($metric);}$pending=$opsProjectionUnavailable?[]:(array)($ops['attention_orders']??[]);if($pending){$oldest=$pending[0]??[];$attention[]=['tone'=>'danger','context'=>'سفارش','status'=>'فوری','title'=>$fa(count($pending)).' سفارش منتظر رسیدگی','subtitle'=>$oldest?('قدیمی‌ترین · '.$relative((string)($oldest['created_at']??''))):'در صف بررسی','href'=>'/operator/?work=attention&attention_filter=orders#attention'];}$calls=$opsProjectionUnavailable?[]:(array)($ops['waiter_calls']??[]);if($calls){$oldest=$calls[0]??[];$attention[]=['tone'=>'warning','context'=>'سالن','status'=>'بررسی','title'=>$fa(count($calls)).' فراخوان مهمان باز','subtitle'=>$oldest?($fa((string)($oldest['table_name']??'')).' · '.$relative((string)($oldest['created_at']??''))):'نیازمند بررسی','href'=>'/operator/?work=attention&attention_filter=calls#attention'];}$used=[];if(count($attention)<4){foreach($notificationItems as $item){if(!empty($item['read_at']))continue;$id=(int)($item['id']??0);if($id>0)$used[$id]=true;$attention[]=['tone'=>'info','context'=>'اعلان','status'=>'جدید','title'=>(string)($item['title']??'اعلان جدید'),'subtitle'=>(string)($item['body']??''),'href'=>(string)($item['target_url']??'/notifications/')];if(count($attention)>=4)break;}}$recent=[];foreach($notificationItems as $item){$id=(int)($item['id']??0);if(isset($used[$id]))continue;$recent[]=$item;if(count($recent)>=5)break;}
++        $attention=[];if($financeAsOf!==null&&!$todayProjectionUnavailable){foreach($metrics as &$metric){if(in_array($metric['label'],['فروش خالص امروز','سفارش‌های امروز','میانگین فاکتور'],true)&&$metric['value']!=='—'){$metric['helper']=$financeAsOf;$metric['delta']=null;}}unset($metric);}$pending=$opsProjectionUnavailable?[]:(array)($ops['attention_orders']??[]);if($pending){$oldest=$pending[0]??[];$attention[]=['tone'=>'danger','context'=>'سفارش','status'=>'فوری','title'=>$fa(count($pending)).' سفارش منتظر رسیدگی','subtitle'=>$oldest?('قدیمی‌ترین · '.$relative((string)($oldest['created_at']??''))):'در صف بررسی','href'=>'/operator/?work=attention&attention_filter=orders#attention'];}$calls=$opsProjectionUnavailable?[]:(array)($ops['waiter_calls']??[]);if($calls){$oldest=$calls[0]??[];$attention[]=['tone'=>'warning','context'=>'سالن','status'=>'بررسی','title'=>$fa(count($calls)).' فراخوان مهمان باز','subtitle'=>$oldest?($fa((string)($oldest['table_name']??'')).' · '.$relative((string)($oldest['created_at']??''))):'نیازمند بررسی','href'=>'/operator/?work=attention&attention_filter=calls#attention'];}$used=[];if(count($attention)<4){foreach($notificationItems as $item){if(!empty($item['read_at']))continue;$id=(int)($item['id']??0);if($id>0)$used[$id]=true;$attention[]=['tone'=>'info','context'=>'اعلان','status'=>'جدید','title'=>(string)($item['title']??'اعلان جدید'),'subtitle'=>(string)($item['body']??''),'href'=>(string)($item['target_url']??'/notifications/')];if(count($attention)>=4)break;}}// R313: Notifications are not a substitute for operational activity.
++        // When the Local model has not yet projected this stream, show unavailable,
++        // not an empty/false 'no activity today' result or old bell items.
++        $recentResult=PublicDashboardOperationalActivity::forCurrentDay(
++            (array)($reports['dashboard_activity']??[]),$todayKey,
++            (string)($reports['business_clock']['cutoff']??''),
++            $businessDateUnavailable||$todayProjectionStale);
++        $recent=$recentResult['items'];$recentError=$recentResult['error'];
+         $lowStock=$inventoryProjectionUnavailable?[]:array_values(array_filter($inventoryItems,static fn(array $r):bool=>(int)($r['active']??1)===1&&(int)($r['warning_threshold']??0)>0&&(int)($r['quantity_base']??0)<=(int)($r['warning_threshold']??0)));usort($lowStock,static fn(array $a,array $b):int=>(((int)$a['quantity_base']-(int)$a['warning_threshold'])<=>((int)$b['quantity_base']-(int)$b['warning_threshold']))?:strcmp((string)$a['name'],(string)$b['name']));$lowStock=array_slice($lowStock,0,5);$attentionErrors=array_values(array_filter([$opsError])); /* Notification failure already appears in the recent-activity card. */$maxTrend=max(1,...array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily?:[['value'=>0]]));$bottomPanels=($canReports?1:0)+($canInventory?1:0);
+         $dashE=static fn(string $v):string=>htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$dashUrl=function(string $path):string{if(in_array($path,['/preparation','/waiter','/staff/preparation'],true))$path='/staff/preparation/';$map=['/preparation/'=>'/staff/preparation/','/waiter/'=>'/staff/preparation/','/operator/'=>'/staff/operator/','/reports/'=>'/staff/reports/','/operations/'=>'/staff/operations/','/notifications/'=>'/staff/notifications/'];foreach($map as $from=>$to)if(str_starts_with($path,$from)){$path=$to.substr($path,strlen($from));break;}return htmlspecialchars($this->u($path),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');};$dashIcon=static fn(string $name):string=>'<svg class="sc-ui-icon" aria-hidden="true" focusable="false"><use href="'.htmlspecialchars(ProductShell::asset('/assets/ui-sprite.svg'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'#icon-'.htmlspecialchars($name,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'"></use></svg>';$dashFaNum=$fa;$dashMoney=$money;$dashClock=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{return $fa((new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz)->format('H:i'));}catch(\Throwable){return '—';}};$dashNotificationIcon=static function(array $item):string{$u=strtolower((string)($item['target_url']??''));if(str_contains($u,'operator')||str_contains($u,'order'))return 'cart';if(str_contains($u,'operation')||str_contains($u,'inventory'))return 'archive';if(str_contains($u,'print')||str_contains($u,'integration'))return 'print';if(str_contains($u,'system'))return 'settings';return 'bell';};$dashUnit=static function(int $quantity,string $unit)use($fa):string{if($unit==='g'&&abs($quantity)>=1000)return $fa(rtrim(rtrim(number_format($quantity/1000,2,'.',''),'0'),'.')).' کیلوگرم';if($unit==='ml'&&abs($quantity)>=1000)return $fa(rtrim(rtrim(number_format($quantity/1000,2,'.',''),'0'),'.')).' لیتر';$labels=['g'=>'گرم','ml'=>'میلی‌لیتر','count'=>'عدد'];return $fa($quantity).' '.($labels[$unit]??$unit);};$dashDegraded=static function(?array $error,string $fallback)use($dashE):string{if($error===null)return '';$message=trim((string)($error['message']??''))?:$fallback;return '<div class="sc-empty sc-dashboard-degraded"><strong>'.$dashE($message).'</strong></div>';};
+         // General connectivity/freshness is already available from the status dot
+@@ -235,7 +242,7 @@
+     private function reports(array $session): void
+     {
+         $payload=[];$model=$this->core->remoteReadModels()->read($session,'reports');if((int)($model['status']??0)===200&&is_array($model['body']['payload']??null))$payload=$model['body']['payload'];
+-        $range=is_array($payload['range']??null)?$payload['range']:[];$today=(new \DateTimeImmutable('now',new \DateTimeZone('Asia/Tehran')))->format('Y-m-d');$to=(string)($range['to']??$today);$from=(string)($range['from']??$to);$focus='';$canAudit=false;$reportRangeEnabled=true; // A missing archive affects data availability, never form usability.
++        $range=is_array($payload['range']??null)?$payload['range']:[];$today=PublicDashboardFinance::businessDate($payload)??(new \DateTimeImmutable('now',new \DateTimeZone('Asia/Tehran')))->format('Y-m-d');$to=(string)($range['to']??$today);$from=(string)($range['from']??$to);$focus='';$canAudit=false;$reportRangeEnabled=true; // A missing archive affects data availability, never form usability.
+         $workspaceApi=$this->u('/staff/reports-adapter');$workspaceAsset=static fn(string $path):string=>ProductShell::asset($path);$workspaceExportCurrent='';$workspaceExportAnalytical='';
+         require dirname(__DIR__,2).'/resources/shared-staff-ui/reports-workspace.php';
+     }
+--- /dev/null
++++ b/public/src/Remote/PublicDashboardOperationalActivity.php
+@@ -0,0 +1,41 @@
++<?php
++/**
++ * Read-only current business-day activity used by Public Staff.
++ * Historical notifications are intentionally excluded from this stream.
++ */
++declare(strict_types=1);
++namespace Sokna\PublicEdge\Remote;
++final class PublicDashboardOperationalActivity
++{
++    /** @return array{items:array,error:?array} */
++    public static function forCurrentDay(array $projection,string $day,string $cutoff,bool $stale): array
++    {
++        $missing=['items'=>[],'error'=>['message'=>'فعالیت‌های عملیاتی روز کاری جاری هنوز از لوکال همگام نشده‌اند.']];
++        if($stale||($projection['format']??'')!=='sokna-dashboard-operational-activity-v1'
++            ||($projection['status']??'')!=='available'
++            ||($projection['business_date']??'')!==$day
++            ||($projection['cutoff']??'')!==$cutoff
++            ||!is_array($projection['items']??null)
++            ||preg_match('/^\d{4}-\d{2}-\d{2}$/D',$day)!==1
++            ||preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/D',$cutoff)!==1)return $missing;
++        try{
++            $tz=new \DateTimeZone('Asia/Tehran');
++            $start=new \DateTimeImmutable($day.' '.$cutoff.':00',$tz);
++            if($start->format('Y-m-d')!==$day)return $missing;
++            $end=$start->modify('+1 day');
++        }catch(\Throwable){return $missing;}
++        $out=[];
++        foreach($projection['items'] as $event){
++            if(!is_array($event))continue;
++            $title=trim((string)($event['title']??''));
++            $stamp=trim((string)($event['created_at']??''));
++            if($title===''||$stamp==='')continue;
++            try{$at=new \DateTimeImmutable($stamp,$tz);}catch(\Throwable){continue;}
++            if($at<$start||$at>=$end)continue;
++            $out[]=['title'=>$title,'body'=>(string)($event['body']??''),
++                'created_at'=>$stamp,'target_url'=>'/operator/?view=open'];
++            if(count($out)>=5)break;
++        }
++        return ['items'=>$out,'error'=>null];
++    }
++}
+--- a/public/resources/shared-staff-ui/dashboard-workspace.php
++++ b/public/resources/shared-staff-ui/dashboard-workspace.php
+@@ -17,7 +17,7 @@
+     <section class="sc-card sc-dashboard-trend"><div class="sc-card__body"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>روند فروش</h2><p>برای دیدن مبلغ هر روز، روی ستون مکث کنید</p></div><a href="<?=$dashUrl('/reports/?from='.$weekFrom.'&to='.$todayKey.'&focus=trend')?>">گزارش کامل</a></div><?php if($reportsError): ?><?=$dashDegraded($reportsError,'روند فروش فعلاً در دسترس نیست.')?><?php else: ?><?php if(!empty($todayProjectionUnavailable)): ?><p class="sc-dashboard-data-note">هنوز عدد معتبر امروز دریافت نشده است؛ روزهای دارای اطلاعات معتبر نمایش داده می‌شوند.</p><?php endif; ?><?php if(!empty($financeConflictDays)): ?><div class="sc-alert sc-alert--warning" role="status">داده‌های فروش بعضی روزها در دو نمای گزارش یکسان نیست؛ ستون‌های آن روزها تا رفع مغایرت نمایش داده نمی‌شوند.</div><?php endif; ?><div class="sc-dashboard-chart" aria-label="روند فروش هفت روز اخیر"><?php $trendIndex=0; $trendValues=array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily); $trendSigned=min(0,...$trendValues)<0; $trendScale=max(1,...array_map('abs',$trendValues)); $trendBase=$trendSigned?50:100; foreach($weekDaily as $row): ++$trendIndex; $trendValue=(int)$row['value']; $h=$trendValue!==0?max(5,(int)round((abs($trendValue)/$trendScale)*100))*($trendSigned?0.5:1):0; ?><div class="sc-dashboard-bar" tabindex="<?=$trendValue===0?'-1':'0'?>" role="group" aria-label="<?=$dashE((string)$row['label'])?>؛ <?=!empty($row['known'])?$dashMoney($trendValue):'اطلاعات نامعلوم'?>"><div class="sc-dashboard-bar__track"><?php if($trendValue!==0): ?><output class="sc-dashboard-bar__value" aria-hidden="true"><?=!empty($row['known'])?$dashMoney($trendValue):'اطلاعات نامعلوم'?></output><?php endif; ?><svg class="sc-dashboard-column <?=$h===0?'is-zero':($trendValue<0?'is-negative':'')?>" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="sc-trend-<?=$trendIndex?>" x1="0" x2="0" y1="0" y2="1"><stop class="sc-dashboard-column__start" offset="0"/><stop class="sc-dashboard-column__end" offset="1"/></linearGradient></defs><?php if($trendSigned): ?><line class="sc-dashboard-zero-axis" x1="0" y1="50" x2="100" y2="50"/><?php endif; ?><rect x="0" y="<?=$trendValue<0?$trendBase:$trendBase-$h?>" width="100" height="<?=$h?>" rx="20" ry="4" fill="url(#sc-trend-<?=$trendIndex?>)"/></svg></div><span<?php if(isset($row['known'])&&$row['known']===false): ?> class="is-missing"<?php endif; ?>><?=$dashE($row['label'])?></span></div><?php endforeach; ?></div><?php endif; ?></div></section>
+     <?php endif; ?>
+ 
+-    <section class="sc-card sc-dashboard-recent"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>آخرین فعالیت‌ها</h2><p>رویدادهای اخیر این حساب</p></div><a href="<?=$dashUrl('/notifications/')?>">مشاهده همه</a></div><div class="sc-dashboard-feed"><?php if($notificationsError): ?><?=$dashDegraded($notificationsError,'فعالیت‌های اخیر فعلاً در دسترس نیست.')?><?php elseif(!$recent): ?><div class="sc-empty">فعالیت دیگری برای نمایش ثبت نشده است.</div><?php else: foreach($recent as $item): ?><a class="sc-dashboard-feed__item" href="<?=$dashUrl((string)($item['target_url']??'/notifications/'))?>"><span class="sc-dashboard-feed__icon"><?=$dashIcon($dashNotificationIcon($item))?></span><span class="sc-dashboard-feed__copy"><strong><?=$dashE($dashFaNum((string)($item['title']??'اعلان')))?></strong><small><?=$dashE($dashFaNum((string)($item['body']??'')))?></small></span><time><?=$dashClock((string)($item['created_at']??''),$tz)?></time></a><?php endforeach; endif; ?></div></div></section>
++    <section class="sc-card sc-dashboard-recent"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>آخرین فعالیت‌ها</h2><p>رویدادهای ثبت‌شده در روز کاری جاری</p></div></div><div class="sc-dashboard-feed"><?php if($recentError??null): ?><?=$dashDegraded($recentError,'فعالیت‌های امروز فعلاً در دسترس نیست.')?><?php elseif(!$recent): ?><div class="sc-empty">امروز هنوز فعالیت عملیاتی ثبت نشده است.</div><?php else: foreach($recent as $item): ?><a class="sc-dashboard-feed__item" href="<?=$dashUrl((string)($item['target_url']??'/notifications/'))?>"><span class="sc-dashboard-feed__icon"><?=$dashIcon($dashNotificationIcon($item))?></span><span class="sc-dashboard-feed__copy"><strong><?=$dashE($dashFaNum((string)($item['title']??'اعلان')))?></strong><small><?=$dashE($dashFaNum((string)($item['body']??'')))?></small></span><time><?=$dashClock((string)($item['created_at']??''),$tz)?></time></a><?php endforeach; endif; ?></div></div></section>
+ 
+     <section class="sc-card sc-dashboard-attention-panel"><div class="sc-card__body sc-stack"><div class="sc-dashboard-panel-head"><div class="sc-panel-title-inline"><h2>نیازمند اقدام</h2><p>فقط مواردی که تصمیم می‌خواهند</p></div></div><div class="sc-dashboard-attention"><?php if(!$attention&&$attentionErrors===[]): ?><div class="sc-dashboard-clear"><span><?=$dashIcon('check')?></span><div><strong>مورد بازی باقی نمانده</strong><small>در حال حاضر اقدامی برای این حساب لازم نیست.</small></div></div><?php else: foreach($attention as $item): ?><a class="sc-dashboard-attention__item" data-tone="<?=$dashE((string)$item['tone'])?>" href="<?=$dashUrl((string)$item['href'])?>"><i aria-hidden="true"></i><span class="sc-dashboard-attention__copy"><strong><?=$dashE($dashFaNum((string)$item['title']))?></strong><small><?=$dashE($dashFaNum((string)$item['subtitle']))?></small></span><span class="sc-dashboard-attention__tags"><span class="sc-dashboard-context"><?=$dashE($dashFaNum((string)$item['context']))?></span><span class="sc-badge sc-badge--<?=$dashE((string)$item['tone'])?>"><?=$dashE($dashFaNum((string)$item['status']))?></span></span><span class="sc-dashboard-chevron"><?=$dashIcon('chevron-left')?></span></a><?php endforeach; foreach($attentionErrors as $attentionError): ?><?=$dashDegraded($attentionError,'بخشی از موارد نیازمند اقدام فعلاً در دسترس نیست.')?><?php endforeach; endif; ?></div></div></section>
+   </div>
