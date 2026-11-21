@@ -1,0 +1,36 @@
+{
+  "schema": "sokna-r312-public-stale-snapshot-qa-v1",
+  "date": "2026-11-21",
+  "status": "R312_QA_CODE_AND_VISUAL_FIXTURE_PASS_NOT_INSTALLED",
+  "production_changed": false,
+  "release_testing_started": false,
+  "public_installed_baseline": "35in / R306",
+  "local_installed_baseline": "231fw / R307",
+  "r311_cumulative_local_preserved": true,
+  "source_package_sha256": "e2d78030a7246103a1b4ae2b28409093ebf8e61d44abc3739d73d0ac10b9fe51",
+  "support_file_sha256": "2ddbea505b9f08b1ad3c455abeef87cb025b3b6de311a52f25bda9d7bab6b06e",
+  "screenshot_original_sha256": "c62919062d23becf0084d0e77816d149b3fac5b377be43411e9abea1df4e7e72",
+  "changed_public_paths": [
+    "src/Remote/PublicDashboardFinance.php",
+    "src/Remote/RemoteStaffPageRenderer.php",
+    "assets/scds/remote-staff.css",
+    "resources/public-dashboard-stale-snapshot.php"
+  ],
+  "sha256_by_path": {
+    "src/Remote/PublicDashboardFinance.php": "35bbe16577cefc1b9b81890ab24160a1bc020ab056b1de07f884df7ef6bb6cb8",
+    "src/Remote/RemoteStaffPageRenderer.php": "371283c5821d7df78d59485e4942328f4aea83f6e03146f79e4f4c986e93427a",
+    "assets/scds/remote-staff.css": "49bf92471f0b1d0ca637fd5604bc0c785233f7c5fe3f28b429a50cc68831daae",
+    "resources/public-dashboard-stale-snapshot.php": "38e1f515f8b97016a92c3406335503221a8385ca7f8c0ecacb490e5c375d242e"
+  },
+  "cutoff_test_assertions": 12,
+  "php_lint": "PASS",
+  "visual": {
+    "mobile": "R312-public-dashboard-mobile-QA.png",
+    "desktop": "R312-public-dashboard-desktop-QA.png",
+    "rendered_from_real_php_css": true,
+    "not_authenticated_live_site": true,
+    "no_horizontal_overflow": true
+  },
+  "remaining": "real Local/Public projection, network disconnection and field screenshots need acceptance",
+  "updated_register_issue": "N21-039"
+}
