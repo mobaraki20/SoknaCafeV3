@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "checks": {
+    "php_patch_applies_and_byte_matches_qa_source": true,
+    "csharp_patch_applies_to_verified_source_context": true
+  },
+  "not_verified": [
+    "Windows C# compilation",
+    "physical print"
+  ]
+}
