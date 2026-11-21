@@ -1,0 +1,463 @@
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -6682,3 +6682,6 @@
+  .sc-history-order__table td:first-child{grid-column:1/-1}
+ }
+ @media(max-width:440px){.sc-history-order__facts,.sc-history-order__invoices{grid-template-columns:1fr 1fr}.sc-history-order__header{gap:9px}.sc-history-order__header .sc-button{width:100%}}
++
++/* R315: same native controls for across-category item-family query. */
++.sc-item-sales-keyword-note{margin-block:0 .75rem;line-height:1.7;font-size:.83rem}.sc-item-sales-keyword{margin-top:.3rem}
+--- a/local/public/assets/reports-workspace.js
++++ b/local/public/assets/reports-workspace.js
+@@ -55,6 +55,7 @@
+  if(!input||!opts||!selected||!run||!out)return;
+  const items=new Map();let searchToken=0,reportToken=0,currentReport=null,lookupTimer=0;
+  const category=$('[data-item-sales-category]'),family=$('[data-item-sales-family]'),groupRun=$('[data-item-sales-group-run]');
++ const keyword=$('[data-item-sales-keyword]'),keywordRun=$('[data-item-sales-keyword-run]');
+  let groups={categories:[],families:[]};
+  const groupOption=(value,label)=>{const option=document.createElement('option');option.value=String(value);option.textContent=label;return option};
+  function updateGroups(){if(!category||!family||!groupRun)return;
+@@ -82,6 +83,19 @@
+      statusText(`گزارش ${report.group?.name||'گروه'}: ${L.integer(report.group?.count||0)} کالا بر مبنای عضویت فعلی کاتالوگ؛ فروش فقط از اسناد پرداخت/برگشت محاسبه شده است.`);
+      exportButton.disabled=false;
+    }catch(e){if(token===reportToken)statusText(e.message||'گزارش گروه آماده نشد.',true)}finally{if(token===reportToken)groupRun.disabled=!Number(category?.value||0)}
++ });
++ keyword?.addEventListener('input',()=>{if(keywordRun)keywordRun.disabled=keyword.value.trim().length<2});
++ keywordRun?.addEventListener('click',async()=>{
++   const qtext=keyword?.value.trim()||'';if(qtext.length<2)return;
++   const token=++reportToken,form=$('[data-report-form]');keywordRun.disabled=true;out.replaceChildren();exportButton.disabled=true;
++   statusText('در حال محاسبه مجموع کالاها در همه دسته‌ها…');
++   const q=new URLSearchParams({action:'item_sales_keyword',q:qtext,from:form.elements.from.value,to:form.elements.to.value});
++   try{const j=await request(q,{emitMeta:false});if(token!==reportToken)return;
++     const report=j.item_sales||{};currentReport=report;renderItemSaleRows(report);
++     statusText(`گروه موقت: ${L.integer(report.group?.count||0)} محصول با عبارت «${qtext}» در نام، در تمام دسته‌ها. اقلام پوشش‌داده‌شده در جدول آمده‌اند.`);
++     exportButton.disabled=false;
++   }catch(e){if(token===reportToken)statusText(e.message||'این گزارش آماده نشد.',true)}
++   finally{if(token===reportToken)keywordRun.disabled=(keyword?.value.trim().length||0)<2}
+  });
+  loadGroups();
+  function renderItemSaleRows(report){
+--- a/local/public/reports/api.php
++++ b/local/public/reports/api.php
+@@ -24,6 +24,10 @@
+         if(!in_array($type,['category','family'],true)||$groupId===false)WebAction::json(['success'=>false,'code'=>'invalid_group','message'=>'دسته یا خانواده نامعتبر است.'],422);
+         WebAction::json(['success'=>true,'item_sales'=>$core->reporting()->itemSalesGroupReport((string)($_GET['from']??''),(string)($_GET['to']??''),$type,(int)$groupId)]);
+     }
++    if($action==='item_sales_keyword'){
++        WebAction::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
++        WebAction::json(['success'=>true,'item_sales'=>$core->reporting()->itemSalesKeywordReport((string)($_GET['from']??''),(string)($_GET['to']??''),(string)($_GET['q']??''))]);
++    }
+     if($action==='item_sales'){
+         WebAction::requireAny($core,['cashier_accounts','shift_supervision','staff_consumption_reports']);
+         $idsRaw=trim((string)($_GET['ids']??''));
+--- a/local/resources/shared-staff-ui/reports-workspace.php
++++ b/local/resources/shared-staff-ui/reports-workspace.php
+@@ -126,6 +126,11 @@
+         <label class="sc-field"><span class="sc-field__label">خانواده کالا (اختیاری)</span><select class="sc-control" data-item-sales-family><option value="">تمام کالاهای دسته</option></select></label>
+         <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-group-run disabled>نمایش فروش دسته / خانواده</button></div>
+       </div>
++      <div class="sc-entity-editor__fields sc-item-sales-keyword" aria-label="گزارش عبارت مشترک بین دسته‌ها">
++        <label class="sc-field"><span class="sc-field__label">جمع محصولات با نام مشترک (مثلاً همه چای‌ها)</span><input type="search" class="sc-control" data-item-sales-keyword placeholder="مثلاً چای" maxlength="60" autocomplete="off"></label>
++        <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-keyword-run disabled>نمایش همه نام‌های مشابه</button></div>
++      </div>
++      <p class="sc-muted sc-item-sales-keyword-note">همه کالاهایی که عبارت واردشده در نامشان باشد، حتی در دسته‌های مختلف، محاسبه می‌شوند. این یک گروه موقت است؛ اقلام تحت پوشش در نتیجه مشخص‌اند.</p>
+       <details class="sc-item-sales-individual">
+         <summary>انتخاب محصولات مشخص (پیشرفته)</summary>
+         <p class="sc-muted">برای مقایسه چند محصول خاص، نام یا کد را جست‌وجو و تا ۳۰ قلم انتخاب کنید.</p>
+--- a/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
++++ b/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
+@@ -491,6 +491,10 @@
+             $sales=['format'=>'sokna-item-sales-daily-archive-v1','status'=>'unavailable'];
+             try{$sales=\Sokna\Local\Domain\Reporting\PublicItemSalesSnapshot::build($this->pdo,$businessDate,60);}catch(\Throwable){/* report KPIs remain independent */}
+             $report['item_sales_archive']=$sales;
++            // R315: read-only, bounded invoices for authorized Public cashier history.
++            $invoices=['format'=>'sokna-public-invoice-history-v1','status'=>'unavailable'];
++            try{$invoices=\Sokna\Local\Domain\Reporting\PublicInvoiceHistorySnapshot::build($this->pdo,$businessDate);}catch(\Throwable){/* Do not block ordinary report KPIs if archive unavailable. */}
++            $report['invoice_history_archive']=$invoices;
+             $report['business_date']=$businessDate;
+             $report['business_clock']=['business_date'=>$businessDate,'civil_date'=>(string)$clock['civil_date'],'cutoff'=>(string)$clock['cutoff']];
+             if($owns)$this->pdo->commit();return $report;
+--- /dev/null
++++ b/local/src/Domain/Reporting/PublicInvoiceHistorySnapshot.php
+@@ -0,0 +1,62 @@
++<?php
++declare(strict_types=1);
++namespace Sokna\Local\Domain\Reporting;
++use PDO;
++
++/** R315. Bounded, read-only historical receipts; no customer identifiers or mutation tokens. */
++final class PublicInvoiceHistorySnapshot
++{
++    private static function trimText(string $value,int $length):string
++    {return function_exists('mb_substr')?mb_substr($value,0,$length,'UTF-8'):substr($value,0,$length*4);}
++    public static function build(PDO $pdo,string $businessDate,int $days=90,int $limit=240): array
++    {
++        $dt=\DateTimeImmutable::createFromFormat('!Y-m-d',$businessDate,new \DateTimeZone('Asia/Tehran'));
++        if(!$dt||$dt->format('Y-m-d')!==$businessDate)throw new \InvalidArgumentException('business_date');
++        $days=max(1,min(90,$days));$limit=max(1,min(240,$limit));
++        $from=$dt->modify('-'.($days-1).' days')->format('Y-m-d');
++        // The receipt and sale business dates are distinct. NEVER overwrite the real
++        // receipt date with the table opening date: tender/ledger reconciliation uses it.
++        $q=$pdo->prepare("SELECT r.id,r.invoice_number,r.table_name_snapshot,r.status,r.destination,r.settlement_kind,
++                  r.subtotal,r.discount,r.tax_amount,r.total,r.settled_at,
++                  r.business_date receipt_business_date,ts.business_date sale_business_date,
++                  r.reverses_settlement_id,r.invoice_snapshot_json
++                  FROM settlement_records r LEFT JOIN table_sessions ts ON ts.id=r.session_id
++                  WHERE r.business_date BETWEEN ? AND ? ORDER BY r.id DESC LIMIT ".($limit+1));
++        $q->execute([$from,$businessDate]);$rows=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
++        $truncated=count($rows)>$limit;
++        $rows=array_slice($rows,0,$limit);$out=[];
++        foreach($rows as $r){
++            if(!in_array((string)($r['status']??''),['completed','reversal'],true))continue;
++            $snapshot=json_decode((string)($r['invoice_snapshot_json']??''),true);
++            $lines=[];
++            if(is_array($snapshot)&&is_array($snapshot['items']??null)){
++                foreach(array_slice($snapshot['items'],0,100) as $item){
++                    if(!is_array($item))continue;
++                    $lines[]=['name'=>self::trimText((string)($item['name']??'آیتم'),160),
++                      'quantity'=>(float)($item['quantity']??0),'unit_price'=>(int)($item['unit_price']??0),
++                      'line_final'=>(int)($item['line_final']??$item['line_net']??$item['line_total']??0)];
++                }
++            }
++            $out[]=['id'=>(int)$r['id'],'invoice_number'=>substr((string)($r['invoice_number']??''),0,100),
++                'table_name'=>self::trimText((string)($r['table_name_snapshot']??''),100),
++                'status'=>(string)$r['status'],'destination'=>(string)($r['destination']??''),
++                'settlement_kind'=>(string)($r['settlement_kind']??''),
++                'subtotal'=>(int)$r['subtotal'],'discount'=>(int)$r['discount'],
++                'tax_amount'=>(int)$r['tax_amount'],'total'=>(int)$r['total'],
++                'settled_at'=>(string)($r['settled_at']??''),
++                'receipt_business_date'=>(string)$r['receipt_business_date'],
++                'sale_business_date'=>(string)($r['sale_business_date']??''),
++                'reverses_settlement_id'=>(int)($r['reverses_settlement_id']??0),
++                'items'=>$lines,'item_lines_complete'=>is_array($snapshot)&&is_array($snapshot['items']??null)&&count($snapshot['items'])<=100];
++        }
++        $result=['format'=>'sokna-public-invoice-history-v1','status'=>'available',
++          'currency'=>'IRT','basis'=>'receipt_business_day_for_archive__session_open_business_day_for_sale',
++          'range'=>['from'=>$from,'to'=>$businessDate],
++          'rows'=>$out,'truncated'=>$truncated,'limit'=>$limit,'generated_at'=>gmdate('c')];
++        // This projection shares the reports payload limit; overflow must not make
++        // sales KPIs unavailable. Caller catches and substitutes unavailable status.
++        if(strlen(json_encode($result,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR))>1250000)
++            throw new \OverflowException('invoice history projection too large');
++        return $result;
++    }
++}
+--- a/local/src/Domain/Reporting/ReportingService.php
++++ b/local/src/Domain/Reporting/ReportingService.php
+@@ -64,6 +64,25 @@
+         $report=$this->itemSalesReport($from,$to,array_column($items,'id'),300);
+         $report['group']=['type'=>$type,'id'=>$id,'name'=>(string)$groupRow['name'],'count'=>count($items)];
+         $report['membership']='current_catalog';
++        return $report;
++    }
++
++    /** Ad-hoc across-category name match. Not a permanently saved analytic family.
++     * Enumerate matched IDs first to avoid name-based historical financial joins.
++     */
++    public function itemSalesKeywordReport(?string $from,?string $to,string $query): array
++    {
++        $query=trim($query);
++        $characters=preg_match_all('/./us',$query);
++        if($characters===false||$characters<2||$characters>60)
++            throw new ReportingException('invalid_sales_keyword','عبارت نام گروه باید ۲ تا ۶۰ حرف باشد.',422);
++        $like='%'.str_replace(['\\','%','_'],['\\\\','\\%','\\_'],$query).'%';
++        $rows=$this->all("SELECT id FROM items WHERE name LIKE ? ORDER BY id LIMIT 301",[$like]);
++        if(count($rows)>300)throw new ReportingException('sales_keyword_too_large','این جست‌وجو بیش از ۳۰۰ محصول دارد؛ عبارت را دقیق‌تر کنید.',422);
++        if(!$rows)throw new ReportingException('sales_keyword_empty','محصولی با این عبارت در نامش یافت نشد.',422);
++        $report=$this->itemSalesReport($from,$to,array_column($rows,'id'),300);
++        $report['group']=['type'=>'keyword','id'=>0,'name'=>'نام شامل «'.$query.'»','count'=>count($rows)];
++        $report['membership']='current_catalog_name_match';
+         return $report;
+     }
+ 
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6260,3 +6260,20 @@
+  .sc-item-sales-table td:before{content:attr(data-label);color:var(--sc-muted);font-size:.73rem;flex-shrink:0}
+  .sc-item-sales-table td:first-child{font-weight:800;justify-content:space-between;border-bottom:1px solid var(--sc-border);padding-block-end:7px}
+ }
++
++/* R315 Public invoice archive: reuse the canonical finance-document and SCDS cards. */
++.sc-invoice-history{max-inline-size:1120px;margin-inline:auto}
++.sc-invoice-history__list{display:grid;gap:8px;min-inline-size:0}
++.sc-invoice-history__row{display:grid;gap:7px;inline-size:100%;text-align:start;border:1px solid var(--sc-page-rule,var(--sc-border));border-radius:12px;background:var(--sc-surface,#fff);padding:12px 15px;cursor:pointer;color:inherit;font:inherit;min-inline-size:0}
++.sc-invoice-history__row:hover,.sc-invoice-history__row:focus-visible{border-color:var(--sc-accent,#0f6b66);background:var(--sc-accent-soft,#edf7f4)}
++.sc-invoice-history__head,.sc-invoice-history__body{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px 12px;min-inline-size:0}
++.sc-invoice-history__head strong{font-size:.82rem;overflow-wrap:anywhere}
++.sc-invoice-history__body small{font-size:.73rem;color:var(--sc-muted)}.sc-invoice-history__body strong{font-size:.82rem}
++.sc-invoice-history__badge{font-size:.7rem;border-radius:99px;background:var(--sc-accent-soft,#e7f3ef);color:var(--sc-accent-strong,#07675b);padding:4px 9px}
++.sc-invoice-history__detail{border:1px solid var(--sc-page-rule,var(--sc-border));border-radius:14px;min-inline-size:0;margin-block-start:12px}
++.sc-invoice-history__detail[hidden]{display:none}
++.sc-invoice-history__detail .sc-finance-document{display:grid;gap:12px}
++@media(max-width:640px){.sc-invoice-history .sc-toolbar{display:grid;grid-template-columns:minmax(0,1fr)}.sc-invoice-history .sc-toolbar>*{min-inline-size:0}.sc-invoice-history__row{padding:12px}.sc-invoice-history__head,.sc-invoice-history__body{gap:4px 8px}}
++
++/* R315: same native controls for across-category item-family query. */
++.sc-item-sales-keyword-note{margin-block:0 .75rem;line-height:1.7;font-size:.83rem}.sc-item-sales-keyword{margin-top:.3rem}
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -19,6 +19,7 @@
+  if(!input||!opts||!selected||!run||!out)return;
+  const items=new Map();let searchToken=0,reportToken=0,currentReport=null,lookupTimer=0;
+  const category=$('[data-item-sales-category]'),family=$('[data-item-sales-family]'),groupRun=$('[data-item-sales-group-run]');
++ const keyword=$('[data-item-sales-keyword]'),keywordRun=$('[data-item-sales-keyword-run]');
+  let groups={categories:[],families:[]};
+  const groupOption=(value,label)=>{const option=document.createElement('option');option.value=String(value);option.textContent=label;return option};
+  function updateGroups(){if(!category||!family||!groupRun)return;
+@@ -46,6 +47,19 @@
+      statusText(`گزارش ${report.group?.name||'گروه'}: ${L.integer(report.group?.count||0)} کالا بر مبنای عضویت فعلی کاتالوگ؛ فروش فقط از اسناد پرداخت/برگشت محاسبه شده است.`);
+      exportButton.disabled=false;
+    }catch(e){if(token===reportToken)statusText(e.message||'گزارش گروه آماده نشد.',true)}finally{if(token===reportToken)groupRun.disabled=!Number(category?.value||0)}
++ });
++ keyword?.addEventListener('input',()=>{if(keywordRun)keywordRun.disabled=keyword.value.trim().length<2});
++ keywordRun?.addEventListener('click',async()=>{
++   const qtext=keyword?.value.trim()||'';if(qtext.length<2)return;
++   const token=++reportToken,form=$('[data-report-form]');keywordRun.disabled=true;out.replaceChildren();exportButton.disabled=true;
++   statusText('در حال محاسبه مجموع کالاها در همه دسته‌ها…');
++   const q=new URLSearchParams({action:'item_sales_keyword',q:qtext,from:form.elements.from.value,to:form.elements.to.value});
++   try{const j=await request(q,{emitMeta:false});if(token!==reportToken)return;
++     const report=j.item_sales||{};currentReport=report;renderItemSaleRows(report);
++     statusText(`گروه موقت: ${L.integer(report.group?.count||0)} محصول با عبارت «${qtext}» در نام، در تمام دسته‌ها. اقلام پوشش‌داده‌شده در جدول آمده‌اند.`);
++     exportButton.disabled=false;
++   }catch(e){if(token===reportToken)statusText(e.message||'این گزارش آماده نشد.',true)}
++   finally{if(token===reportToken)keywordRun.disabled=(keyword?.value.trim().length||0)<2}
+  });
+  loadGroups();
+  function renderItemSaleRows(report){
+@@ -209,7 +223,7 @@
+   disclosure.append(summary,body);notice.append(disclosure);
+ }
+ 
+-for(const section of $$('[data-report-section]')){const supported=section.dataset.reportSection==='item-sales'||!reportAvailableSections||reportAvailableSections.includes(section.dataset.reportSection);let message=section.querySelector('[data-report-unavailable]');if(!supported&&!message){message=el('div','sc-alert sc-alert--info','تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.');message.dataset.reportUnavailable='';section.prepend(message)}if(message)message.hidden=supported;for(const child of [...section.children]){if(child===message)continue;if(!supported){if(!reportHiddenBefore.has(child))reportHiddenBefore.set(child,child.hidden);child.hidden=true}else if(reportHiddenBefore.has(child)){child.hidden=reportHiddenBefore.get(child);reportHiddenBefore.delete(child)}}}}
++for(const section of $$('[data-report-section]')){const supported=['item-sales','invoices'].includes(section.dataset.reportSection)||!reportAvailableSections||reportAvailableSections.includes(section.dataset.reportSection);let message=section.querySelector('[data-report-unavailable]');if(!supported&&!message){message=el('div','sc-alert sc-alert--info','تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.');message.dataset.reportUnavailable='';section.prepend(message)}if(message)message.hidden=supported;for(const child of [...section.children]){if(child===message)continue;if(!supported){if(!reportHiddenBefore.has(child))reportHiddenBefore.set(child,child.hidden);child.hidden=true}else if(reportHiddenBefore.has(child)){child.hidden=reportHiddenBefore.get(child);reportHiddenBefore.delete(child)}}}}
+ 
+ setupReportSections();setupItemSales();load();
+ })();
+--- /dev/null
++++ b/public/assets/staff-app/public-invoice-history.js
+@@ -0,0 +1,36 @@
++(()=>{'use strict';
++const root=document.querySelector('[data-public-invoices]');if(!root)return;
++const find=s=>root.querySelector(s),list=find('[data-invoice-list]'),detail=find('[data-invoice-detail]');
++const form=find('[data-invoice-history-form]'),scope=find('[data-invoice-scope]'),error=find('[data-invoice-error]'),more=find('[data-invoice-more]');
++const fmt=n=>new Intl.NumberFormat('fa-IR').format(Number(n)||0),money=n=>fmt(n)+' تومان';
++const wrap=(tag,cls='',str='')=>{const n=document.createElement(tag);if(cls)n.className=cls;n.textContent=str;return n};
++const date=s=>{const d=String(s||'');return d?d.replace(/-/g,'/').replace(/[0-9]/g,x=>'۰۱۲۳۴۵۶۷۸۹'[Number(x)]):'—'};
++const fail=m=>{error.hidden=false;error.textContent=m};
++const clear=()=>{error.textContent='';error.hidden=true};
++let page=1,hasMore=false,seq=0;
++const query=(action,other={})=>{const url=new URL(root.dataset.api,location.href);url.searchParams.set('action',action);Object.entries(other).forEach(([k,v])=>{if(v!==undefined&&v!==''&&v!==null)url.searchParams.set(k,String(v))});return url};
++async function loadApi(action,args){const response=await fetch(query(action,args),{credentials:'same-origin',headers:{'Accept':'application/json'}});const j=await response.json();if(!response.ok||j.success===false)throw new Error(j.message||'دریافت اطلاعات مالی انجام نشد.');return j;}
++const statusLabel=s=>s==='reversal'?'برگشت وجه':'تسویه‌شده';
++function renderRow(r){const b=wrap('button','sc-invoice-history__row');b.type='button';b.dataset.invoiceId=String(r.id);const top=wrap('span','sc-invoice-history__head');top.append(wrap('strong','sc-canonical-id','فاکتور '+(r.invoice_number||r.id)),wrap('span','sc-invoice-history__badge',statusLabel(r.status)));b.append(top);const bottom=wrap('span','sc-invoice-history__body');bottom.append(wrap('small','',String(r.table_name||'میز نامشخص')+' · '+date(r.receipt_business_date)),wrap('strong','',money(r.total)));b.append(bottom);b.addEventListener('click',()=>showDetail(Number(r.id)));return b}
++async function load(reset=true){const token=++seq;clear();if(reset){page=1;list.replaceChildren();detail.hidden=true}const args=Object.fromEntries(new FormData(form).entries());args.page=page;
++ try{const j=await loadApi('invoice_history',args);if(token!==seq)return;const data=j.invoice_history||{},rows=data.rows||[],cov=data.coverage||{};scope.textContent=`پوشش همگام‌شده: ${date(cov.from)} تا ${date(cov.to)}${cov.truncated?' · فقط اسناد جدیدتر منتقل شده‌اند؛ فهرست کامل نیست.':' · این آرشیو فقط محدوده نمایش‌داده‌شده را پوشش می‌دهد.'}`;
++ if(!rows.length&&reset)list.append(wrap('div','sc-empty','در اسناد همگام‌شده مطابق این فیلتر موردی پیدا نشد.'));
++ rows.forEach(r=>list.append(renderRow(r)));hasMore=data.pagination?.has_more===true;more.hidden=!hasMore;
++ }catch(e){if(token===seq){fail(e.message);if(reset)scope.textContent='تاریخچه فعلاً قابل تأیید نیست؛ برای آرشیو کامل از لوکال استفاده کنید.'}}
++}
++async function showDetail(id){clear();detail.hidden=false;detail.replaceChildren(wrap('p','sc-muted','در حال دریافت سند…'));detail.scrollIntoView({behavior:'smooth',block:'nearest'});
++ try{const j=await loadApi('invoice_detail',{id});const r=j.invoice||{};if(Number(r.id)!==id)throw new Error('شناسه سند دریافت‌شده با درخواست مطابقت ندارد.');detail.replaceChildren();const box=wrap('div','sc-finance-document sc-card__body');
++ const header=wrap('header','sc-finance-document__head'),head=wrap('div');head.append(wrap('small','sc-muted','سند مالی فقط‌خواندنی'),wrap('h2','sc-canonical-id','فاکتور '+String(r.invoice_number||r.id)),wrap('p','sc-muted',String(r.table_name||'میز نامشخص')));header.append(head,wrap('span','sc-invoice-history__badge',statusLabel(r.status)));box.append(header);
++ const context=wrap('div','sc-finance-document__context');[['روز کاری فروش',date(r.sale_business_date)],['روز کاری دریافت',date(r.receipt_business_date)],['زمان دریافت',String(r.settled_at||'—')]].forEach(([k,v])=>{const x=wrap('div');x.append(wrap('span','',k),wrap('strong','',v));context.append(x)});box.append(context);
++ if(r.status==='reversal')box.append(wrap('div','sc-finance-document__notice','این سند برگشت مالی است؛ مبلغ آن نباید دوباره به فروش اضافه شود.'));
++ const lines=wrap('section','sc-finance-document__lines');lines.append(wrap('h3','','اقلام ثبت‌شده'));if(!r.item_lines_complete)lines.append(wrap('p','sc-muted','جزئیات اقلام این سند کامل نیست؛ جمع مالی از سند اصلی خوانده شده است.'));
++ if(!Array.isArray(r.items)||!r.items.length)lines.append(wrap('p','sc-muted','ریز اقلام در مدل همگام‌شده موجود نیست.'));
++ for(const item of r.items||[]){const line=wrap('div','sc-finance-document__line'),name=wrap('div');name.append(wrap('strong','',String(item.name||'آیتم')),wrap('small','sc-muted',fmt(item.quantity)+' × '+money(item.unit_price)));line.append(name,wrap('strong','',money(item.line_final)));lines.append(line)}box.append(lines);
++ const totals=wrap('dl','sc-finance-document__totals');[['جمع اقلام',r.subtotal],['تخفیف',r.discount],['مالیات',r.tax_amount],['مبلغ نهایی',r.total]].forEach(([k,v],i)=>{const row=wrap('div',i===3?'is-total':'');row.append(wrap('dt','',k),wrap('dd','',money(v)));totals.append(row)});box.append(totals);
++ const action=wrap('div','sc-actions'),close=wrap('button','sc-button sc-button--secondary','بستن جزئیات');close.type='button';close.addEventListener('click',()=>{detail.hidden=true;detail.replaceChildren()});action.append(close);box.append(action);detail.append(box);
++ }catch(e){detail.replaceChildren(wrap('div','sc-alert sc-alert--warning',e.message+' برای سابقه کامل‌تر، سیستم اصلی کافه را بررسی کنید.'))}}
++form.addEventListener('submit',e=>{e.preventDefault();load(true)});
++more.addEventListener('click',()=>{if(hasMore){page++;load(false)}});
++const invoiceId=new URL(location.href).searchParams.get('invoice_id');if(invoiceId&&/^[1-9][0-9]{0,12}$/.test(invoiceId)){const tab=document.querySelector('a[href="#report-invoices"]');tab?.click();showDetail(Number(invoiceId))}
++load(true);
++})();
+--- a/public/resources/shared-staff-ui/reports-workspace.php
++++ b/public/resources/shared-staff-ui/reports-workspace.php
+@@ -26,7 +26,7 @@
+   </section>
+   <div class="sc-alert" data-status hidden></div>
+   <nav class="sc-report-section-nav" aria-label="نوع گزارش" data-report-section-nav role="tablist">
+-    <a href="#report-overview" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" role="tab" aria-selected="false">انبار</a><a href="#report-margin" role="tab" aria-selected="false">حاشیه سود</a><a href="#report-financial" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" role="tab" aria-selected="false">فروش محصولات</a>
++    <a href="#report-overview" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" role="tab" aria-selected="false">انبار</a><a href="#report-margin" role="tab" aria-selected="false">حاشیه سود</a><a href="#report-financial" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" role="tab" aria-selected="false">فروش محصولات</a><?php if(($canInvoiceHistory??false)): ?><a href="#report-invoices" role="tab" aria-selected="false">فاکتورها</a><?php endif; ?>
+   </nav>
+   <section class="sc-report-section-anchor" id="report-overview" data-report-section="overview">
+   <div class="sc-summary-grid sc-report-summary" data-summary></div>
+@@ -111,6 +111,11 @@
+         <label class="sc-field"><span class="sc-field__label">خانواده کالا (اختیاری)</span><select class="sc-control" data-item-sales-family><option value="">تمام کالاهای دسته</option></select></label>
+         <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-group-run disabled>نمایش فروش دسته / خانواده</button></div>
+       </div>
++      <div class="sc-entity-editor__fields sc-item-sales-keyword" aria-label="گزارش عبارت مشترک بین دسته‌ها">
++        <label class="sc-field"><span class="sc-field__label">جمع محصولات با نام مشترک (مثلاً همه چای‌ها)</span><input type="search" class="sc-control" data-item-sales-keyword placeholder="مثلاً چای" maxlength="60" autocomplete="off"></label>
++        <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-keyword-run disabled>نمایش همه نام‌های مشابه</button></div>
++      </div>
++      <p class="sc-muted sc-item-sales-keyword-note">همه کالاهایی که عبارت واردشده در نامشان باشد، حتی در دسته‌های مختلف، محاسبه می‌شوند. این یک گروه موقت است؛ اقلام تحت پوشش در نتیجه مشخص‌اند.</p>
+       <details class="sc-item-sales-individual">
+         <summary>انتخاب محصولات مشخص (پیشرفته)</summary>
+         <p class="sc-muted">برای مقایسه چند محصول خاص، نام یا کد را جست‌وجو و تا ۳۰ قلم انتخاب کنید.</p>
+@@ -128,5 +133,23 @@
+     <section class="sc-card sc-report-panel sc-report-panel--trend"><div class="sc-card__body"><div class="sc-section-head"><div><h2>روند روزانه</h2><p>فروش خالص و تعداد تسویه در بازه انتخابی.</p></div></div><div class="sc-report-trends" data-daily></div></div></section>
+     <section class="sc-card sc-report-panel"><div class="sc-card__body"><div class="sc-section-head"><div><h2>آیتم‌های برتر</h2><p>آیتم‌هایی که بیشترین فروش را در این بازه ساخته‌اند.</p></div></div><div class="sc-report-ranking" data-top></div></div></section>
+   </div>
++<?php if(($canInvoiceHistory??false)): ?>
++  <section class="sc-card sc-report-section-anchor" id="report-invoices" data-report-section="invoices" data-public-invoices data-api="<?=htmlspecialchars($workspaceApi,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>">
++    <div class="sc-card__body sc-stack sc-invoice-history">
++      <div class="sc-section-head"><div><h2>تاریخچه فاکتورها</h2><p>فقط اسناد ثبت‌شده در محدوده همگام‌سازی؛ جست‌وجوی تاریخچه کامل در سیستم اصلی کافه انجام می‌شود.</p></div></div>
++      <div class="sc-alert sc-alert--warning" data-invoice-scope role="status">در حال دریافت محدوده اسناد…</div>
++      <form class="sc-toolbar sc-toolbar--wrap" data-invoice-history-form>
++        <label class="sc-field"><span class="sc-field__label">شماره فاکتور یا میز</span><input class="sc-control" type="search" name="q" maxlength="100" placeholder="جست‌وجوی سند"></label>
++        <label class="sc-field"><span class="sc-field__label">از روز کاری دریافت</span><input class="sc-control" type="date" name="from"></label>
++        <label class="sc-field"><span class="sc-field__label">تا روز کاری دریافت</span><input class="sc-control" type="date" name="to"></label>
++        <button type="submit" class="sc-button sc-button--secondary">جست‌وجو</button>
++      </form>
++      <div class="sc-alert sc-alert--danger" data-invoice-error hidden role="alert"></div>
++      <div class="sc-invoice-history__list" data-invoice-list></div>
++      <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-invoice-more hidden>نمایش بیشتر</button></div>
++      <div class="sc-invoice-history__detail" data-invoice-detail hidden></div>
++    </div>
++  </section>
++<?php endif; ?>
+ </section><script src="<?=htmlspecialchars($workspaceAsset('assets/staff-app/data-panels.js'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" defer></script>
+ <script src="<?=htmlspecialchars($workspaceAsset('assets/reports-workspace.js'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>" defer></script>
+--- a/public/src/Http/PublicHttpKernel.php
++++ b/public/src/Http/PublicHttpKernel.php
+@@ -85,6 +85,9 @@
+             if ($method === 'GET' && preg_match('#^/assets/scds/(tokens\.css|components\.css|scds\.js)$#D',$path,$m)===1) {
+                 $mime=str_ends_with($m[1],'.css')?'text/css; charset=utf-8':'application/javascript; charset=utf-8';
+                 return $this->staticFile($this->componentRoot . '/assets/scds/' . $m[1],$mime,300);
++            }
++            if ($method === 'GET' && $path === '/assets/staff-app/public-invoice-history.js') {
++                return $this->staticFile($this->componentRoot . '/assets/staff-app/public-invoice-history.js','application/javascript; charset=utf-8',300);
+             }
+             if ($method === 'GET' && $path === '/assets/staff-app/public-account.js') {
+                 return $this->staticFile($this->componentRoot . '/assets/staff-app/public-account.js','application/javascript; charset=utf-8',300);
+--- a/public/src/Http/PublicStaffWorkspaceHttpAdapter.php
++++ b/public/src/Http/PublicStaffWorkspaceHttpAdapter.php
+@@ -114,6 +114,27 @@
+     private function reports(array $session,string $method,array $query): array
+     {
+         if($method!=='GET')return $this->readOnly();$model=$this->model($session,'reports');if(($model['ok']??false)!==true)return $model['response'];$action=(string)($query['action']??'report');
++        // R315: financial documents are restricted to cashier access even if a
++        // staff role can read general sales/consumption reports. Never proxy writes.
++        if(in_array($action,['invoice_history','invoice_detail'],true)){
++            $caps=array_map('strval',(array)($session['capabilities']??[]));
++            if(!in_array('cashier_accounts',$caps,true)&&!in_array('*',$caps,true))
++                return $this->response(403,['success'=>false,'code'=>'invoice_history_forbidden','message'=>'دسترسی مشاهده اسناد مالی ندارید.']);
++            $archive=is_array($model['payload']['invoice_history_archive']??null)?$model['payload']['invoice_history_archive']:[];
++            $service=\Sokna\PublicEdge\Remote\PublicInvoiceHistoryArchive::class;
++            if(!$service::validated($archive,$model['meta']))
++                return $this->response(409,['success'=>false,'code'=>'invoice_history_unavailable','message'=>'تاریخچه فاکتورها هنوز کامل و تازه همگام نشده است.','staff_meta'=>$model['meta']]);
++            if($action==='invoice_detail'){
++                $id=(int)($query['id']??0);
++                if($id<1)return $this->response(422,['success'=>false,'code'=>'invalid_invoice_id','message'=>'شناسه فاکتور معتبر نیست.']);
++                $detail=$service::detail($archive,$id);
++                if(!$detail)return $this->response(409,['success'=>false,'code'=>'invoice_outside_projection','message'=>'این سند در محدوده تاریخچه همگام‌شده نیست؛ برای جست‌وجوی کامل از سیستم اصلی کافه استفاده کنید.','staff_meta'=>$model['meta']]);
++                return $this->response(200,['success'=>true,'invoice'=>$detail,'coverage'=>['truncated'=>(bool)$archive['truncated'],'range'=>$archive['range']],'staff_meta'=>$model['meta']]);
++            }
++            $result=$service::browse($archive,(string)($query['q']??''),(string)($query['from']??''),(string)($query['to']??''),(int)($query['page']??1));
++            if($result===null)return $this->response(422,['success'=>false,'code'=>'invoice_history_range','message'=>'بازه تاریخ خارج از محدوده همگام‌شده یا نامعتبر است.']);
++            return $this->response(200,['success'=>true,'invoice_history'=>$result,'staff_meta'=>$model['meta']]);
++        }
+         if(in_array($action,['item_groups','item_lookup','item_sales','item_sales_group'],true)){
+             $archive=is_array($model['payload']['item_sales_archive']??null)?$model['payload']['item_sales_archive']:[];
+             $svc=\Sokna\PublicEdge\Remote\PublicItemSalesArchive::class;
+--- /dev/null
++++ b/public/src/Remote/PublicInvoiceHistoryArchive.php
+@@ -0,0 +1,48 @@
++<?php
++declare(strict_types=1);
++namespace Sokna\PublicEdge\Remote;
++
++/** Read-only and bounded: absence outside the projection never means absence in Local. */
++final class PublicInvoiceHistoryArchive
++{
++    public static function validated(array $archive,array $meta): bool
++    {
++        $range=(array)($archive['range']??[]);
++        return ($meta['stale']??true)===false
++          &&($archive['format']??'')==='sokna-public-invoice-history-v1'
++          &&($archive['status']??'')==='available'
++          &&($archive['basis']??'')==='receipt_business_day_for_archive__session_open_business_day_for_sale'
++          &&self::day((string)($range['from']??'')) &&self::day((string)($range['to']??''))
++          &&is_array($archive['rows']??null) &&is_bool($archive['truncated']??null);
++    }
++    public static function browse(array $archive,string $q='',string $from='',string $to='',int $page=1): ?array
++    {
++        $range=(array)$archive['range'];
++        if($from!==''&&!self::day($from)||$to!==''&&!self::day($to)||($from!==''&&$to!==''&&$from>$to))return null;
++        if(($from!==''&&$from<$range['from'])||($to!==''&&$to>$range['to']))return null;
++        $q=self::fold(substr(trim($q),0,400));$filtered=[];
++        foreach($archive['rows'] as $r){if(!is_array($r))continue;
++            $day=(string)($r['receipt_business_date']??'');
++            if($from!==''&&$day<$from||$to!==''&&$day>$to)continue;
++            if($q!==''&&!str_contains(self::fold((string)($r['invoice_number']??'').' '.(string)($r['table_name']??'')),$q))continue;
++            // Never transfer line items in a list response.
++            $filtered[]=array_diff_key($r,['items'=>true]);
++        }
++        $page=max(1,min(1000,$page));$perPage=20;$total=count($filtered);
++        return ['rows'=>array_slice($filtered,($page-1)*$perPage,$perPage),
++          'pagination'=>['page'=>$page,'page_size'=>$perPage,'projected_matches'=>$total,'has_more'=>$total>$page*$perPage],
++          'coverage'=>['from'=>$range['from'],'to'=>$range['to'],'truncated'=>$archive['truncated'],
++          'scope'=>'projected_receipts_only','as_of'=>(string)($archive['generated_at']??'')]];
++    }
++    public static function detail(array $archive,int $id): ?array
++    {
++        if($id<1)return null;
++        foreach($archive['rows'] as $r)if(is_array($r)&&(int)($r['id']??0)===$id)return $r;
++        return null;
++    }
++    private static function day(string $day):bool
++    {return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D',$day,$m)===1&&checkdate((int)$m[2],(int)$m[3],(int)$m[1]);}
++    private static function fold(string $x):string
++    {$x=strtr($x,['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9','ي'=>'ی','ك'=>'ک']);
++      return function_exists('mb_strtolower')?mb_strtolower($x,'UTF-8'):strtolower($x);}
++}
+--- a/public/src/Remote/PublicItemSalesArchive.php
++++ b/public/src/Remote/PublicItemSalesArchive.php
+@@ -23,6 +23,20 @@
+                 if(count($result)>=40)break;
+             }
+         }return $result;
++    }
++    /** Search the bounded synced catalog; never infer a financial total from a text search alone. */
++    public static function keywordIds(array $data,string $query): ?array
++    {
++        $query=self::fold(trim($query));
++        $length=preg_match_all('/./us',$query);
++        if($length===false||$length<2||$length>60)return null;
++        $ids=[];foreach($data['catalog'] as $row){if(!is_array($row))continue;
++          if(str_contains(self::fold((string)($row['name']??'')),$query)){
++             $id=(int)($row['id']??0);if($id>0)$ids[$id]=$id;
++             if(count($ids)>300)return null;
++          }
++        }
++        return array_values($ids);
+     }
+     public static function groups(array $data): array
+     {
+--- a/public/src/Remote/RemoteReadModelService.php
++++ b/public/src/Remote/RemoteReadModelService.php
+@@ -370,6 +370,10 @@
+         // A corrupt/truncated projection must not silently become a successful empty report.
+         // Keep the underlying stored bytes private; the client only sees a stable error code.
+         if (!is_array($payload)) return $this->error(502, 'projection_payload_invalid');
++        // R315: raw read-model GET/watch may bypass workspace adapter, so redact
++        // itemized invoice history for non-cashier users at the read boundary.
++        if ($modelKey === 'reports' && !$this->hasCapability($session,'cashier_accounts'))
++            unset($payload['invoice_history_archive']);
+         if ($modelKey === 'operations') $payload = $this->filterOperations($payload, $session);
+         if ($modelKey === 'operations_workspace') $payload = $this->filterOperationsWorkspace($payload, $session);
+         if ($modelKey === 'preparation') $payload = $this->filterPreparation($payload, $session);
+--- a/public/src/Remote/RemoteStaffPageRenderer.php
++++ b/public/src/Remote/RemoteStaffPageRenderer.php
+@@ -249,9 +249,10 @@
+     private function reports(array $session): void
+     {
+         $payload=[];$model=$this->core->remoteReadModels()->read($session,'reports');if((int)($model['status']??0)===200&&is_array($model['body']['payload']??null))$payload=$model['body']['payload'];
+-        $range=is_array($payload['range']??null)?$payload['range']:[];$today=PublicDashboardFinance::businessDate($payload)??(new \DateTimeImmutable('now',new \DateTimeZone('Asia/Tehran')))->format('Y-m-d');$to=(string)($range['to']??$today);$from=(string)($range['from']??$to);$focus='';$canAudit=false;$reportRangeEnabled=true; // A missing archive affects data availability, never form usability.
++        $range=is_array($payload['range']??null)?$payload['range']:[];$today=PublicDashboardFinance::businessDate($payload)??(new \DateTimeImmutable('now',new \DateTimeZone('Asia/Tehran')))->format('Y-m-d');$to=(string)($range['to']??$today);$from=(string)($range['from']??$to);$focus='';$canAudit=false;$canInvoiceHistory=$this->has($session,'cashier_accounts');$reportRangeEnabled=true; // A missing archive affects data availability, never form usability.
+         $workspaceApi=$this->u('/staff/reports-adapter');$workspaceAsset=static fn(string $path):string=>ProductShell::asset($path);$workspaceExportCurrent='';$workspaceExportAnalytical='';
+         require dirname(__DIR__,2).'/resources/shared-staff-ui/reports-workspace.php';
++        if($canInvoiceHistory)echo '<script src="'.ProductShell::asset('assets/staff-app/public-invoice-history.js').'" defer></script>';
+     }
+ 
+     private function notifications(): void
