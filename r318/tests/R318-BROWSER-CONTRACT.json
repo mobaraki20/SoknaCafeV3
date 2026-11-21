@@ -1,0 +1,74 @@
+{
+  "count": 17,
+  "passed": 17,
+  "cases": [
+    {
+      "case": "live preview mounted",
+      "pass": true
+    },
+    {
+      "case": "separate subtitle in preview",
+      "pass": true
+    },
+    {
+      "case": "title wraps as two lines",
+      "pass": true
+    },
+    {
+      "case": "single footer input",
+      "pass": true
+    },
+    {
+      "case": "clear footer yields no paragraph",
+      "pass": true
+    },
+    {
+      "case": "default layout contains exactly three items",
+      "pass": true
+    },
+    {
+      "case": "bar first order",
+      "pass": true
+    },
+    {
+      "case": "kitchen first order",
+      "pass": true
+    },
+    {
+      "case": "original order",
+      "pass": true
+    },
+    {
+      "case": "80mm displays three columns",
+      "pass": true
+    },
+    {
+      "case": "58mm has safe 2-col fallback",
+      "pass": true
+    },
+    {
+      "case": "two-line layout removes columns",
+      "pass": true
+    },
+    {
+      "case": "simultaneous live update",
+      "pass": true
+    },
+    {
+      "case": "footer text removed immediately",
+      "pass": true
+    },
+    {
+      "case": "mobile preview visible",
+      "pass": true
+    },
+    {
+      "case": "zero document horizontal overflow",
+      "pass": true
+    },
+    {
+      "case": "no javascript errors",
+      "pass": true
+    }
+  ]
+}
