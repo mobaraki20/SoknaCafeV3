@@ -1,0 +1,145 @@
+--- a/local/assets/staff-app/preparation-workspace.js
++++ b/local/assets/staff-app/preparation-workspace.js
+@@ -40,18 +40,19 @@
+  lastPreparationData=data;wrap.replaceChildren();
+  const orders=Array.isArray(data.orders)?data.orders:[],monitor=data.permissions?.monitor_only===true;
+  renderSummary(orders);
+  const chronological=(a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))||Number(a.id||0)-Number(b.id||0);const pending=orders.filter(orderNeedsAction).sort(chronological),received=orders.filter(o=>!orderNeedsAction(o)).sort(chronological);
+- const tabs=make('div',undefined,'sc-preparation-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','وضعیت سفارش‌های آماده‌سازی');
++ const tabsBar=make('div',undefined,'sc-toolbar sc-local-nav sc-preparation-nav');
++ const tabs=make('div',undefined,'sc-tabs sc-preparation-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','وضعیت سفارش‌های آماده‌سازی');
+  for(const [key,label,rows] of [['pending','در انتظار',pending],['received','دریافت‌شده',received]]){
+-  const button=make('button',undefined,'sc-preparation-tab'+(preparationTab===key?' is-current':''));button.type='button';button.setAttribute('role','tab');button.setAttribute('aria-selected',preparationTab===key?'true':'false');button.setAttribute('tabindex',preparationTab===key?'0':'-1');button.dataset.preparationTab=key;button.id='sc-preparation-tab-'+key;button.setAttribute('aria-controls','sc-preparation-active-panel');button.append(make('span',label),make('b',L.integer(rows.length)));
++  const button=make('button',undefined,'sc-tab sc-preparation-tab'+(preparationTab===key?' is-current':''));button.type='button';button.setAttribute('role','tab');button.setAttribute('aria-selected',preparationTab===key?'true':'false');button.setAttribute('tabindex',preparationTab===key?'0':'-1');button.dataset.preparationTab=key;button.id='sc-preparation-tab-'+key;button.setAttribute('aria-controls','sc-preparation-active-panel');button.append(make('span',label),make('b',L.integer(rows.length)));
+   button.addEventListener('click',()=>{preparationTab=key;render(lastPreparationData);root.querySelector(`[data-preparation-tab="${key}"]`)?.focus({preventScroll:true})});
+   button.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','Home','End'].includes(e.key))return;
+     e.preventDefault();const next=e.key==='Home'?'pending':e.key==='End'?'received':preparationTab==='pending'?'received':'pending';
+     preparationTab=next;render(lastPreparationData);root.querySelector(`[data-preparation-tab="${next}"]`)?.focus({preventScroll:true});
+   });tabs.append(button);
+  }
+- wrap.append(tabs);
++ tabsBar.append(tabs);wrap.append(tabsBar);
+  const visible=preparationTab==='received'?received:pending;
+  const panel=make('div',undefined,'sc-preparation-tab-panel');panel.id='sc-preparation-active-panel';panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','sc-preparation-tab-'+preparationTab);
+  if(visible.length){panel.append(groupBlock(preparationTab==='pending'?'در انتظار دریافت':'دریافت‌شده امروز',preparationTab==='pending'?'سفارش‌هایی که هنوز دریافت نشده‌اند یا اصلاح تأییدنشده دارند.':'سوابق دریافت‌شده؛ بدون شلوغ‌کردن صف اصلی.',visible,monitor,preparationTab==='pending'?'active':'handled'))}
+  else panel.append(make('div',preparationTab==='pending'?'سفارش منتظر دریافت وجود ندارد.':'هنوز سفارشی دریافت نشده است.','sc-empty sc-preparation-empty'));
+
+--- a/local/assets/product-ui.css
++++ b/local/assets/product-ui.css
+@@ -6185,13 +6185,8 @@
+ .sc-product-combobox__input{padding-inline-end:34px!important}
+ .sc-product-combobox__clear{position:absolute;inset-inline-end:6px;inset-block-start:50%;transform:translateY(-50%);display:grid;place-items:center;inline-size:26px;block-size:26px;background:transparent;border:0;border-radius:7px;color:var(--sc-muted);cursor:pointer;z-index:2}
+ .sc-product-combobox__clear:hover{background:var(--sc-surface-hover);color:var(--sc-text)}
+ 
+-
+-.sc-preparation-tabs{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-block:4px 14px}
+-.sc-preparation-tab{display:flex;align-items:center;gap:8px;min-block-size:40px;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface-raised);color:var(--sc-text);font:inherit;font-size:.78rem;font-weight:750;padding:7px 13px;cursor:pointer}
+-.sc-preparation-tab b{font-size:.73rem;border-radius:10px;background:var(--sc-surface-subtle);padding:2px 8px}
+-.sc-preparation-tab.is-current{border-color:var(--sc-accent);background:var(--sc-accent-soft);color:var(--sc-accent)}
+ .sc-preparation-tab-panel{min-inline-size:0}
+ 
+ 
+ /* R203: retain every historical record, hide old versions from daily lists. */
+@@ -6515,23 +6510,17 @@
+ .sui-settlement-dialog .sui-settlement-search.is-customer-lookup input:focus,
+ .sui-settlement-dialog .sui-settlement-search.is-customer-lookup input:focus-visible{
+  box-shadow:none!important;outline:none!important;border:0!important;
+ }
+-/* R302: one integrated accessible tab strip for preparation, similar to Connections. */
+-.sc-preparation-tabs{
+- display:inline-flex;max-inline-size:100%;flex-wrap:nowrap;gap:0;
+- align-items:stretch;overflow:hidden;border:1px solid var(--sc-border);border-radius:12px;
+- background:var(--sc-surface-subtle);padding:3px;margin-block:4px 12px;
+-}
+-.sc-preparation-tab{border:0;border-radius:9px;background:transparent;min-block-size:44px;
+- padding:7px 15px;white-space:nowrap;justify-content:center;gap:7px;transition:background .15s,border-color .15s;
+-}
+-.sc-preparation-tab+.sc-preparation-tab{border-inline-start:1px solid color-mix(in srgb,var(--sc-border) 70%,transparent)}
+-.sc-preparation-tab.is-current{background:var(--sc-surface-raised);color:var(--sc-accent);box-shadow:0 1px 4px rgb(0 0 0 / 7%)}
+-.sc-preparation-tab:focus-visible{outline:2px solid var(--sc-accent);outline-offset:-2px;z-index:1}
+-.sc-preparation-tab b{min-inline-size:21px;text-align:center}
+-@media(max-width:560px){.sc-preparation-tabs{display:flex;inline-size:100%}.sc-preparation-tab{flex:1;padding:7px 6px}}
+-
++/* R316 UX QA: preparation uses canonical Connections sc-local-nav/sc-tabs/sc-tab language.
++   Scoped overrides intentionally do not alter tab behavior on other screens. */
++.sc-preparation-nav{margin-block:0 0.75rem;min-inline-size:0}
++.sc-preparation-nav .sc-preparation-tabs{display:flex;flex:1 1 auto;min-inline-size:0;gap:.3rem;flex-wrap:nowrap;margin:0;overflow:auto;padding:.2rem}
++.sc-preparation-nav .sc-preparation-tab{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;min-block-size:var(--sc-control-height);block-size:var(--sc-control-height);border:0;border-radius:var(--sc-control-radius);padding:0 var(--sc-control-pad-inline);background:transparent;color:var(--sc-muted);font:inherit;font-weight:700;white-space:nowrap;cursor:pointer}
++.sc-preparation-nav .sc-preparation-tab[aria-selected="true"]{border:0;background:var(--sc-surface-subtle);color:var(--sc-text)}
++.sc-preparation-nav .sc-preparation-tab b{font-size:.72rem;border-radius:999px;min-inline-size:21px;text-align:center;padding:2px 6px;background:var(--sc-surface-subtle);color:inherit;font-weight:750}
++.sc-preparation-nav .sc-preparation-tab[aria-selected="true"] b{background:var(--sc-surface-raised)}
++@media(max-width:760px){.sc-preparation-nav{padding:6px}.sc-preparation-nav .sc-preparation-tabs{flex-wrap:nowrap}}
+ /* R302: selected-product sales reporting with accessible search results. */
+ .sc-item-sales-workspace{min-inline-size:0}
+ .sc-item-sales-options{display:grid;gap:4px;max-block-size:230px;overflow:auto}
+ .sc-item-sales-option{display:block;text-align:start;inline-size:100%;padding:10px 13px;border:1px solid var(--sc-border);border-radius:9px;background:var(--sc-surface-raised);color:var(--sc-text);cursor:pointer;font:inherit}
+@@ -6684,4 +6673,5 @@
+ @media(max-width:440px){.sc-history-order__facts,.sc-history-order__invoices{grid-template-columns:1fr 1fr}.sc-history-order__header{gap:9px}.sc-history-order__header .sc-button{width:100%}}
+ 
+ /* R315: same native controls for across-category item-family query. */
+ .sc-item-sales-keyword-note{margin-block:0 .75rem;line-height:1.7;font-size:.83rem}.sc-item-sales-keyword{margin-top:.3rem}
++
+
+--- a/public/assets/staff-app/preparation-workspace.js
++++ b/public/assets/staff-app/preparation-workspace.js
+@@ -39,17 +39,18 @@
+  const orders=Array.isArray(data.orders)?data.orders:[],monitor=data.permissions?.monitor_only===true;
+  renderSummary(orders);
+  const chrono=(a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||''))||Number(a.id||0)-Number(b.id||0);
+  const pending=orders.filter(orderNeedsAction).sort(chrono),received=orders.filter(o=>!orderNeedsAction(o)).sort(chrono);
+- const tabs=make('div',undefined,'sc-preparation-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','وضعیت سفارش‌های آماده‌سازی');
++ const tabsBar=make('div',undefined,'sc-toolbar sc-local-nav sc-preparation-nav');
++ const tabs=make('div',undefined,'sc-tabs sc-preparation-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','وضعیت سفارش‌های آماده‌سازی');
+  for(const [key,label,rows] of [['pending','در انتظار',pending],['received','دریافت‌شده',received]]){
+-   const button=make('button',undefined,'sc-preparation-tab'+(preparationTab===key?' is-current':''));button.type='button';button.dataset.preparationTab=key;button.id='sc-preparation-tab-'+key;button.setAttribute('role','tab');button.setAttribute('aria-selected',preparationTab===key?'true':'false');button.setAttribute('tabindex',preparationTab===key?'0':'-1');button.setAttribute('aria-controls','sc-preparation-active-panel');button.append(make('span',label),make('b',L.integer(rows.length)));
++   const button=make('button',undefined,'sc-tab sc-preparation-tab'+(preparationTab===key?' is-current':''));button.type='button';button.dataset.preparationTab=key;button.id='sc-preparation-tab-'+key;button.setAttribute('role','tab');button.setAttribute('aria-selected',preparationTab===key?'true':'false');button.setAttribute('tabindex',preparationTab===key?'0':'-1');button.setAttribute('aria-controls','sc-preparation-active-panel');button.append(make('span',label),make('b',L.integer(rows.length)));
+    const pick=next=>{preparationTab=next;render(lastData);root.querySelector(`[data-preparation-tab="${next}"]`)?.focus({preventScroll:true})};
+    button.addEventListener('click',()=>pick(key));
+    button.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();pick(e.key==='Home'?'pending':e.key==='End'?'received':preparationTab==='pending'?'received':'pending')});
+    tabs.append(button);
+  }
+- wrap.append(tabs);
++ tabsBar.append(tabs);wrap.append(tabsBar);
+  const visible=preparationTab==='received'?received:pending;
+  const panel=make('div',undefined,'sc-preparation-tab-panel');panel.id='sc-preparation-active-panel';panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','sc-preparation-tab-'+preparationTab);
+  if(visible.length)panel.append(groupBlock('', '',visible,monitor,preparationTab==='pending'?'active':'handled'));
+  else panel.append(make('div',preparationTab==='pending'?'سفارش منتظر دریافت وجود ندارد.':'هنوز سفارشی دریافت نشده است.','sc-empty sc-preparation-empty'));
+
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6189,20 +6189,17 @@
+ .sc-login-flow-selecting [data-login-form] > :not([data-login-accounts]){display:none!important}
+ .sc-login-flow-selecting .sc-login-flow-ready>.sc-login-flow-current-row{display:none!important}
+ @media(max-width:640px){.sc-login-flow-current-row{padding:10px;gap:8px}.sc-login-flow-avatar{width:36px;min-width:36px;height:36px}.sc-login-flow-change{font-size:.8rem;padding:7px 8px}}
+ 
+-/* R303 Public: integrated preparation tabs, same operational state as R275. */
+-body[data-page="waiter"] .sc-preparation-tabs,
+-[data-preparation-workspace] .sc-preparation-tabs{display:inline-flex;align-items:stretch;gap:0;max-inline-size:100%;padding:4px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-subtle);margin-block:4px 14px}
+-[data-preparation-workspace] .sc-preparation-tab{display:flex;align-items:center;gap:9px;min-block-size:44px;padding:7px 14px;border:0;background:transparent;color:var(--sc-text);font:inherit;font-size:.8rem;font-weight:750;cursor:pointer;border-radius:9px}
+-[data-preparation-workspace] .sc-preparation-tab+.sc-preparation-tab{border-inline-start:1px solid color-mix(in srgb,var(--sc-border) 75%,transparent)}
+-[data-preparation-workspace] .sc-preparation-tab.is-current{background:var(--sc-surface-raised);color:var(--sc-accent);box-shadow:0 1px 4px rgb(0 0 0 / 7%)}
+-[data-preparation-workspace] .sc-preparation-tab b{border-radius:999px;min-inline-size:22px;padding:2px 6px;text-align:center;background:var(--sc-surface-subtle)}
+-[data-preparation-workspace] .sc-preparation-tab:focus-visible{outline:2px solid var(--sc-accent);outline-offset:-2px}
+-[data-preparation-workspace] .sc-preparation-tab-panel{min-inline-size:0}
+-@media(max-width:560px){[data-preparation-workspace] .sc-preparation-tabs{display:flex;inline-size:100%}[data-preparation-workspace] .sc-preparation-tab{flex:1;justify-content:center;padding:7px 6px}}
+-
+-
++/* R316 UX QA: preparation uses canonical Connections sc-local-nav/sc-tabs/sc-tab language.
++   Scoped overrides intentionally do not alter tab behavior on other screens. */
++.sc-preparation-nav{margin-block:0 0.75rem;min-inline-size:0}
++.sc-preparation-nav .sc-preparation-tabs{display:flex;flex:1 1 auto;min-inline-size:0;gap:.3rem;flex-wrap:nowrap;margin:0;overflow:auto;padding:.2rem}
++.sc-preparation-nav .sc-preparation-tab{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;min-block-size:var(--sc-control-height);block-size:var(--sc-control-height);border:0;border-radius:var(--sc-control-radius);padding:0 var(--sc-control-pad-inline);background:transparent;color:var(--sc-muted);font:inherit;font-weight:700;white-space:nowrap;cursor:pointer}
++.sc-preparation-nav .sc-preparation-tab[aria-selected="true"]{border:0;background:var(--sc-surface-subtle);color:var(--sc-text)}
++.sc-preparation-nav .sc-preparation-tab b{font-size:.72rem;border-radius:999px;min-inline-size:21px;text-align:center;padding:2px 6px;background:var(--sc-surface-subtle);color:inherit;font-weight:750}
++.sc-preparation-nav .sc-preparation-tab[aria-selected="true"] b{background:var(--sc-surface-raised)}
++@media(max-width:760px){.sc-preparation-nav{padding:6px}.sc-preparation-nav .sc-preparation-tabs{flex-wrap:nowrap}}
+ /* R306: shared Local/Public icon-only refresh control parity. */
+ .sc-refresh-action{display:inline-flex!important;align-items:center!important;justify-content:center!important;inline-size:44px!important;min-inline-size:44px!important;max-inline-size:44px!important;block-size:44px!important;min-block-size:44px!important;padding:0!important;flex:0 0 44px!important;gap:0!important;border-radius:12px!important;white-space:nowrap!important;font-size:inherit!important;}
+ .sc-refresh-action .sc-ui-icon{inline-size:19px!important;block-size:19px!important;stroke:currentColor;fill:none;flex:0 0 auto;}
+ .sc-refresh-action:focus-visible{outline:2px solid var(--sc-accent)!important;outline-offset:2px;}
+@@ -6276,4 +6273,5 @@
+ @media(max-width:640px){.sc-invoice-history .sc-toolbar{display:grid;grid-template-columns:minmax(0,1fr)}.sc-invoice-history .sc-toolbar>*{min-inline-size:0}.sc-invoice-history__row{padding:12px}.sc-invoice-history__head,.sc-invoice-history__body{gap:4px 8px}}
+ 
+ /* R315: same native controls for across-category item-family query. */
+ .sc-item-sales-keyword-note{margin-block:0 .75rem;line-height:1.7;font-size:.83rem}.sc-item-sales-keyword{margin-top:.3rem}
++
