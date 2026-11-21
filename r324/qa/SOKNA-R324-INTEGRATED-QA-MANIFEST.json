@@ -380,5 +380,9 @@
       "bytes": 27027,
       "sha256": "87f239d41bd05e6d8ff2d94fa95ff8547f024fde426b4353def30878802ff2d8"
     }
-  ]
+  ],
+  "integrated_git_branch": "qa/sokna-r324-integrated-source-audit-20261121",
+  "integrated_git_commit": "88b9d71530cef6876a5438c334029a3753ef35a9",
+  "integrated_git_tree_sha": "f8ae9adcca621c3b0e8654a608f2d908034e2702",
+  "github_verified_change_count": 47
 }
