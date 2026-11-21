@@ -1,0 +1,57 @@
+{
+  "schema": "sokna-r314-cumulative-local-public-qa-v1",
+  "date": "2026-11-21",
+  "parent": "R313 cumulative QA; retains R308/R309/R310/R311/R312/R313 source patches",
+  "installed_local_unchanged": "231fw / R307",
+  "installed_public_unchanged": "35in / R306",
+  "status": "SOURCE_AND_CONTRACT_QA_PASS_NOT_INSTALLED",
+  "features": [
+    "Public bell popup and server-side current business-day notification preview",
+    "Local business clock projected with notifications; preserve full notification history",
+    "Day-scoped unread notifications excluded from previous-day dashboard attention items",
+    "60-day bounded SKU/day report archive from completed and reversed settlement lines",
+    "Public report group/category/family, individual item search and CSV reuse Local UI",
+    "Reject stale/incomplete/out-of-range item sales rather than invent amounts"
+  ],
+  "changed_paths": [
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php",
+    "local/src/Domain/Reporting/PublicItemSalesSnapshot.php",
+    "public/assets/product-ui.css",
+    "public/assets/reports-workspace.js",
+    "public/assets/staff-app/public-bell.js",
+    "public/resources/shared-staff-ui/reports-workspace.php",
+    "public/src/Http/PublicStaffWorkspaceHttpAdapter.php",
+    "public/src/Remote/PublicItemSalesArchive.php",
+    "public/src/Remote/PublicNotificationToday.php",
+    "public/src/Remote/RemoteStaffPageRenderer.php",
+    "public/src/UI/ProductShell.php"
+  ],
+  "test_results": {
+    "php_contract_cases": 18,
+    "sqlite_source_sql_cases": 1,
+    "visual_views": 4,
+    "visual_horizontal_overflow": 0,
+    "visual_javascript_errors": 0,
+    "syntax_lint": "PASS",
+    "mariadb_integration": "NOT_RUN",
+    "live_public_auth": "NOT_RUN",
+    "two_host_e2e": "NOT_RUN"
+  },
+  "visual_screenshots": [
+    "R314-public-bell-mobile-QA.png",
+    "R314-public-bell-desktop-QA.png",
+    "R314-public-family-sales-mobile-QA.png",
+    "R314-public-family-sales-desktop-QA.png"
+  ],
+  "limitations": [
+    "Current catalog categories and variant families only; custom analytical group all tea types remains unimplemented",
+    "History older than 60 days not covered by the daily SKU archive",
+    "Historical deleted SKU classification not reconstructed from immutable category snapshot",
+    "No MariaDB query plans / sync payload load test yet",
+    "No live Public/Local authenticated browser and permission testing",
+    "Closed table historic invoice route in Public still incomplete",
+    "No installer, update, or live deploy; this is source QA only"
+  ],
+  "release_attempted": false,
+  "production_touched": false
+}
