@@ -97,4 +97,69 @@ finally
     try{Directory.Delete(pdfRoot,true);}catch{}
 }
 
+
+// R323 QA only: render the same four ordered items in every paper/mode
+// through the real Windows GDI raster engine, not a browser approximation.
+const string prepFixture="""
+{"schema":"sokna-print-document-v2","document_kind":"preparation","title":"کافه سکنا","badge":"فیش آماده‌سازی","sections":[{"title":"","station":"kitchen","items":[{"name":"پیتزا مخصوص","quantity":1,"note":"بدون پیاز","station":"kitchen","order_index":1},{"name":"سیب زمینی","quantity":1,"station":"kitchen","order_index":3}]},{"title":"","station":"bar","items":[{"name":"چای ساده","quantity":2,"note":"کم رنگ","station":"hot_bar","order_index":0},{"name":"لیموناد","quantity":1,"note":"بدون یخ","station":"cold_bar","order_index":2}]}],"template":{"base_font_size":23,"title_font_size":30,"table_font_size":28,"notes_font_size":18,"show_prices":false,"show_section_titles":true,"design":{"density":"compact","item_layout":"__LAYOUT__","preparation_station_order":"__ORDER__","section_order":["status","meta","items","notes","footer"]}}}
+""";
+var renderEvidence=Environment.GetEnvironmentVariable("SOKNA_RENDER_QA_OUTPUT");
+if(!string.IsNullOrWhiteSpace(renderEvidence))Directory.CreateDirectory(renderEvidence);
+bool HasBlackPixel(Bitmap bitmap)
+{
+    for(int y=0;y<bitmap.Height;y+=3)for(int x=0;x<bitmap.Width;x+=3)
+    {
+        var p=bitmap.GetPixel(x,y);if(p.R<100&&p.G<100&&p.B<100)return true;
+    }
+    return false;
+}
+bool SamePixels(Bitmap left,Bitmap right)
+{
+    if(left.Width!=right.Width||left.Height!=right.Height)return false;
+    for(int y=0;y<left.Height;y++)for(int x=0;x<left.Width;x++)
+        if(left.GetPixel(x,y).ToArgb()!=right.GetPixel(x,y).ToArgb())return false;
+    return true;
+}
+foreach(var paper in new[]{58,80})
+{
+    var allRenders=new Dictionary<string,Bitmap>();
+    try
+    {
+        foreach(var order in new[]{"default","as_ordered","bar_first","kitchen_first"})
+        {
+            var layout=paper==58?"columnar-compact":"columnar-notes";
+            var text=prepFixture.Replace("__ORDER__",order).Replace("__LAYOUT__",layout);
+            var printable=paper==58?50d:72d;
+            var bitmap=ReceiptRenderer.Render(text,printable,paper,203,203);
+            allRenders[order]=bitmap;
+            Check(bitmap.Width==(int)Math.Round(printable/25.4*203),$"r323_{paper}_{order}_width");
+            Check(bitmap.Height>80&&bitmap.Height<20000,$"r323_{paper}_{order}_height_bounds");
+            Check(HasBlackPixel(bitmap),$"r323_{paper}_{order}_visible_ink");
+            if(!string.IsNullOrWhiteSpace(renderEvidence))
+                bitmap.Save(Path.Combine(renderEvidence,$"R323-prep-{paper}-{order}.png"),ImageFormat.Png);
+        }
+        Check(!SamePixels(allRenders["bar_first"],allRenders["kitchen_first"]),$"r323_{paper}_station_order_changes_raster");
+        Check(!SamePixels(allRenders["as_ordered"],allRenders["kitchen_first"]),$"r323_{paper}_original_order_changes_raster");
+        // In a document whose original order interleaves kitchen and bar,
+        // the new original-order mode cannot equal the preserved grouped default.
+        Check(!SamePixels(allRenders["default"],allRenders["as_ordered"]),$"r323_{paper}_cross_station_order_restored");
+    }
+    finally {foreach(var bitmap in allRenders.Values)bitmap.Dispose();}
+}
+// Open-account marker stays visible even if the user erases the custom footer
+// and hides the optional settlement label; do not confuse it with a paid receipt.
+const string accountFixture="""
+{"schema":"sokna-print-document-v2","document_kind":"customer","document_role":"__ROLE__","title":"کافه سکنا","total":360000,"currency":"تومان","sections":[{"items":[{"name":"چای","quantity":2,"unit_price":180000,"line_total":360000}]}],"template":{"footer":"","show_settlement_label":false,"design":{"section_order":["brand","items","summary","footer"]}}}
+""";
+using(var openAccount=ReceiptRenderer.Render(accountFixture.Replace("__ROLE__","account_preview"),50,58,203,203))
+using(var paidReceipt=ReceiptRenderer.Render(accountFixture.Replace("__ROLE__","receipt_preview"),50,58,203,203))
+{
+    Check(!SamePixels(openAccount,paidReceipt),"r323_unpaid_marker_changes_real_raster_without_footer");
+    if(!string.IsNullOrWhiteSpace(renderEvidence))
+    {
+        openAccount.Save(Path.Combine(renderEvidence,"R323-account-preview-58.png"),ImageFormat.Png);
+        paidReceipt.Save(Path.Combine(renderEvidence,"R323-receipt-preview-58.png"),ImageFormat.Png);
+    }
+}
+
 if(failures.Count>0){Console.Error.WriteLine("FAIL "+string.Join(",",failures));return 1;}Console.WriteLine("PASS Sokna.PrintAgent.Worker.Tests");return 0;
