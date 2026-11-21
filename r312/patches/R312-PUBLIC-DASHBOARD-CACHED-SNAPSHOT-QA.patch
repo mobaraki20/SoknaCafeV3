@@ -1,0 +1,121 @@
+--- a/src/Remote/PublicDashboardFinance.php
++++ b/src/Remote/PublicDashboardFinance.php
+@@ -137,6 +137,38 @@
+                 'dashboard_from' => $snapshotFrom, 'dashboard_to' => $snapshotDate],
+         ];
+     }
++    /**
++     * Historical fallback for a disconnected or day-shifted Staff dashboard.
++     * This is NEVER a live "today" reading. A covered date without a valid
++     * Local-authored sales fact is not a zero and is never displayed.
++     */
++    public static function lastKnownSnapshot(array $reports, array $meta, string $currentBusinessDay): ?array
++    {
++        $dashboard=is_array($reports['dashboard']??null)?$reports['dashboard']:[];
++        $businessClock=is_array($reports['business_clock']??null)?$reports['business_clock']:[];
++        $snapshotDay=(string)($dashboard['range']['to']??'');
++        if(preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D',$snapshotDay,$m)!==1
++            ||!checkdate((int)$m[2],(int)$m[3],(int)$m[1])
++            ||(string)($businessClock['business_date']??'')!==$snapshotDay
++            ||preg_match('/^\d{4}-\d{2}-\d{2}$/D',$currentBusinessDay)!==1)return null;
++        $isStale=($meta['stale']??true)!==false||$snapshotDay!==$currentBusinessDay;
++        if(!$isStale)return null;
++        $lastSync=trim((string)($meta['last_sync_at']??''));
++        if($lastSync==='')return null;
++        try{$sync=new \DateTimeImmutable($lastSync);}catch(\Throwable){return null;}
++        $freshlyGenerated=trim((string)($meta['generated_at']??''));
++        $historical=self::reconcile($reports,$snapshotDay);
++        if(($historical['today_available']??false)!==true
++            ||in_array($snapshotDay,(array)($historical['daily_conflicts']??[]),true))return null;
++        $summary=(array)$historical['today'];
++        return ['business_date'=>$snapshotDay,'last_sync_at'=>$sync->format('c'),
++            'model_generated_at'=>$freshlyGenerated,'net_sales'=>(int)$summary['net_sales'],
++            'order_count'=>($historical['today_orders_available']??false)===true?(int)$summary['order_count']:null,
++            'avg_ticket'=>($historical['today_avg_available']??false)===true
++                &&($historical['today_has_receipt']??false)===true?(int)$summary['avg_ticket']:null,
++            'source'=>'Local-authored cached report','live'=>false];
++    }
++
+     /**
+      * Two business days from the Local-authored Public projection, never a live
+      * Local ledger query. Missing rows/coverage or conflicts do not mean zero.
+--- a/src/Remote/RemoteStaffPageRenderer.php
++++ b/src/Remote/RemoteStaffPageRenderer.php
+@@ -170,15 +170,18 @@
+         $financeView=PublicDashboardFinance::reconcile($reports,$todayKey);
+         $todaySummary=$financeView['today'];$yesterdaySummary=$financeView['yesterday'];$map=$financeView['daily'];$financeConflictDays=(array)($financeView['daily_conflicts']??[]);
+         $todayHasReceipt=$financeView['today_has_receipt'];$yesterdayHasReceipt=$financeView['yesterday_has_receipt'];$todayProjectionStale=($reportsModel['stale']??true)===true;$todayProjectionUnavailable=$businessDateUnavailable||!$financeView['today_available'];
++        $publicSnapshot=PublicDashboardFinance::lastKnownSnapshot($reports,$reportsModel,$todayKey);
++        $publicDayContext=['business_day'=>$todayKey,'cutoff'=>(string)($reports['business_clock']['cutoff']??''),'old_snapshot'=>$businessDateUnavailable];
+         $weekDaily=[];$weekday=[1=>'دوشنبه',2=>'سه‌شنبه',3=>'چهارشنبه',4=>'پنجشنبه',5=>'جمعه',6=>'شنبه',7=>'یکشنبه'];for($i=6;$i>=0;$i--){$d=$today->modify('-'.$i.' days');$k=$d->format('Y-m-d');$coverage=$financeView['daily_coverage'];$known=array_key_exists($k,$map)&&$sourceBusinessDate!==null&&(!$businessDateUnavailable||$k<$todayKey)&&!in_array($k,$financeConflictDays,true);$weekDaily[]=['label'=>$i===0?'امروز':($weekday[(int)$d->format('N')]??''),'value'=>$known?($map[$k]??0):0,'known'=>$known];}$topItems=(string)($range['to']??'')===$todayKey?array_slice((array)($dashboard['top_items']??[]),0,5):[];if(!$topItems&&is_array($reports['archive']['items']??null)){foreach($reports['archive']['items'] as $item){if(is_array($item)&&(string)($item['date']??'')===$todayKey)$topItems[]=$item;}usort($topItems,static fn(array $a,array $b):int=>(int)($b['net_sales']??0)<=>(int)($a['net_sales']??0));$topItems=array_slice($topItems,0,5);}
+-        $notificationItems=is_array($notifications['items']??null)?array_values(array_filter($notifications['items'],static function($row):bool{$title=trim((string)($row['title']??''));return !str_starts_with($title,'QA Notification ');})) : [];$reportsError=$canReports?null:['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.'];$opsError=!$canOps?['message'=>'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.']:($opsProjectionUnavailable?['message'=>'اطلاعات سالن هنوز با لوکال همگام نشده؛ وضعیت واقعی فراخوان‌ها و سفارش‌ها باید دوباره بررسی شود.']:null);$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
++        $notificationItems=is_array($notifications['items']??null)?array_values(array_filter($notifications['items'],static function($row):bool{$title=trim((string)($row['title']??''));return !str_starts_with($title,'QA Notification ');})) : [];$reportsError=$canReports?null:['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.'];$opsError=!$canOps?['message'=>'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.']:($opsProjectionUnavailable?['message'=>'ارتباط زنده با لوکال برقرار نیست؛ داده‌های سالن ممکن است قدیمی باشند. برای عملیات و وضعیت جاری، اتصال باید دوباره برقرار شود.']:null);$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
+         $fa=static fn(string|int|float $v):string=>strtr((string)$v,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹',','=>'٬']);$money=static fn(int $v):string=>$fa(number_format($v)).' تومان';$delta=static fn(int $current,int $reference):?int=>$reference>0?(int)round((($current-$reference)/$reference)*100):null;$relative=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{$dt=(new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz);$now=new \DateTimeImmutable('now',$tz);$sec=max(0,$now->getTimestamp()-$dt->getTimestamp());if($sec<60)return 'همین حالا';if($sec<3600)return $fa(max(1,(int)floor($sec/60))).' دقیقه پیش';if($sec<86400)return $fa((int)floor($sec/3600)).' ساعت پیش';return $fa((int)floor($sec/86400)).' روز پیش';}catch(\Throwable){return '—';}};
+-        $lastFinanceSyncAt=(string)($reportsModel['last_sync_at']??'');$financeAsOf=$todayProjectionStale?('آخرین گزارش دریافت‌شده'.($lastFinanceSyncAt!==''?' · '.$relative($lastFinanceSyncAt):'')):null;$metrics=[];$todayHas=$todayHasReceipt;$yesterdayHas=$yesterdayHasReceipt;if($canReports){$metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>($reportsError||$todayProjectionUnavailable)?'—':$money((int)$todaySummary['net_sales']),'delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas)?null:$delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$todayProjectionUnavailable?'منتظر همگام‌سازی اطلاعات امروز':(!$todayHas?'تسویهٔ قطعی برای این روز ثبت نشده':(!$yesterdayHas?'دیروز تسویه‌ای ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];$metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>($reportsError||$todayProjectionUnavailable||!$financeView['today_orders_available'])?'—':$fa((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$todayProjectionUnavailable?'منتظر همگام‌سازی اطلاعات امروز':'سفارش‌های مشتری؛ بدون مصرف پرسنل','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];}if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsProjectionUnavailable?'—':$fa((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsProjectionUnavailable?'منتظر همگام‌سازی وضعیت سالن':'نشست باز در سالن','href'=>'/operator/?view=open'];if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>!$reportsError&&!$todayProjectionUnavailable&&$todayHas&&$financeView['today_avg_available']?$money((int)$todaySummary['avg_ticket']):'—','delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas||!$financeView['today_avg_available']||!$financeView['yesterday_avg_available'])?null:$delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$todayProjectionUnavailable?'منتظر همگام‌سازی اطلاعات امروز':(!$todayHas?'هنوز تسویهٔ کامل ثبت نشده':(!$yesterdayHas?'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق':'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق · نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
++        $lastFinanceSyncAt=(string)($reportsModel['last_sync_at']??'');$financeAsOf=$todayProjectionStale?('آخرین گزارش دریافت‌شده'.($lastFinanceSyncAt!==''?' · '.$relative($lastFinanceSyncAt):'')):null;$metrics=[];$todayHas=$todayHasReceipt;$yesterdayHas=$yesterdayHasReceipt;if($canReports){$metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>($reportsError||$todayProjectionUnavailable)?'—':$money((int)$todaySummary['net_sales']),'delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas)?null:$delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':(!$todayHas?'تسویهٔ قطعی برای این روز ثبت نشده':(!$yesterdayHas?'دیروز تسویه‌ای ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];$metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>($reportsError||$todayProjectionUnavailable||!$financeView['today_orders_available'])?'—':$fa((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':'سفارش‌های مشتری؛ بدون مصرف پرسنل','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];}if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsProjectionUnavailable?'—':$fa((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsProjectionUnavailable?'منتظر همگام‌سازی وضعیت سالن':'نشست باز در سالن','href'=>'/operator/?view=open'];if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>!$reportsError&&!$todayProjectionUnavailable&&$todayHas&&$financeView['today_avg_available']?$money((int)$todaySummary['avg_ticket']):'—','delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas||!$financeView['today_avg_available']||!$financeView['yesterday_avg_available'])?null:$delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$todayProjectionUnavailable?'منتظر همگام‌سازی اطلاعات امروز':(!$todayHas?'هنوز تسویهٔ کامل ثبت نشده':(!$yesterdayHas?'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق':'میانگین '. $fa((int)($todaySummary['completed_settlements']??0)) . ' تسویهٔ موفق · نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
+         $attention=[];if($financeAsOf!==null&&!$todayProjectionUnavailable){foreach($metrics as &$metric){if(in_array($metric['label'],['فروش خالص امروز','سفارش‌های امروز','میانگین فاکتور'],true)&&$metric['value']!=='—'){$metric['helper']=$financeAsOf;$metric['delta']=null;}}unset($metric);}$pending=$opsProjectionUnavailable?[]:(array)($ops['attention_orders']??[]);if($pending){$oldest=$pending[0]??[];$attention[]=['tone'=>'danger','context'=>'سفارش','status'=>'فوری','title'=>$fa(count($pending)).' سفارش منتظر رسیدگی','subtitle'=>$oldest?('قدیمی‌ترین · '.$relative((string)($oldest['created_at']??''))):'در صف بررسی','href'=>'/operator/?work=attention&attention_filter=orders#attention'];}$calls=$opsProjectionUnavailable?[]:(array)($ops['waiter_calls']??[]);if($calls){$oldest=$calls[0]??[];$attention[]=['tone'=>'warning','context'=>'سالن','status'=>'بررسی','title'=>$fa(count($calls)).' فراخوان مهمان باز','subtitle'=>$oldest?($fa((string)($oldest['table_name']??'')).' · '.$relative((string)($oldest['created_at']??''))):'نیازمند بررسی','href'=>'/operator/?work=attention&attention_filter=calls#attention'];}$used=[];if(count($attention)<4){foreach($notificationItems as $item){if(!empty($item['read_at']))continue;$id=(int)($item['id']??0);if($id>0)$used[$id]=true;$attention[]=['tone'=>'info','context'=>'اعلان','status'=>'جدید','title'=>(string)($item['title']??'اعلان جدید'),'subtitle'=>(string)($item['body']??''),'href'=>(string)($item['target_url']??'/notifications/')];if(count($attention)>=4)break;}}$recent=[];foreach($notificationItems as $item){$id=(int)($item['id']??0);if(isset($used[$id]))continue;$recent[]=$item;if(count($recent)>=5)break;}
+         $lowStock=$inventoryProjectionUnavailable?[]:array_values(array_filter($inventoryItems,static fn(array $r):bool=>(int)($r['active']??1)===1&&(int)($r['warning_threshold']??0)>0&&(int)($r['quantity_base']??0)<=(int)($r['warning_threshold']??0)));usort($lowStock,static fn(array $a,array $b):int=>(((int)$a['quantity_base']-(int)$a['warning_threshold'])<=>((int)$b['quantity_base']-(int)$b['warning_threshold']))?:strcmp((string)$a['name'],(string)$b['name']));$lowStock=array_slice($lowStock,0,5);$attentionErrors=array_values(array_filter([$opsError])); /* Notification failure already appears in the recent-activity card. */$maxTrend=max(1,...array_map(static fn(array $r):int=>(int)$r['value'],$weekDaily?:[['value'=>0]]));$bottomPanels=($canReports?1:0)+($canInventory?1:0);
+         $dashE=static fn(string $v):string=>htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$dashUrl=function(string $path):string{if(in_array($path,['/preparation','/waiter','/staff/preparation'],true))$path='/staff/preparation/';$map=['/preparation/'=>'/staff/preparation/','/waiter/'=>'/staff/preparation/','/operator/'=>'/staff/operator/','/reports/'=>'/staff/reports/','/operations/'=>'/staff/operations/','/notifications/'=>'/staff/notifications/'];foreach($map as $from=>$to)if(str_starts_with($path,$from)){$path=$to.substr($path,strlen($from));break;}return htmlspecialchars($this->u($path),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');};$dashIcon=static fn(string $name):string=>'<svg class="sc-ui-icon" aria-hidden="true" focusable="false"><use href="'.htmlspecialchars(ProductShell::asset('/assets/ui-sprite.svg'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'#icon-'.htmlspecialchars($name,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'"></use></svg>';$dashFaNum=$fa;$dashMoney=$money;$dashClock=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{return $fa((new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz)->format('H:i'));}catch(\Throwable){return '—';}};$dashNotificationIcon=static function(array $item):string{$u=strtolower((string)($item['target_url']??''));if(str_contains($u,'operator')||str_contains($u,'order'))return 'cart';if(str_contains($u,'operation')||str_contains($u,'inventory'))return 'archive';if(str_contains($u,'print')||str_contains($u,'integration'))return 'print';if(str_contains($u,'system'))return 'settings';return 'bell';};$dashUnit=static function(int $quantity,string $unit)use($fa):string{if($unit==='g'&&abs($quantity)>=1000)return $fa(rtrim(rtrim(number_format($quantity/1000,2,'.',''),'0'),'.')).' کیلوگرم';if($unit==='ml'&&abs($quantity)>=1000)return $fa(rtrim(rtrim(number_format($quantity/1000,2,'.',''),'0'),'.')).' لیتر';$labels=['g'=>'گرم','ml'=>'میلی‌لیتر','count'=>'عدد'];return $fa($quantity).' '.($labels[$unit]??$unit);};$dashDegraded=static function(?array $error,string $fallback)use($dashE):string{if($error===null)return '';$message=trim((string)($error['message']??''))?:$fallback;return '<div class="sc-empty sc-dashboard-degraded"><strong>'.$dashE($message).'</strong></div>';};
+         // General connectivity/freshness is already available from the status dot
+         // in ProductShell on mobile AND desktop. Keep action-specific warnings below.
++        if($publicSnapshot!==null)require dirname(__DIR__,2).'/resources/public-dashboard-stale-snapshot.php';
+         require dirname(__DIR__,2).'/resources/shared-staff-ui/dashboard-workspace.php';
+     }
+ 
+--- a/assets/scds/remote-staff.css
++++ b/assets/scds/remote-staff.css
+@@ -99,7 +99,8 @@
+ .sc-public-connectivity{display:grid!important;gap:2px;min-inline-size:0;white-space:normal;line-height:1.45}
+ .sc-public-connectivity strong{font-size:.75rem;color:inherit}.sc-public-connectivity small{font-size:.67rem;color:inherit;opacity:.88;unicode-bidi:plaintext}
+ body.rs-mutation-unavailable [data-order-finalize],body.rs-mutation-unavailable [data-order-save],body.rs-mutation-unavailable [data-order-acceptance-save],body.rs-mutation-unavailable [data-preparation-action],body.rs-mutation-unavailable [data-hall-mutation-action],body.rs-mutation-unavailable [data-account-item-edit-save],body.rs-mutation-unavailable [data-item-adjust-apply],body.rs-mutation-unavailable [data-discount-apply],body.rs-mutation-unavailable [data-discount-remove],body.rs-mutation-unavailable [data-account-print-preparation],body.rs-mutation-unavailable [data-account-print-customer],body.rs-mutation-unavailable [data-table-move-confirm],body.rs-mutation-unavailable [data-settle-submit],body.rs-mutation-unavailable [data-settle-retry],body.rs-mutation-unavailable [data-settle-detach]{opacity:.48!important;filter:saturate(.45);cursor:not-allowed!important;pointer-events:none!important}
+-body.rs-local-stale .sc-dashboard-kpi::after{content:"آخرین داده همگام‌شده";grid-column:1/-1;font-size:.62rem;color:var(--sc-warning);font-weight:760}
++/* Staleness is explained once, with source date/time; never label a dash as cached data. */
++body.rs-local-stale .sc-dashboard-kpi::after{content:none}
+ body.rs-local-stale .sc-dashboard-attention__item{opacity:.82}
+ body.rs-local-stale .sc-dashboard-attention__item::after{content:"اطلاعات ممکن است قدیمی باشد";font-size:.62rem;color:var(--sc-warning);grid-column:1/-1}
+ @media(max-width:760px){
+@@ -146,3 +147,16 @@
+ 
+ /* PWA notification account preferences */
+ .sc-pwa-notification-prefs{align-items:flex-start}.sc-pwa-notification-prefs .sc-pwa-setting__copy{gap:8px}.sc-pwa-toggle{display:flex;align-items:center;gap:9px;min-height:36px;font-size:.9rem;cursor:pointer}.sc-pwa-toggle input{inline-size:18px;block-size:18px;accent-color:var(--sc-accent,#0f6b66)}.sc-pwa-toggle:has(input:disabled){opacity:.55;cursor:not-allowed}
++
++/* R312 Public: dated, non-live financial snapshot. Reuse SCDS cards, tokens and typography. */
++.sc-dashboard-snapshot .sc-card__body{display:grid;gap:12px}
++.sc-dashboard-snapshot__head{display:flex;justify-content:space-between;align-items:start;gap:12px;flex-wrap:wrap}
++.sc-dashboard-snapshot__head .sc-panel-title-inline{min-width:0}
++.sc-dashboard-snapshot__notice{margin:0;line-height:1.75;color:var(--sc-muted);font-size:.83rem}
++.sc-dashboard-snapshot__stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
++.sc-dashboard-snapshot__stats>div{display:grid;gap:6px;background:var(--sc-surface-subtle);border:1px solid var(--sc-border);border-radius:var(--sc-radius-md);padding:12px}
++.sc-dashboard-snapshot__stats small{font-size:.75rem;color:var(--sc-muted)}
++.sc-dashboard-snapshot__stats strong{font-size:1.1rem;color:var(--sc-text);overflow-wrap:anywhere}
++.sc-dashboard-snapshot__foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:.77rem;color:var(--sc-muted)}
++.sc-dashboard-snapshot__foot a{color:var(--sc-accent);font-weight:750}
++@media(max-width:480px){.sc-dashboard-snapshot .sc-card__body{gap:8px;padding:14px}.sc-dashboard-snapshot__head h2{font-size:1.07rem}.sc-dashboard-snapshot__stats>div{padding:9px}.sc-dashboard-snapshot__stats strong{font-size:.93rem}.sc-dashboard-snapshot__stats small{font-size:.68rem}.sc-dashboard-snapshot__foot{font-size:.7rem}}
+--- /dev/null
++++ b/resources/public-dashboard-stale-snapshot.php
+@@ -0,0 +1,25 @@
++<?php
++declare(strict_types=1);
++/** Public-only historical read-only summary; never a live KPI. */
++$displayBusinessDay=static function(string $date): string {
++    try { return explode(' · ',\Sokna\Shared\IranTime::display($date.' 00:00:00'),2)[0]; }
++    catch (\Throwable) { return str_replace('-', '/', $date); }
++};
++?>
++  <section class="sc-card sc-dashboard-snapshot" role="status" aria-label="آخرین اطلاعات ثبت‌شده، غیرزنده">
++    <div class="sc-card__body">
++      <div class="sc-dashboard-snapshot__head">
++        <div class="sc-panel-title-inline">
++          <h2>آخرین گزارش ثبت‌شده</h2>
++          <p>روز کاری <time datetime="<?=$dashE((string)$publicSnapshot['business_date'])?>"><?=$displayBusinessDay((string)$publicSnapshot['business_date'])?></time> · آخرین دریافت ساعت <?=$dashClock((string)$publicSnapshot['last_sync_at'])?></p>
++        </div>
++        <span class="sc-badge sc-badge--warning">غیرزنده</span>
++      </div>
++      <p class="sc-dashboard-snapshot__notice">این ارقام مربوط به گزارش ذخیره‌شده هستند، نه فروش زنده روز کاری فعلی. اطلاعات امروز تا برقراری ارتباط تازه تأیید نمی‌شوند.</p>
++      <div class="sc-dashboard-snapshot__stats">
++        <div><small>فروش خالص در آن روز</small><strong><?=$dashMoney((int)$publicSnapshot['net_sales'])?></strong></div>
++        <?php if($publicSnapshot['order_count']!==null): ?><div><small>سفارش‌های ثبت‌شده</small><strong><?=$dashFaNum((int)$publicSnapshot['order_count'])?></strong></div><?php endif; ?>
++      </div>
++      <div class="sc-dashboard-snapshot__foot"><span>روز کاری فعلی: <?=$displayBusinessDay((string)$publicDayContext['business_day'])?> · تغییر روز ساعت <?=$dashFaNum((string)$publicDayContext['cutoff'])?></span><a href="<?=$dashUrl('/reports/?from='.$publicSnapshot['business_date'].'&to='.$publicSnapshot['business_date'].'&focus=sales')?>">گزارش همین روز</a></div>
++    </div>
++  </section>
