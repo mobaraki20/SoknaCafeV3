@@ -1,0 +1,129 @@
+{
+  "format": "sokna-r319-preview-selection-source-contract-v1",
+  "checks": [
+    {
+      "name": "all action targets exist as form fields",
+      "pass": true
+    },
+    {
+      "name": "keyboard accessibility via Enter/Space",
+      "pass": true
+    },
+    {
+      "name": "focus uses post-click animation frame",
+      "pass": true
+    },
+    {
+      "name": "no API write in selection handler",
+      "pass": true
+    },
+    {
+      "name": "screen reader status update",
+      "pass": true
+    },
+    {
+      "name": "same existing typography and form controls reused",
+      "pass": true
+    },
+    {
+      "name": "selected style scoped to preview",
+      "pass": true
+    },
+    {
+      "name": "mobile 58mm sample supported",
+      "pass": true
+    },
+    {
+      "name": "free text is rendered with DOM textContent helper",
+      "pass": true
+    }
+  ],
+  "map": [
+    {
+      "name": "title",
+      "field": "header_title",
+      "field_present_in_form": true,
+      "value": "عنوان اصلی"
+    },
+    {
+      "name": "subtitle",
+      "field": "header_subtitle",
+      "field_present_in_form": true,
+      "value": "زیرعنوان"
+    },
+    {
+      "name": "order",
+      "field": "show_order_number",
+      "field_present_in_form": true,
+      "value": "شماره سفارش"
+    },
+    {
+      "name": "time",
+      "field": "show_time",
+      "field_present_in_form": true,
+      "value": "زمان ثبت"
+    },
+    {
+      "name": "actor",
+      "field": "show_actor",
+      "field_present_in_form": true,
+      "value": "ثبت‌کننده"
+    },
+    {
+      "name": "section",
+      "field": "show_section_titles",
+      "field_present_in_form": true,
+      "value": "عنوان بخش اقلام"
+    },
+    {
+      "name": "columns",
+      "field": "item_layout",
+      "field_present_in_form": true,
+      "value": "چیدمان ستون‌های اقلام"
+    },
+    {
+      "name": "items",
+      "field": "table_font_size",
+      "field_present_in_form": true,
+      "value": "اندازه نوشته اقلام"
+    },
+    {
+      "name": "note",
+      "field": "notes_font_size",
+      "field_present_in_form": true,
+      "value": "اندازه یادداشت‌های اقلام"
+    },
+    {
+      "name": "total",
+      "field": "totals_font_size",
+      "field_present_in_form": true,
+      "value": "اندازه جمع حساب"
+    },
+    {
+      "name": "settlement",
+      "field": "show_settlement_label",
+      "field_present_in_form": true,
+      "value": "سطر روش پرداخت"
+    },
+    {
+      "name": "footer",
+      "field": "footer",
+      "field_present_in_form": true,
+      "value": "متن انتهای فیش"
+    }
+  ],
+  "source_files": {
+    "public/assets/printing-workspace.js": {
+      "baseline_sha256": "9ac42fb4d866e41744451b8c69b1beb00ab4a397890019571ce94c713b9e6b56",
+      "r319_sha256": "1079c80adad94bdb1ba283f54e65841a11d063f996caf8dd7542f0fd87f3db87"
+    },
+    "public/printing/index.php": {
+      "baseline_sha256": "b5977a325da86b4e71a75c446aeb4dd07725077283c7be0eb55682fb1f46a072",
+      "r319_sha256": "49c3ef4c151df609a818063464379e972ddd628746a12a0cee97cb76cc71b823"
+    },
+    "public/assets/product-ui.css": {
+      "baseline_sha256": "c3bcb834e2e994dcc4b9f12b1ca709e75193358dbdf3b9becbb50f2b172c8ed2",
+      "r319_sha256": "61a83da1d339bcf9e2bb1098852fb218c5fc3e3545103f4687d1f2dd02fdfdd8"
+    }
+  }
+}
