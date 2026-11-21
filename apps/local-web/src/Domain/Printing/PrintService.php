@@ -613,20 +613,28 @@ final class PrintService
 
     private static function preparationSections(array $rows): array
     {
-        $groups=[];$order=[];
+        $groups=[];$order=[];$position=0;
         foreach($rows as $row){
             if(!is_array($row))continue;
             $station=trim((string)($row['preparation_station']??'other'));if($station==='')$station='other';
             if(!isset($groups[$station])){$groups[$station]=[];$order[]=$station;}
+            // Preserve the original cross-station item order even though legacy
+            // preparation documents group rows by destination station.
             $groups[$station][]=[
                 'name'=>(string)($row['item_name']??$row['name']??'—'),
                 'quantity'=>max(1,(int)($row['quantity']??1)),
                 'note'=>self::nullable($row['item_note']??$row['note']??null,500),
                 'fulfillment_mode'=>(string)($row['fulfillment_mode']??'dine_in'),
+                'station'=>$station,
+                'order_index'=>$position++,
             ];
         }
         $titles=['kitchen'=>'آشپزخانه','bar'=>'بار','other'=>'سایر'];$out=[];
-        foreach($order as $station)$out[]=['title'=>$titles[$station]??'آماده‌سازی','items'=>$groups[$station]];
+        foreach($order as $station)$out[]=[
+            'title'=>$titles[$station]??'آماده‌سازی',
+            'station'=>$station,
+            'items'=>$groups[$station],
+        ];
         return $out;
     }
 
