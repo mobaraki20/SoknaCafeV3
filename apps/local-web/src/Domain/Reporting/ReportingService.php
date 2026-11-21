@@ -7,15 +7,229 @@ use Sokna\Local\Core\TimeAuthority;
 final class ReportingService
 {
     public function __construct(private readonly PDO $pdo,private readonly TimeAuthority $time){}
+    /** Immutable-id order lookup for authorized cashier/supervisor historical review.
+     * Read-only: never resolve via a table's currently open session.
+     */
+    public function historicalOrder(int $orderId): array
+    {
+        if($orderId<=0)throw new ReportingException('invalid_order_id','شناسه سفارش معتبر نیست.',422);
+        $q=$this->pdo->prepare('SELECT o.id,o.session_id,o.table_id,o.status,o.order_source,o.business_order_number,o.business_date,o.total_amount,o.customer_note,o.created_at,o.accepted_at,t.name table_name,s.status session_status,s.started_at session_started_at,s.ended_at session_ended_at FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id LEFT JOIN table_sessions s ON s.id=o.session_id WHERE o.id=? LIMIT 1');
+        $q->execute([$orderId]);$order=$q->fetch(PDO::FETCH_ASSOC);
+        if(!$order)throw new ReportingException('order_not_found','این سفارش در سوابق پیدا نشد.',404);
+        $q=$this->pdo->prepare('SELECT id,item_name,quantity,ordered_quantity,unit_price,line_total,item_note,fulfillment_mode FROM order_items WHERE order_id=? ORDER BY id');
+        $q->execute([$orderId]);$items=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
+        $q=$this->pdo->prepare('SELECT DISTINCT r.id,r.invoice_number,r.status,r.settlement_kind,r.settled_at,r.table_name_snapshot FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE l.order_id=? ORDER BY r.id');
+        $q->execute([$orderId]);$invoices=$q->fetchAll(PDO::FETCH_ASSOC)?:[];
+        return ['order'=>$order,'items'=>$items,'invoices'=>$invoices,'read_only'=>true];
+    }
+
+    /** Read-only product picker; never infer a historical sale from product name alone. */
+    public function itemSalesLookup(string $query): array
+    {
+        $query=trim($query);
+        if($query==='')return [];
+        $charCount=preg_match_all('/./us',$query);
+        if($charCount===false||$charCount>80)throw new ReportingException('invalid_search','عبارت جست‌وجو معتبر نیست یا طولانی است.',422);
+        $like='%'.str_replace(['\\','%','_'],['\\\\','\\%','\\_'],$query).'%';
+        return $this->all('SELECT id,name,item_code,active FROM items WHERE name LIKE ? OR item_code LIKE ? ORDER BY active DESC,name,id LIMIT 40',[$like,$like]);
+    }
+
+    /** The current catalog's hierarchy is the filter source, independent of search text.
+     * Sales still use immutable item IDs in settled-line snapshots. A renamed item
+     * remains in its current family; no historical category is silently inferred.
+     */
+    public function itemSalesGroups(): array
+    {
+        $categories=$this->all("SELECT c.id,c.name,COUNT(i.id) item_count FROM categories c
+          JOIN items i ON i.category_id=c.id GROUP BY c.id,c.name ORDER BY c.name");
+        $families=$this->all("SELECT f.id,f.name,f.category_id,COUNT(m.item_id) item_count FROM item_variant_families f
+          JOIN item_variant_members m ON m.family_id=f.id GROUP BY f.id,f.name,f.category_id ORDER BY f.category_id,f.sort_order,f.id");
+        return ['categories'=>$categories,'families'=>$families,'source'=>'current_catalog_membership'];
+    }
+
+    /** One click for a whole category or variant family; never search by name prefix. */
+    public function itemSalesGroupReport(?string $from,?string $to,string $type,int $id): array
+    {
+        if($id<=0||!in_array($type,['category','family'],true))
+            throw new ReportingException('invalid_sales_group','گروه گزارش معتبر نیست.',422);
+        $field=$type==='category'?'category_id':'family_id';
+        $sql=$type==='category'
+          ?'SELECT id FROM items WHERE category_id=? ORDER BY id LIMIT 301'
+          :'SELECT item_id id FROM item_variant_members WHERE family_id=? ORDER BY item_id LIMIT 301';
+        $items=$this->all($sql,[$id]);
+        if(count($items)>300)throw new ReportingException('sales_group_too_large','گروه برای یک گزارش بیش از ۳۰۰ کالا دارد.',422);
+        if(!$items)throw new ReportingException('sales_group_empty','این گروه هیچ کالایی ندارد.',422);
+        $groupRow=$this->one($type==='category'?'SELECT name FROM categories WHERE id=?':'SELECT name FROM item_variant_families WHERE id=?',[$id]);
+        if(!$groupRow)throw new ReportingException('sales_group_not_found','گروه گزارش پیدا نشد.',404);
+        $report=$this->itemSalesReport($from,$to,array_column($items,'id'),300);
+        $report['group']=['type'=>$type,'id'=>$id,'name'=>(string)$groupRow['name'],'count'=>count($items)];
+        $report['membership']='current_catalog';
+        return $report;
+    }
+
+    /** Ad-hoc across-category name match. Not a permanently saved analytic family.
+     * Enumerate matched IDs first to avoid name-based historical financial joins.
+     */
+    public function itemSalesKeywordReport(?string $from,?string $to,string $query): array
+    {
+        $query=trim($query);
+        $characters=preg_match_all('/./us',$query);
+        if($characters===false||$characters<2||$characters>60)
+            throw new ReportingException('invalid_sales_keyword','عبارت نام گروه باید ۲ تا ۶۰ حرف باشد.',422);
+        $like='%'.str_replace(['\\','%','_'],['\\\\','\\%','\\_'],$query).'%';
+        $rows=$this->all("SELECT id FROM items WHERE name LIKE ? ORDER BY id LIMIT 301",[$like]);
+        if(count($rows)>300)throw new ReportingException('sales_keyword_too_large','این جست‌وجو بیش از ۳۰۰ محصول دارد؛ عبارت را دقیق‌تر کنید.',422);
+        if(!$rows)throw new ReportingException('sales_keyword_empty','محصولی با این عبارت در نامش یافت نشد.',422);
+        $report=$this->itemSalesReport($from,$to,array_column($rows,'id'),300);
+        $report['group']=['type'=>'keyword','id'=>0,'name'=>'نام شامل «'.$query.'»','count'=>count($rows)];
+        $report['membership']='current_catalog_name_match';
+        return $report;
+    }
+
+    /** A product-selection sales report over settled lines, never open orders.
+     * Stable item_id_snapshot keeps renamed products together; returns zeros for selected items without sales.
+     * Quantities and amounts are net of reversal settlement documents.
+     */
+    public function itemSalesReport(?string $from,?string $to,array $rawIds,int $maxItems=30): array
+    {
+        [$from,$to]=$this->range($from,$to);
+        $ids=array_values(array_unique(array_filter(array_map('intval',$rawIds),static fn(int $id):bool=>$id>0)));
+        if(!$ids||count($ids)>$maxItems)throw new ReportingException('invalid_item_ids','تعداد محصولات انتخاب‌شده معتبر نیست.',422);
+        $slots=implode(',',array_fill(0,count($ids),'?'));
+        $products=$this->all("SELECT id,name,item_code,active FROM items WHERE id IN ($slots)",$ids);
+        $byId=[];foreach($products as $row)$byId[(int)$row['id']]=$row;
+        $raw=$this->all("SELECT l.item_id_snapshot item_id,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END),0) quantity,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.gross_amount ELSE -l.gross_amount END),0) gross,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.discount_amount ELSE -l.discount_amount END),0) discount,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales,
+          COUNT(DISTINCT CASE WHEN r.status='completed' THEN r.id END) payment_documents
+          FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
+          JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ? AND l.item_id_snapshot IN ($slots)
+          GROUP BY l.item_id_snapshot",array_merge([$from,$to],$ids));
+        $bySales=[];foreach($raw as $row)$bySales[(int)$row['item_id']]=$row;
+        $rows=[];$totals=['quantity'=>0,'gross'=>0,'discount'=>0,'net_sales'=>0];
+        foreach($ids as $id){$p=$byId[$id]??null;$m=$bySales[$id]??[];
+            $row=['item_id'=>$id,'name'=>(string)($p['name']??('آیتم شماره '.$id)),
+                 'item_code'=>(string)($p['item_code']??''),'available_in_catalog'=>$p!==null,
+                 'quantity'=>(int)($m['quantity']??0),'gross'=>(int)($m['gross']??0),
+                 'discount'=>(int)($m['discount']??0),'net_sales'=>(int)($m['net_sales']??0),
+                 'payment_documents'=>(int)($m['payment_documents']??0)];
+            foreach($totals as $key=>$_)$totals[$key]+=$row[$key];$rows[]=$row;
+        }
+        return ['range'=>['from'=>$from,'to'=>$to],'rows'=>$rows,'totals'=>$totals,
+           'basis'=>'completed_and_reversal_settlement_lines_by_item_id_snapshot_session_open_day',
+           'excludes'=>'unpaid_open_orders','currency'=>'IRT'];
+    }
+
+    /** Today's real operational events, not the user's notification inbox.
+     * The UI applies the official BusinessClock assignment to every timestamp.
+     * Bounded, read-only queries; no fabricated activity for missing source events.
+     */
+    public function dashboardOperationalActivity(): array
+    {
+        $rows=[];
+        $audit=$this->all("SELECT id,action,entity_type,entity_id,details_json,created_at,
+            COALESCE(actor_display_name_snapshot,'کاربر') actor_name FROM audit_log
+            WHERE action IN ('table_draft.created','table_draft.updated','table_draft.cancelled',
+              'order.status_changed','order.item_quantity_adjusted','order.item_preparation_adjusted',
+              'order.cancelled_unsettled_staff','order.cancelled_after_confirmed_cash_refund',
+              'settlement.completed','settlement.reversed','settlement.remaining_discount_granted')
+            ORDER BY created_at DESC,id DESC LIMIT 180");
+        $labels=[
+            'table_draft.created'=>'پیش‌نویس میز ثبت شد',
+            'table_draft.updated'=>'پیش‌نویس میز ویرایش شد',
+            'table_draft.cancelled'=>'پیش‌نویس میز لغو شد',
+            'order.status_changed'=>'وضعیت سفارش تغییر کرد',
+            'order.item_quantity_adjusted'=>'تعداد قلم سفارش اصلاح شد',
+            'order.item_preparation_adjusted'=>'آماده‌سازی سفارش اصلاح شد',
+            'order.cancelled_unsettled_staff'=>'سفارش لغو شد',
+            'order.cancelled_after_confirmed_cash_refund'=>'سفارش پس از برگشت وجه لغو شد',
+            'settlement.completed'=>'پرداخت حساب ثبت شد',
+            'settlement.reversed'=>'سند پرداخت برگشت خورد',
+            'settlement.remaining_discount_granted'=>'تخفیف مانده ثبت شد',
+        ];
+        foreach($audit as $a){
+            $action=(string)($a['action']??'');$orderId=str_starts_with($action,'order.')?(int)($a['entity_id']??0):0;
+            $details=json_decode((string)($a['details_json']??'{}'),true);
+            if($action==='table_draft.cancelled')$details=is_array($details)?$details:[];
+            $rows[]=['kind'=>'audit','event_key'=>'audit-'.$a['id'],'created_at'=>(string)$a['created_at'],
+                'title'=>$labels[$action]??'فعالیت عملیاتی','body'=>(string)($a['actor_name']??'کاربر'),
+                'target_url'=>$orderId>0?('/reports/?order_id='.$orderId.'#order-history'):'/operator/?view=open'];
+        }
+        // Orders can be saved without a separate audit action: read their source table.
+        $orders=$this->all("SELECT o.id,o.created_at,o.order_source,t.name table_name
+             FROM orders o LEFT JOIN cafe_tables t ON t.id=o.table_id
+             WHERE COALESCE(o.order_context,'')<>'staff_consumption'
+             ORDER BY o.created_at DESC,o.id DESC LIMIT 100");
+        foreach($orders as $o)$rows[]=['kind'=>'order','event_key'=>'order-'.$o['id'],
+            'created_at'=>(string)$o['created_at'],'title'=>'سفارش ثبت شد',
+            'body'=>(string)($o['table_name']??'میز').' · '.((string)($o['order_source']??'')==='guest'?'مهمان':'پرسنل'),
+            'target_url'=>'/reports/?order_id='.(int)$o['id'].'#order-history'];
+        $sessions=$this->all("SELECT s.id,s.started_at,t.name table_name FROM table_sessions s
+            JOIN cafe_tables t ON t.id=s.table_id ORDER BY s.started_at DESC,s.id DESC LIMIT 80");
+        foreach($sessions as $s)$rows[]=['kind'=>'table','event_key'=>'session-'.$s['id'],
+            'created_at'=>(string)$s['started_at'],'title'=>'حساب میز باز شد',
+            'body'=>(string)($s['table_name']??'میز'),'target_url'=>'/operator/?view=open'];
+        usort($rows,static fn(array $a,array $b):int=>strcmp($b['created_at'],$a['created_at'])?:strcmp($b['event_key'],$a['event_key']));
+        return $rows;
+    }
+
     public function report(?string $from=null,?string $to=null): array
     {
         [$from,$to]=$this->range($from,$to);$p=[$from,$to];
-        $summary=$this->one("SELECT COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales,SUM(status='completed') completed_settlements,SUM(status='reversal') reversals,COALESCE(AVG(CASE WHEN status='completed' THEN total END),0) avg_ticket FROM settlement_records WHERE business_date BETWEEN ? AND ?",$p);
-        $orders=$this->one("SELECT COUNT(*) order_count,SUM(status='cancelled') cancelled_orders,SUM(order_source='guest') guest_orders,SUM(order_source='staff') staff_orders FROM orders WHERE business_date BETWEEN ? AND ?",$p);
+        // Never change the immutable receipt's business_date. This is the CASH date.
+        // Sales use the persisted opening Business Day on table_sessions.
+        $summary=$this->one("SELECT
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.subtotal ELSE -r.subtotal END),0) gross_sales,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.discount ELSE -r.discount END),0) discount_total,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.tax_amount ELSE -r.tax_amount END),0) net_tax_amount,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total-r.tax_amount ELSE -(r.total-r.tax_amount) END),0) sales_without_tax
+          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ?",$p);
+        $cashSummary=$this->one("SELECT SUM(status='completed') completed_settlements,
+          SUM(status='reversal') reversals,
+          COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE 0 END),0) completed_amount,
+          COALESCE(SUM(CASE WHEN status='reversal' THEN total ELSE 0 END),0) reversed_amount
+          FROM settlement_records WHERE business_date BETWEEN ? AND ?",$p);
+        $invoiceAggregate=$this->one("SELECT COALESCE(AVG(x.net_total),0) avg_ticket,COUNT(*) invoice_count FROM (
+          SELECT c.session_id, SUM(CASE WHEN r.status='completed' THEN r.total WHEN r.status='reversal' THEN -r.total ELSE 0 END) net_total
+          FROM settlement_records c
+          JOIN table_sessions ts ON ts.id=c.session_id AND ts.status='closed'
+          JOIN settlement_records r ON r.session_id=c.session_id
+          WHERE c.status='completed' AND c.closes_session=1 AND ts.business_date BETWEEN ? AND ?
+          GROUP BY c.session_id
+        ) x",$p);
+        $orders=$this->one("SELECT SUM(CASE WHEN COALESCE(order_context,'')<>'staff_consumption' THEN 1 ELSE 0 END) order_count,COUNT(*) all_order_count,SUM(CASE WHEN order_context='staff_consumption' THEN 1 ELSE 0 END) staff_consumption_orders,SUM(status='cancelled' AND COALESCE(order_context,'')<>'staff_consumption') cancelled_orders,SUM(order_source='guest' AND COALESCE(order_context,'')<>'staff_consumption') guest_orders,SUM(order_source='staff' AND COALESCE(order_context,'')<>'staff_consumption') staff_orders FROM orders WHERE business_date BETWEEN ? AND ?",$p);
         $expenses=$this->one("SELECT COALESCE(SUM(CASE WHEN status='reversal' THEN -amount ELSE amount END),0) net_expenses FROM expenses WHERE DATE(occurred_at) BETWEEN ? AND ?",$p);
-        $daily=$this->all("SELECT business_date,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",$p);
-        $destinations=$this->all("SELECT destination,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY destination ORDER BY net_sales DESC",$p);
-        $top=$this->all("SELECT l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE r.business_date BETWEEN ? AND ? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 20",$p);
+        $salesDaily=$this->all("SELECT ts.business_date business_date,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.subtotal ELSE -r.subtotal END),0) gross_sales,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.discount ELSE -r.discount END),0) discount_total,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
+          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date ORDER BY ts.business_date",$p);
+        $cashDaily=$this->all("SELECT business_date,COUNT(*) settlement_count FROM settlement_records
+          WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",$p);
+        // The two daily axes are independent, including days with payments but no sales.
+        $byDay=[];
+        foreach($salesDaily as $row)$byDay[(string)$row['business_date']]=array_replace(['settlement_count'=>0],$row);
+        foreach($cashDaily as $row){$date=(string)$row['business_date'];
+            if(!isset($byDay[$date]))$byDay[$date]=['business_date'=>$date,'gross_sales'=>0,'discount_total'=>0,'net_sales'=>0];
+            $byDay[$date]['settlement_count']=(int)$row['settlement_count'];
+        }
+        ksort($byDay);$daily=array_values($byDay);
+        $destinations=$this->all("SELECT r.destination,COUNT(*) settlement_count,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
+          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ? GROUP BY r.destination ORDER BY net_sales DESC",$p);
+        $top=$this->all("SELECT l.item_name_snapshot item_name,
+          SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales
+          FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
+          JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 20",$p);
         $waiter=$this->one("SELECT COUNT(*) waiter_calls,SUM(status='completed') completed_waiter_calls FROM waiter_calls WHERE business_date BETWEEN ? AND ?",$p);
         $tenders=$this->tenderReport($from,$to);
         $operations=$this->operationsReport($from,$to);
@@ -23,35 +237,155 @@ final class ReportingService
         $margin=$this->marginReport($from,$to);
         $financialContext=$this->financialContextReport($from,$to);
         $bundleUsage=$this->bundleComponentUsageReport($from,$to);
-        return ['range'=>['from'=>$from,'to'=>$to],'summary'=>['net_sales'=>(int)($summary['net_sales']??0),'completed_settlements'=>(int)($summary['completed_settlements']??0),'reversals'=>(int)($summary['reversals']??0),'avg_ticket'=>(int)round((float)($summary['avg_ticket']??0)),'order_count'=>(int)($orders['order_count']??0),'cancelled_orders'=>(int)($orders['cancelled_orders']??0),'guest_orders'=>(int)($orders['guest_orders']??0),'staff_orders'=>(int)($orders['staff_orders']??0),'net_expenses'=>(int)($expenses['net_expenses']??0),'waiter_calls'=>(int)($waiter['waiter_calls']??0),'completed_waiter_calls'=>(int)($waiter['completed_waiter_calls']??0)],'daily'=>$daily,'destinations'=>$destinations,'top_items'=>$top,'tenders'=>$tenders,'operations'=>$operations,'inventory'=>$inventory,'margin'=>$margin,'financial_context'=>$financialContext,'bundle_component_usage'=>$bundleUsage,'generated_at'=>$this->time->nowUtcIso(),'civil_date'=>$this->time->civilDate()];
+        return ['range'=>['from'=>$from,'to'=>$to],'summary'=>['net_sales'=>(int)($summary['net_sales']??0),'gross_sales'=>(int)($summary['gross_sales']??0),'discount_total'=>(int)($summary['discount_total']??0),'completed_settlements'=>(int)($cashSummary['completed_settlements']??0),'reversals'=>(int)($cashSummary['reversals']??0),'avg_ticket'=>(int)round((float)($invoiceAggregate['avg_ticket']??0)),'invoice_count'=>(int)($invoiceAggregate['invoice_count']??0),'avg_ticket_basis'=>'mean_net_closed_table_session_open_day','sales_date_basis'=>'table_session_open_business_date','cash_date_basis'=>'settlement_record_business_date','completed_amount'=>(int)($cashSummary['completed_amount']??0),'reversed_amount'=>(int)($cashSummary['reversed_amount']??0),'cash_net_payment_day'=>(int)($cashSummary['completed_amount']??0)-(int)($cashSummary['reversed_amount']??0),'sales_without_tax'=>(int)($summary['sales_without_tax']??0),'net_tax_amount'=>(int)($summary['net_tax_amount']??0),'order_count'=>(int)($orders['order_count']??0),'all_order_count'=>(int)($orders['all_order_count']??0),'staff_consumption_orders'=>(int)($orders['staff_consumption_orders']??0),'cancelled_orders'=>(int)($orders['cancelled_orders']??0),'guest_orders'=>(int)($orders['guest_orders']??0),'staff_orders'=>(int)($orders['staff_orders']??0),'net_expenses'=>(int)($expenses['net_expenses']??0),'waiter_calls'=>(int)($waiter['waiter_calls']??0),'completed_waiter_calls'=>(int)($waiter['completed_waiter_calls']??0)],'daily'=>$daily,'destinations'=>$destinations,'top_items'=>$top,'tenders'=>$tenders,'operations'=>$operations,'inventory'=>$inventory,'margin'=>$margin,'financial_context'=>$financialContext,'bundle_component_usage'=>$bundleUsage,'generated_at'=>$this->time->nowUtcIso(),'civil_date'=>$this->time->civilDate()];
     }
 
+
+    /** Current price list vs current ingredient costs; distinct from historical realized margin. */
+    public function catalogPricingReport(): array
+    {
+        // A separate manager-only endpoint calls this. No mutation, no inventory movement.
+        $catalog=$this->all("SELECT i.id,i.item_code,i.name,i.price,i.available,i.active,i.sellable_kind,c.name category_name,vm.label variant_label,ib.bundle_item_id bundle_id
+            FROM items i JOIN categories c ON c.id=i.category_id
+            LEFT JOIN item_variant_members vm ON vm.item_id=i.id
+            LEFT JOIN item_bundles ib ON ib.bundle_item_id=i.id
+            WHERE i.active=1 ORDER BY c.name,i.name,i.id",[]);
+        $recipeRows=$this->all("SELECT v.id recipe_id,v.menu_item_id,v.review_status,v.completeness_status,
+            rc.inventory_item_id,rc.quantity_base,rc.quantity_status,ii.name inventory_item_name,
+            ii.base_unit,ii.active inventory_active,ii.review_status inventory_review_status,b.average_unit_cost,b.cost_status,b.updated_at cost_updated_at
+            FROM inventory_recipe_versions v
+            JOIN inventory_recipe_components rc ON rc.recipe_version_id=v.id
+            JOIN inventory_items ii ON ii.id=rc.inventory_item_id
+            LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id
+            WHERE v.status='active' ORDER BY v.menu_item_id,rc.id",[]);
+        $grouped=[];
+        foreach($recipeRows as $r){$id=(int)$r['menu_item_id'];
+            if(!isset($grouped[$id]))$grouped[$id]=['recipe'=>['review_status'=>$r['review_status'],'completeness_status'=>$r['completeness_status']],'components'=>[]];
+            $grouped[$id]['components'][]=$r;
+        }
+        $rows=[];
+        foreach($catalog as $item){$id=(int)$item['id'];$recipe=$grouped[$id]??null;
+            $calc=CatalogFoodCost::estimate($recipe['components']??[],$recipe['recipe']??null,(int)$item['price'],(int)($item['bundle_id']??0)>0);
+            // Do not expose ingredient costs for a special non-food service as a fabricated 0.
+            $rows[]=['item_id'=>$id,'sku'=>(string)($item['item_code']??''),'name'=>(string)$item['name'],
+                'category_name'=>(string)$item['category_name'],'variant_label'=>(string)($item['variant_label']??''),
+                'sellable_kind'=>(string)$item['sellable_kind'],'available'=>(int)$item['available']===1,
+                'price'=>(int)$item['price'],'ingredient_cost'=>$calc['ingredient_cost'],
+                'known_cost_subtotal'=>$calc['known_cost_subtotal'],'price_minus_ingredients'=>$calc['price_minus_ingredients'],
+                'food_cost_percent'=>$calc['food_cost_percent'],'cost_status'=>$calc['status'],
+                'ingredient_count'=>$calc['ingredient_count'],'oldest_cost_updated_at'=>$calc['oldest_cost_updated_at']];
+        }
+        return ['generated_at'=>$this->time->nowUtcIso(),'items'=>$rows,'total_items'=>count($rows),
+            'explanation'=>'هزینه جاری مواد بر پایه بهای میانگین ثبت‌شده است؛ سود خالص، هزینه بسته‌بندی و دستمزد محسوب نشده‌اند.'];
+    }
 
     /** Daily facts are associative, so arbitrary date ranges aggregate exactly on Public. */
     public function remoteArchive(): array
     {
         $to=$this->time->civilDate();$from=(new DateTimeImmutable($to))->modify('-365 days')->format('Y-m-d');$p=[$from,$to];$days=[];
         $merge=function(array $rows)use(&$days):void{foreach($rows as $r){$day=$r['date'];$days[$day]=array_merge($days[$day]??['date'=>$day],$r);}};
-        $sales=$this->all("SELECT business_date date,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales,SUM(status='completed') completed_settlements,SUM(status='reversal') reversals,SUM(CASE WHEN status='completed' THEN total ELSE 0 END) completed_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",$p);$merge($sales);
-        $merge($this->all("SELECT business_date date,COUNT(*) order_count,SUM(status='cancelled') cancelled_orders,SUM(order_source='guest') guest_orders,SUM(order_source='staff') staff_orders FROM orders WHERE business_date BETWEEN ? AND ? GROUP BY business_date",$p));
+        $sales=$this->all("SELECT ts.business_date date,COUNT(*) settlement_count,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.subtotal ELSE -r.subtotal END),0) gross_sales,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.discount ELSE -r.discount END),0) discount_total,
+          SUM(r.status='completed') completed_settlements,SUM(r.status='reversal') reversals,
+          SUM(CASE WHEN r.status='completed' THEN r.total ELSE 0 END) completed_sales
+          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date ORDER BY ts.business_date",$p);
+        // Local alone knows the full ledger coverage. Emit *explicit* zero-sale rows
+        // so Public can distinguish a genuine zero from an omitted/missing read model.
+        $sales=self::completeDailySales($from,$to,$sales);$merge($sales);
+        $merge($this->all("SELECT business_date date,SUM(CASE WHEN COALESCE(order_context,'')<>'staff_consumption' THEN 1 ELSE 0 END) order_count,COUNT(*) all_order_count,SUM(CASE WHEN order_context='staff_consumption' THEN 1 ELSE 0 END) staff_consumption_orders,SUM(status='cancelled' AND COALESCE(order_context,'')<>'staff_consumption') cancelled_orders,SUM(order_source='guest' AND COALESCE(order_context,'')<>'staff_consumption') guest_orders,SUM(order_source='staff' AND COALESCE(order_context,'')<>'staff_consumption') staff_orders FROM orders WHERE business_date BETWEEN ? AND ? GROUP BY business_date",$p));
         $merge($this->all("SELECT DATE(occurred_at) date,COALESCE(SUM(CASE WHEN status='reversal' THEN -amount ELSE amount END),0) net_expenses FROM expenses WHERE DATE(occurred_at) BETWEEN ? AND ? GROUP BY DATE(occurred_at)",$p));
         $merge($this->all("SELECT business_date date,COUNT(*) waiter_calls,SUM(status='completed') completed_waiter_calls FROM waiter_calls WHERE business_date BETWEEN ? AND ? GROUP BY business_date",$p));
         return ['from'=>$from,'to'=>$to,'summary'=>array_values($days),'sales'=>$sales,
-            'destinations'=>$this->all("SELECT business_date date,destination,COUNT(*) settlement_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date,destination",$p),
-            'items'=>$this->all("SELECT r.business_date date,l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE r.business_date BETWEEN ? AND ? GROUP BY r.business_date,l.item_name_snapshot",$p)];
+            'destinations'=>$this->all("SELECT ts.business_date date,r.destination,COUNT(*) settlement_count,
+            COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
+            FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
+            WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date,r.destination",$p),
+            'items'=>$this->all("SELECT ts.business_date date,l.item_name_snapshot item_name,
+             SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,
+             COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales
+             FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id
+             JOIN table_sessions ts ON ts.id=r.session_id
+             WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date,l.item_name_snapshot",$p)];
+    }
+
+    /** Fill gaps only within a *locally queried, complete* ledger date range.
+     * Public must never extrapolate these zeros from a partial or stale response.
+     * @param list<array<string,mixed>> $sales
+     * @return list<array<string,mixed>>
+     */
+    public static function completeDailySales(string $from,string $to,array $sales): array
+    {
+        $start=DateTimeImmutable::createFromFormat('!Y-m-d',$from);
+        $end=DateTimeImmutable::createFromFormat('!Y-m-d',$to);
+        if(!$start||!$end||$start->format('Y-m-d')!==$from||$end->format('Y-m-d')!==$to
+            ||$end<$start||$start->diff($end)->days>366)throw new \InvalidArgumentException('invalid_sales_coverage');
+        $byDay=[];
+        foreach($sales as $row){
+            $date=(string)($row['date']??'');
+            if($date<$from||$date>$to||isset($byDay[$date])||!is_numeric($row['net_sales']??null))
+                throw new \UnexpectedValueException('invalid_daily_sales_row');
+            $byDay[$date]=$row;
+        }
+        $complete=[];
+        for($day=$start;$day<=$end;$day=$day->modify('+1 day')){
+            $key=$day->format('Y-m-d');
+            $complete[]=array_replace([
+                'date'=>$key,'settlement_count'=>0,'net_sales'=>0,'gross_sales'=>0,'discount_total'=>0,
+                'completed_settlements'=>0,'reversals'=>0,'completed_sales'=>0,
+            ],$byDay[$key]??[]);
+        }
+        return $complete;
     }
 
     /** Lightweight dashboard projection used by the shared Public Staff dashboard. */
     public function dashboardSnapshot(?string $date=null): array
     {
+        $owns=!$this->pdo->inTransaction();
+        if($owns){
+            $this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $this->pdo->exec('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
+        }
+        try{
+            $snapshot=$this->dashboardSnapshotTx($date);
+            if($owns)$this->pdo->commit();
+            return $snapshot;
+        }catch(\Throwable $e){
+            if($owns&&$this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /** One view of the ledger for every dashboard metric and trend point. */
+    private function dashboardSnapshotTx(?string $date): array
+    {
         $today=$this->date($date?:$this->time->civilDate());$d=new DateTimeImmutable($today);$yesterday=$d->modify('-1 day')->format('Y-m-d');$weekFrom=$d->modify('-6 days')->format('Y-m-d');
         $summary=function(string $day):array{
-            $sales=$this->one("SELECT COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales,COALESCE(AVG(CASE WHEN status='completed' THEN total END),0) avg_ticket FROM settlement_records WHERE business_date=?",[$day]);
-            $orders=$this->one("SELECT COUNT(*) order_count FROM orders WHERE business_date=?",[$day]);
-            return ['net_sales'=>(int)($sales['net_sales']??0),'avg_ticket'=>(int)round((float)($sales['avg_ticket']??0)),'order_count'=>(int)($orders['order_count']??0)];
+            $sales=$this->one("SELECT COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales,
+              SUM(r.status='completed') completed_settlements FROM settlement_records r
+              JOIN table_sessions ts ON ts.id=r.session_id WHERE ts.business_date=?",[$day]);
+            $invoice=$this->one("SELECT COALESCE(AVG(x.net_total),0) avg_ticket,COUNT(*) invoice_count FROM (
+              SELECT c.session_id,SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END) net_total
+              FROM settlement_records c JOIN table_sessions ts ON ts.id=c.session_id AND ts.status='closed'
+              JOIN settlement_records r ON r.session_id=c.session_id
+              WHERE c.status='completed' AND c.closes_session=1 AND ts.business_date=? GROUP BY c.session_id
+            ) x",[$day]);
+            $orders=$this->one("SELECT COUNT(*) order_count FROM orders WHERE business_date=? AND COALESCE(order_context,'')<>'staff_consumption'",[$day]);
+            return ['net_sales'=>(int)($sales['net_sales']??0),'avg_ticket'=>(int)round((float)($invoice['avg_ticket']??0)),'invoice_count'=>(int)($invoice['invoice_count']??0),'completed_settlements'=>(int)($sales['completed_settlements']??0),'order_count'=>(int)($orders['order_count']??0)];
         };
-        $daily=$this->all("SELECT business_date,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_sales FROM settlement_records WHERE business_date BETWEEN ? AND ? GROUP BY business_date ORDER BY business_date",[$weekFrom,$today]);
-        $top=$this->all("SELECT l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id WHERE r.business_date=? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 5",[$today]);
+        $daily=$this->all("SELECT ts.business_date business_date,
+          COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) net_sales
+          FROM settlement_records r JOIN table_sessions ts ON ts.id=r.session_id
+          WHERE ts.business_date BETWEEN ? AND ? GROUP BY ts.business_date ORDER BY ts.business_date",[$weekFrom,$today]);
+        // Authoritative Local query coverage includes inactive days. Emit those zeros
+        // explicitly so Public never has to infer them from a missing projection row.
+        $byDay=[];foreach($daily as $row)$byDay[(string)$row['business_date']]=(int)$row['net_sales'];
+        $daily=[];for($day=new DateTimeImmutable($weekFrom);$day<=$d;$day=$day->modify('+1 day')){
+            $key=$day->format('Y-m-d');$daily[]=['business_date'=>$key,'net_sales'=>$byDay[$key]??0];
+        }
+        $top=$this->all("SELECT l.item_name_snapshot item_name,SUM(CASE WHEN r.status='completed' THEN l.quantity ELSE -l.quantity END) quantity,COALESCE(SUM(CASE WHEN r.status='completed' THEN l.final_amount ELSE -l.final_amount END),0) net_sales FROM settlement_record_lines l JOIN settlement_records r ON r.id=l.settlement_id JOIN table_sessions ts ON ts.id=r.session_id WHERE ts.business_date=? GROUP BY l.item_name_snapshot ORDER BY net_sales DESC LIMIT 5",[$today]);
         return ['range'=>['from'=>$weekFrom,'to'=>$today],'today_summary'=>$summary($today),'yesterday_summary'=>$summary($yesterday),'daily'=>$daily,'top_items'=>$top,'generated_at'=>$this->time->nowUtcIso()];
     }
 
@@ -506,9 +840,9 @@ final class ReportingService
         $master=$this->one("SELECT COUNT(*) active_items,SUM(review_status='needs_review') items_needing_review FROM inventory_items WHERE active=1",[]);
         $units=$this->one("SELECT COUNT(*) active_units,SUM(review_status='needs_review') units_needing_review FROM inventory_purchase_units WHERE active=1",[]);
         $counts=$this->one("SELECT
-                    (SELECT COUNT(*) FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND snapshot_at>=? AND snapshot_at<?) full_counts_in_range,
-                    (SELECT MAX(snapshot_at) FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND snapshot_at<=?) previous_full_count_at,
-                    (SELECT MIN(snapshot_at) FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND snapshot_at>=?) next_full_count_at",
+                    (SELECT COUNT(*) FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at>=? AND snapshot_at<?) full_counts_in_range,
+                    (SELECT MAX(snapshot_at) FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at<=?) previous_full_count_at,
+                    (SELECT MIN(snapshot_at) FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at>=?) next_full_count_at",
                 [$fromAt,$toAt,$fromAt,$toAt]);
         $reconciliation=$this->countBoundedReconciliation($fromAt,$toAt);
         $menuItems=(int)($catalog['menu_items']??0);$withRecipe=(int)($catalog['with_recipe']??0);$reviewed=(int)($catalog['reviewed_recipes']??0);
@@ -580,8 +914,8 @@ final class ReportingService
      */
     private function countBoundedReconciliation(string $fromAt,string $toAt): array
     {
-        $opening=$this->one("SELECT id,title,snapshot_at FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND snapshot_at<=? ORDER BY snapshot_at DESC,id DESC LIMIT 1",[$fromAt]);
-        $closing=$this->one("SELECT id,title,snapshot_at FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND snapshot_at>=? ORDER BY snapshot_at ASC,id ASC LIMIT 1",[$toAt]);
+        $opening=$this->one("SELECT id,title,snapshot_at FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at<=? ORDER BY snapshot_at DESC,id DESC LIMIT 1",[$fromAt]);
+        $closing=$this->one("SELECT id,title,snapshot_at FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at>=? ORDER BY snapshot_at ASC,id ASC LIMIT 1",[$toAt]);
         $openingId=(int)($opening['id']??0);$closingId=(int)($closing['id']??0);
         if($openingId<1||$closingId<1||$openingId===$closingId){
             return ['status'=>'not_anchored','opening_count'=>$openingId>0?['id'=>$openingId,'title'=>(string)($opening['title']??''),'snapshot_at'=>(string)($opening['snapshot_at']??'')]:null,

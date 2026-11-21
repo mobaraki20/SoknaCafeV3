@@ -39,6 +39,124 @@
   const syncClocks=()=>clocks.forEach(updateClock);
   if(clocks.length){syncClocks();window.setInterval(syncClocks,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncClocks()})}
 
+  // Observational Persian calendar. Does not alter the operational business-day cutoff.
+  (()=>{
+    const wrap=document.querySelector('.sc-shell__calendar-wrap');
+    if(!wrap)return;
+    const toggle=wrap.querySelector('[data-shell-calendar-toggle]'),panel=wrap.querySelector('[data-shell-calendar-panel]');
+    const days=wrap.querySelector('[data-shell-calendar-days]'),label=wrap.querySelector('[data-shell-calendar-month]');
+    const detail=wrap.querySelector('[data-shell-calendar-detail]'),source=wrap.querySelector('[data-shell-calendar-source]');
+    const months=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+    const cal=new Intl.DateTimeFormat('en-US-u-ca-persian',{year:'numeric',month:'numeric',day:'numeric',timeZone:'Asia/Tehran'});
+    const fd=n=>faDigits(n);
+    const dayParts=d=>Object.fromEntries(cal.formatToParts(d).filter(x=>x.type!=='literal').map(x=>[x.type,Number(x.value)]));
+    const utcDay=d=>new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12));
+    const shift=(d,n)=>new Date(d.getTime()+n*86400000);
+    const key=({year,month,day})=>[year,String(month).padStart(2,'0'),String(day).padStart(2,'0')].join('-');
+    const firstDate=d=>{let first=utcDay(d);for(let n=0;n<33&&dayParts(first).day!==1;n++)first=shift(first,-1);return first};
+    let first=null,events=null;
+    const today=()=>dayParts(canonicalNow(wrap));
+    const close=(focus=false)=>{if(panel.hidden)return;panel.hidden=true;toggle.setAttribute('aria-expanded','false');if(focus)toggle.focus({preventScroll:true})};
+    const render=()=>{
+      if(!first)return;
+      const ym=dayParts(first);label.textContent=months[ym.month-1]+' '+fd(ym.year);
+      days.replaceChildren();
+      const blank=(first.getUTCDay()+1)%7;
+      for(let i=0;i<blank;i++){const gap=document.createElement('span');gap.className='is-gap';gap.setAttribute('aria-hidden','true');days.append(gap)}
+      const nowKey=key(today());
+      for(let d=first,n=0;n<31;n++,d=shift(d,1)){
+        const stamp=dayParts(d);if(stamp.month!==ym.month||stamp.year!==ym.year)break;
+        const k=key(stamp),event=events?.year===stamp.year?events.events?.[k]:null;
+        const b=document.createElement('button');b.type='button';b.textContent=fd(stamp.day);b.className='sc-shell__calendar-day';
+        const friday=d.getUTCDay()===5;
+        if(friday)b.classList.add('is-weekend');
+        if(event?.holiday)b.classList.add('is-holiday');else if(event)b.classList.add('has-occasion');
+        if(k===nowKey){b.classList.add('is-today');b.setAttribute('aria-current','date')}
+        b.setAttribute('aria-label',`${fd(stamp.day)} ${months[stamp.month-1]} ${fd(stamp.year)}${event?'، '+event.label:''}${friday?'، جمعه':''}`);
+        b.addEventListener('click',()=>{days.querySelectorAll('.is-selected').forEach(x=>x.classList.remove('is-selected'));b.classList.add('is-selected');detail.textContent=event?((event.holiday?'تعطیل رسمی: ':'مناسبت: ')+event.label):(friday?'جمعه — تعطیلی هفتگی':(events?.year===stamp.year?'مناسبت منتخبی برای این روز ثبت نشده است.':'اطلاعات مناسبت‌های این سال در دسترس نیست.'))});
+        days.append(b);
+      }
+      source.textContent=events?.year===ym.year?'تعطیلات رسمی ۱۴۰۵ (۲۶ روز) + مناسبت‌های منتخب؛ منبع: مرکز تقویم دانشگاه تهران':'اطلاعات مناسبت‌های این سال در دسترس نیست';
+    };
+    const load=async()=>{
+      try{
+        const res=await fetch(appPath('/assets/iran-calendar-1405.json'),{credentials:'same-origin'});
+        if(!res.ok)throw Error('offline');const data=await res.json();
+        if(data.schema==='sokna-iran-calendar-v1'&&data.year===1405&&data.events&&typeof data.events==='object'){events=data}
+      }catch(_){events=null}
+      render();
+    };
+    toggle.addEventListener('click',()=>{if(!panel.hidden){close(true);return}first=firstDate(canonicalNow(wrap));panel.hidden=false;toggle.setAttribute('aria-expanded','true');render();load()});
+    wrap.querySelector('[data-shell-calendar-prev]').addEventListener('click',()=>{first=firstDate(shift(first,-1));render()});
+    wrap.querySelector('[data-shell-calendar-next]').addEventListener('click',()=>{first=firstDate(shift(first,35));render()});
+    wrap.querySelector('[data-shell-calendar-close]').addEventListener('click',()=>close(true));
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!panel.hidden){e.preventDefault();close(true)}});
+    document.addEventListener('pointerdown',e=>{if(!panel.hidden&&!wrap.contains(e.target))close()});
+  })();
+
+  // Local notification bell: read-only preview of the authenticated user's inbox.
+  // Never acknowledge/delete notifications in a preview; the inbox remains authoritative.
+  (()=>{
+    const wrap=document.querySelector('[data-shell-notify-wrap]');
+    if(!wrap)return;
+    const toggle=wrap.querySelector('[data-shell-notify-toggle]');
+    const panel=wrap.querySelector('[data-shell-notify-panel]');
+    const items=wrap.querySelector('[data-shell-notify-items]');
+    const closeButton=wrap.querySelector('[data-shell-notify-close]');
+    let generation=0;
+    const close=({focus=false}={})=>{
+      if(panel.hidden)return;
+      panel.hidden=true;
+      toggle.setAttribute('aria-expanded','false');
+      generation++;
+      if(focus)toggle.focus({preventScroll:true});
+    };
+    const render=rows=>{
+      items.replaceChildren();
+      // The quick view is scoped to the current server business day. The full
+      // inbox still contains history, including old unread and unresolved entries.
+      const today=String(panel.dataset.businessDate||'');
+      const cutoff=String(panel.dataset.businessCutoff||'');
+      const matchesBusinessDay=row=>{
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(today)||!/^\d{2}:\d{2}$/.test(cutoff))return true;
+        const wall=String(row.created_at||'').replace('T',' ');
+        const m=/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/.exec(wall);
+        if(!m)return false;
+        const date=m[1],time=m[2];
+        const assigned=time<cutoff?new Date(Date.parse(date+'T00:00:00Z')-86400000).toISOString().slice(0,10):date;
+        return assigned===today;
+      };
+      const filtered=rows.filter(matchesBusinessDay);
+      const sorted=[...filtered].sort((a,b)=>Boolean(a.read_at)-Boolean(b.read_at)||Number(b.id||0)-Number(a.id||0)).slice(0,6);
+      if(!sorted.length){const empty=document.createElement('p');empty.textContent='برای امروز اعلانی وجود ندارد. اعلان‌های قدیمی در تاریخچه باقی می‌مانند.';items.append(empty);return}
+      for(const item of sorted){
+        const raw=String(item.target_url||'');
+        const safePath=raw.startsWith('/')&&!raw.startsWith('//')&&!raw.includes('\\')?appPath(raw):'';
+        const card=document.createElement(safePath?'a':'article');card.className='sc-shell__notify-item';
+        if(safePath)card.setAttribute('href',safePath);
+        if(!item.read_at)card.classList.add('is-unread');
+        const title=document.createElement('strong');title.textContent=faDigits(item.title||'اعلان');
+        const detail=document.createElement('small');detail.textContent=faDigits(item.body||'');
+        card.append(title,detail);items.append(card);
+      }
+    };
+    const open=async()=>{
+      panel.hidden=false;toggle.setAttribute('aria-expanded','true');
+      items.textContent='در حال دریافت اعلان‌ها…';const current=++generation;
+      try{
+        const res=await fetch(panel.dataset.api,{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+        if(!res.ok)throw Error('HTTP '+res.status);
+        const data=await res.json();
+        if(data.success===false||!Array.isArray(data.snapshot?.items))throw Error('invalid snapshot');
+        if(current===generation&&!panel.hidden)render(data.snapshot.items);
+      }catch(_){if(current===generation&&!panel.hidden)items.textContent='دریافت اعلان‌ها ممکن نشد؛ از «مشاهده همه اعلان‌ها» استفاده کنید.'}
+    };
+    toggle.addEventListener('click',()=>{if(panel.hidden)open();else close({focus:true})});
+    closeButton.addEventListener('click',()=>close({focus:true}));
+    document.addEventListener('pointerdown',event=>{if(!panel.hidden&&!wrap.contains(event.target))close()});
+    document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!panel.hidden){event.preventDefault();close({focus:true})}});
+  })();
+
   const pageHeaderActions=document.querySelector('[data-page-header-actions]');
   const pageContent=document.querySelector('.sc-shell__content');
   const uiIcon=name=>{
@@ -82,7 +200,7 @@
   const syncGroupAria=()=>groups.forEach(g=>g.querySelector('[data-shell-nav-group-toggle]')?.setAttribute('aria-expanded',g.open?'true':'false'));
   const restoreGroups=()=>{
     if(document.body.classList.contains('sc-nav-compact')){applyingGroups=true;groups.forEach(g=>g.open=true);applyingGroups=false;syncGroupAria();return}
-    const saved=savedGroups();if(saved){applyingGroups=true;groups.forEach(g=>{g.open=saved.has(String(g.dataset.navGroupKey||''))||g.classList.contains('is-current')});applyingGroups=false}
+    const saved=savedGroups();if(saved){applyingGroups=true;groups.forEach(g=>{g.open=saved.has(String(g.dataset.navGroupKey||''))||g.classList.contains('is-current')});applyingGroups=false}else if(matchMedia('(max-width:820px)').matches){applyingGroups=true;groups.forEach(g=>g.open=true);applyingGroups=false}
     groups.filter(g=>g.classList.contains('is-current')).forEach(g=>g.open=true);syncGroupAria();
   };
   groups.forEach(g=>g.addEventListener('toggle',()=>{syncGroupAria();if(applyingGroups||document.body.classList.contains('sc-nav-compact'))return;const openGroups=groups.filter(x=>x.open).map(x=>String(x.dataset.navGroupKey||''));try{localStorage.setItem(groupStoreKey,JSON.stringify(openGroups))}catch(_){}document.dispatchEvent(new CustomEvent('sokna:ui-preference-intent',{detail:{key:'nav_groups',value:openGroups}}))}));

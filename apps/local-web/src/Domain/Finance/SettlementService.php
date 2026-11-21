@@ -41,6 +41,37 @@ final class SettlementService
         }
     }
 
+    /** A read-only result for a possibly committed, idempotent settlement request.
+     * Missing record must NOT be interpreted as proof that an in-flight POST will never commit.
+     */
+    public function requestStatus(int $sessionId,string $requestId,array $user): array
+    {
+        $this->assertCashier($user);
+        if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
+        $requestId=self::requestId($requestId);
+        $q=$this->pdo->prepare('SELECT id,session_id,destination,status,invoice_number,closes_session FROM settlement_records WHERE request_id=? LIMIT 1');
+        $q->execute([$requestId]);
+        $row=$q->fetch(PDO::FETCH_ASSOC);
+        if(!is_array($row))return ['state'=>'unconfirmed','session_id'=>$sessionId];
+        if((int)$row['session_id']!==$sessionId)
+            throw new SettlementStateConflict('request_id_conflict','شناسه درخواست مربوط به این حساب نیست.',409);
+        if((string)$row['status']!=='completed')return ['state'=>'requires_review','session_id'=>$sessionId];
+        // A later reversal must not be presented as a still-final payment.
+        $rev=$this->pdo->prepare("SELECT id FROM settlement_records WHERE reverses_settlement_id=? AND status='reversal' LIMIT 1");
+        $rev->execute([(int)$row['id']]);
+        if(is_array($rev->fetch(PDO::FETCH_ASSOC)))return ['state'=>'requires_review','session_id'=>$sessionId];
+        return [
+            'state'=>'committed','session_id'=>$sessionId,
+            'result'=>[
+                'settlement_id'=>(int)$row['id'],
+                'session_id'=>(int)$row['session_id'],
+                'destination'=>(string)$row['destination'],
+                'invoice_number'=>(string)$row['invoice_number'],
+                'closes_session'=>(int)$row['closes_session']===1,
+            ],
+        ];
+    }
+
     public function markRecoveryRequired(array $data,array $user): array
     {
         $this->pdo->beginTransaction();
@@ -48,7 +79,7 @@ final class SettlementService
             $actor=$this->assertCashier($user);
             $sessionId=(int)($data['session_id']??0);
             if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
-            $session=$this->lockSession($sessionId);
+            $session=$this->sessionTx($sessionId);
             if(!in_array((string)$session['status'],['active','pending'],true))throw new SettlementStateConflict('session_closed','این حساب دیگر قابل پیگیری نیست.',409);
             if(!empty($session['service_detached_at'])){
                 $this->pdo->commit();
@@ -100,12 +131,49 @@ final class SettlementService
         $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->assertCashier($user);if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);$destination=trim($destination);if(!in_array($destination,['direct','subscriber','accommodation'],true))throw new SettlementException('invalid_destination','روش تسویه معتبر نیست.',422);
-            $session=$this->lockSession($sessionId);if(!in_array((string)$session['status'],['active','pending'],true))throw new SettlementStateConflict('session_closed','این حساب دیگر قابل پیگیری نیست.',409);if(empty($session['service_detached_at']))throw new SettlementStateConflict('followup_not_detached','این حساب هنوز به میز فعال متصل است.',409);
+            $session=$this->sessionTx($sessionId);if(!in_array((string)$session['status'],['active','pending'],true))throw new SettlementStateConflict('session_closed','این حساب دیگر قابل پیگیری نیست.',409);if(empty($session['service_detached_at']))throw new SettlementStateConflict('followup_not_detached','این حساب هنوز به میز فعال متصل است.',409);
             $from=trim((string)($session['followup_settlement_destination']??''));if($from===$destination){if($ownsTransaction)$this->pdo->commit();return ['session_id'=>$sessionId,'destination'=>$destination,'idempotent'=>true];}
             $this->pdo->prepare('UPDATE table_sessions SET followup_settlement_destination=?,followup_settlement_updated_at=NOW(),followup_settlement_updated_by_user_id=? WHERE id=?')->execute([$destination,(int)$actor['id'],$sessionId]);
             $this->insertFollowupEventTx($sessionId,'method_changed',$from!==''?$from:null,$destination,'تغییر روش تسویه در پیگیری',(int)$actor['id']);
             $this->audit('settlement.followup_destination_changed','table_session',$sessionId,(int)$actor['id'],['from'=>$from?:null,'to'=>$destination]);
             if($ownsTransaction)$this->pdo->commit();return ['session_id'=>$sessionId,'destination'=>$destination,'idempotent'=>false];
+        }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+    }
+
+    /**
+     * A customer-facing, explicitly NON-FISCAL open-account slip.
+     * It must never allocate an invoice number, settle an item, change tax,
+     * or touch payment/account state. Idempotency is print-queue only.
+     */
+    public function printOpenAccount(int $sessionId,int $expectedRemainingTotal,string $expectedSignature,string $requestId,array $user): array
+    {
+        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+        try{
+            $actor=$this->assertCashier($user);
+            if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
+            $requestId=self::requestId($requestId);
+            // A lost response never creates a second paper job for the same request.
+            $key='account:preview:session:'.$sessionId.':'.$requestId;
+            $old=$this->pdo->prepare('SELECT id,status,entity_type,entity_id,requested_by_user_id FROM print_jobs WHERE idempotency_key=? LIMIT 1 FOR UPDATE');
+            $old->execute([$key]);$existing=$old->fetch(PDO::FETCH_ASSOC);
+            if(is_array($existing)){
+                if((string)$existing['entity_type']!=='account_preview'||(string)$existing['entity_id']!==(string)$sessionId||
+                   (int)$existing['requested_by_user_id']!==(int)$actor['id'])
+                    throw new SettlementStateConflict('print_request_conflict','شناسه درخواست چاپ قبلاً استفاده شده است.',409);
+                if($ownsTransaction)$this->pdo->commit();
+                return ['job_id'=>(int)$existing['id'],'status'=>(string)$existing['status'],'duplicate'=>true,'session_id'=>$sessionId,'document_role'=>'account_preview'];
+            }
+            $account=$this->accountTx($sessionId);
+            $this->assertExpected($account,$sessionId,$expectedRemainingTotal,$expectedSignature);
+            if((int)$account['remaining_total']<1)throw new SettlementStateConflict('nothing_remaining','این حساب مانده‌ای برای صورتحساب اولیه ندارد.',409);
+            if(!empty($account['session']['service_detached_at']))throw new SettlementStateConflict('followup_detached','این حساب از میز جدا شده و برای پیگیری مالی است.',409);
+            $job=$this->printing->enqueueOpenAccountPreviewTx($account,(int)$actor['id'],$requestId);
+            $this->audit('settlement.open_account_preview_requested','table_session',$sessionId,(int)$actor['id'],[
+                'request_id'=>$requestId,'job_id'=>$job['job_id']??null,'print_status'=>$job['status']??null,
+                'remaining_total'=>(int)$account['remaining_total'],'document_role'=>'account_preview'
+            ]);
+            if($ownsTransaction)$this->pdo->commit();
+            return $job+['session_id'=>$sessionId,'document_role'=>'account_preview'];
         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
@@ -120,12 +188,16 @@ final class SettlementService
         }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
-    public function setDiscount(int $sessionId,?string $type,int $value,array $user): array
+    public function setDiscount(int $sessionId,?string $type,int $value,array $user,string $expectedSignature=''): array
     {
         $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
         try{
             $actor=$this->assertCashier($user);
-            $result=$this->applyDiscountTx($sessionId,$type,$value,$actor,'settlement.discount_updated',[]);
+            if($sessionId>0&&$this->hasActiveItemizedTx($sessionId)){
+                $result=$this->applyRemainingDiscountTx($sessionId,$type,$value,$actor,$expectedSignature);
+            }else{
+                $result=$this->applyDiscountTx($sessionId,$type,$value,$actor,'settlement.discount_updated',[]);
+            }
             if($ownsTransaction)$this->pdo->commit();
             return $result;
         }catch(Throwable $e){
@@ -140,8 +212,12 @@ final class SettlementService
         try{
             $this->assertCashier($user);
             if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
-            if($this->hasActiveItemizedTx($sessionId))
-                throw new SettlementStateConflict('itemized_locked','پس از شروع پرداخت جداگانه، تخفیف حساب قابل تغییر نیست.',409);
+            if($this->hasActiveItemizedTx($sessionId)){
+                $account=$this->accountTx($sessionId);
+                $plan=$this->remainingDiscountPlanTx($account,$type,$value);
+                $this->pdo->commit();
+                return $plan['preview']+['expected_signature'=>(string)$account['signature'],'remaining_only'=>true];
+            }
             $account=$this->accountTx($sessionId);
             $type=$type===null||trim($type)===''?null:trim($type);
             if($type!==null&&!in_array($type,['percent','fixed'],true))
@@ -153,7 +229,7 @@ final class SettlementService
                 throw new SettlementException('invalid_discount','تخفیف ثابت نمی‌تواند بیشتر از جمع فاکتور باشد.',422);
             if($type===null)$value=0;
             $discount=self::discountAmount($subtotal,$type,$value);
-            $calculated=TaxService::calculateInvoiceLines((array)($account['items']??[]),$discount);
+            $calculated=TaxService::calculateAccountLinesByOrigin((array)($account['items']??[]),$type,$value);
             $this->pdo->commit();
             return [
                 'session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,'subtotal'=>(int)$calculated['subtotal'],
@@ -164,6 +240,102 @@ final class SettlementService
             if($this->pdo->inTransaction())$this->pdo->rollBack();
             throw $e;
         }
+    }
+
+    /** One post-payment discount is allocated only to unpaid units at the time of grant.
+     * No mutation of table_sessions.discount_* or settlement_record_lines is permitted.
+     * A second grant, removal, or reversal must use a separately audited financial
+     * adjustment feature; this bounded workflow deliberately fails closed.
+     */
+    private function remainingDiscountPlanTx(array $account,?string $type,int $value): array
+    {
+        $session=$account['session'];$sessionId=(int)$session['id'];
+        if(!empty($session['remaining_discount_grant']))
+            throw new SettlementStateConflict('remaining_discount_exists','تخفیف مانده این حساب قبلاً ثبت شده است؛ برای اصلاح آن از مسئول مالی کمک بگیرید.',409);
+        if((int)($account['receipt_count']??0)<1)
+            throw new SettlementStateConflict('no_partial_payment','هنوز پرداخت آیتمی قطعی برای حساب وجود ندارد.',409);
+        // An earlier invoice-wide discount is already allocated between paid and
+        // unpaid units by accountTx. An *additional* grant may only discount the
+        // still-unpaid net portion; paid receipt snapshots are immutable.
+        $type=$type===null?null:trim($type);
+        if(!in_array($type,['percent','fixed'],true)||$value<1||($type==='percent'&&$value>100))
+            throw new SettlementException('invalid_discount','مقدار یا نوع تخفیف مانده معتبر نیست.',422);
+        // The displayed gross unpaid subtotal includes the previous invoice
+        // discount. Subtract ONLY its outstanding share; never rebalance or
+        // rewrite already paid invoice lines.
+        $base=(int)$account['remaining_subtotal']-(int)$account['remaining_discount'];
+        if($base<1)throw new SettlementStateConflict('nothing_remaining','مانده خالصی برای تخفیف وجود ندارد.',409);
+        $amount=self::discountAmount($base,$type,$value);
+        if(($type==='fixed'&&$value>$base)||$amount<1||$amount>$base)
+            throw new SettlementException('invalid_discount','مبلغ تخفیف باید مثبت و حداکثر برابر مانده پرداخت‌نشده باشد.',422);
+        $eligible=[];$originalBy=[];$unpaidNetSum=0;
+        foreach($account['items'] as $line){
+            $qty=(int)$line['remaining_quantity'];if($qty<1)continue;
+            $originalPendingDiscount=(int)$line['invoice_discount_amount']-(int)$line['paid_discount_amount'];
+            $pendingNet=(int)$line['unit_price']*$qty-$originalPendingDiscount;
+            if($originalPendingDiscount<0||$pendingNet<0)
+                throw new SettlementStateConflict('paid_allocation_changed','سهم تخفیف اقلام پرداخت‌شده معتبر نیست.',409);
+            if($pendingNet<1)continue;
+            $unpaidNetSum+=$pendingNet;
+            // One synthetic unit represents the already-discounted unpaid net.
+            // TaxService redistributes just the NEW reduction, using stable item IDs.
+            $eligible[]=['order_item_id'=>(int)$line['id'],'quantity'=>1,'unit_price'=>$pendingNet,
+                'gross_amount'=>$pendingNet,'tax_policy_snapshot'=>(string)$line['tax_policy_snapshot'],
+                'tax_rate_bps_snapshot'=>(int)$line['tax_rate_bps_snapshot']];
+            $originalBy[(int)$line['id']]=$line;
+        }
+        if($eligible===[])throw new SettlementStateConflict('nothing_remaining','قلم قابل تخفیفی وجود ندارد.',409);
+        if($unpaidNetSum!==$base)
+            throw new SettlementStateConflict('discount_allocation_mismatch','جمع خالص اقلام پرداخت‌نشده با حساب یکسان نیست.',409);
+        $allocated=TaxService::calculateInvoiceLines($eligible,$amount);
+        if((int)$allocated['subtotal']!==$base||(int)$allocated['discount']!==$amount)
+            throw new SettlementStateConflict('discount_allocation_mismatch','تخصیص تخفیف با مانده حساب برابر نیست.',409);
+        $rows=[];$tax=0;
+        foreach($allocated['lines'] as $line){
+            $id=(int)$line['order_item_id'];$old=$originalBy[$id];$paidTax=(int)($old['paid_tax_amount']??0);
+            $paidTaxable=(int)($old['paid_taxable_amount']??0);
+            $pendingNet=(int)$line['gross_amount']-(int)$line['invoice_discount_amount'];
+            $taxTotal=$paidTax+(int)$line['invoice_tax_amount'];
+            $taxableTotal=$paidTaxable+(int)$line['invoice_taxable_amount'];
+            $rows[]=['order_item_id'=>$id,'quantity_snapshot'=>(int)$old['quantity'],
+                'paid_quantity_at_grant'=>(int)$old['paid_quantity'],
+                'original_discount_snapshot'=>(int)$old['invoice_discount_amount'],
+                'discount_amount'=>(int)$line['invoice_discount_amount'],
+                'invoice_tax_after_grant'=>$taxTotal,'invoice_taxable_after_grant'=>$taxableTotal];
+            $tax+=(int)$line['invoice_tax_amount'];
+        }
+        $net=$base-$amount;
+        return ['preview'=>['session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,
+                'subtotal'=>$base,'discount_amount'=>$amount,'net'=>$net,'tax'=>$tax,'total'=>$net+$tax],
+            'allocations'=>$rows];
+    }
+
+    private function applyRemainingDiscountTx(int $sessionId,?string $type,int $value,array $actor,string $expectedSignature): array
+    {
+        if($expectedSignature===''||!preg_match('/^[0-9a-f]{64}$/D',$expectedSignature))
+            throw new SettlementStateConflict('discount_preview_required','پیش‌نمایش تازه تخفیف لازم است؛ حساب را دوباره باز کنید.',409);
+        $account=$this->accountTx($sessionId);
+        if(!hash_equals((string)$account['signature'],$expectedSignature))
+            throw new SettlementStateConflict('discount_account_changed','مانده حساب پس از پیش‌نمایش تغییر کرده است؛ دوباره محاسبه کنید.',409);
+        $plan=$this->remainingDiscountPlanTx($account,$type,$value);
+        $preview=$plan['preview'];
+        $insert=$this->pdo->prepare('INSERT INTO remaining_account_discount_grants(session_id,discount_type,discount_value,base_unpaid_subtotal,discount_amount,actor_user_id) VALUES(?,?,?,?,?,?)');
+        $insert->execute([$sessionId,$preview['discount_type'],$preview['discount_value'],$preview['subtotal'],$preview['discount_amount'],(int)$actor['id']]);
+        $grantId=(int)$this->pdo->lastInsertId();
+        $lineInsert=$this->pdo->prepare('INSERT INTO remaining_account_discount_lines(grant_id,order_item_id,quantity_snapshot,paid_quantity_at_grant,original_discount_snapshot,discount_amount,invoice_tax_after_grant,invoice_taxable_after_grant) VALUES(?,?,?,?,?,?,?,?)');
+        foreach($plan['allocations'] as $line)$lineInsert->execute([$grantId,$line['order_item_id'],$line['quantity_snapshot'],
+            $line['paid_quantity_at_grant'],$line['original_discount_snapshot'],$line['discount_amount'],
+            $line['invoice_tax_after_grant'],$line['invoice_taxable_after_grant']]);
+        $this->audit('settlement.remaining_discount_granted','table_session',$sessionId,(int)$actor['id'],[
+            'grant_id'=>$grantId,'discount_type'=>$type,'discount_value'=>$value,
+            'discount_amount'=>$preview['discount_amount'],'unpaid_subtotal_before'=>$preview['subtotal'],
+            'unpaid_total_after'=>$preview['total'],'prior_receipts_kept'=>true]);
+        $after=$this->accountTx($sessionId);
+        if((int)$after['remaining_total']!==(int)$preview['total'])
+            throw new SettlementStateConflict('discount_readback_mismatch','مانده مالی پس از ثبت با پیش‌نمایش مطابقت ندارد؛ تغییر برگشت داده شد.',409);
+        return ['session_id'=>$sessionId,'discount_type'=>$type,'discount_value'=>$value,
+            'discount_amount'=>(int)$preview['discount_amount'],'remaining_total'=>(int)$after['remaining_total'],
+            'remaining_only'=>true,'grant_id'=>$grantId];
     }
 
     /**
@@ -194,7 +366,7 @@ final class SettlementService
 
     private function applyDiscountTx(int $sessionId,?string $type,int $value,array $actor,string $auditAction,array $auditExtra): array
     {
-        $session=$this->lockSession($sessionId);
+        $session=$this->sessionTx($sessionId);
         if(!in_array((string)$session['status'],['active','pending'],true))
             throw new SettlementStateConflict('session_closed','این حساب دیگر قابل تغییر نیست.',409);
         if($this->hasActiveItemizedTx($sessionId))
@@ -211,6 +383,16 @@ final class SettlementService
             throw new SettlementException('invalid_discount','تخفیف ثابت نمی‌تواند بیشتر از جمع فاکتور باشد.',422);
         if($type===null)$value=0;
         $amount=self::discountAmount($subtotal,$type,$value);
+        // An already-served order has its own discount cohort. Persist the
+        // effective granted discount, not a total that would reallocate an
+        // earlier fixed discount onto the new, already-delivered item.
+        $hasLate=$this->pdo->prepare("SELECT 1 FROM orders WHERE session_id=? AND status='accounted' AND accounting_origin='late_served' LIMIT 1");
+        $hasLate->execute([$sessionId]);
+        if($hasLate->fetchColumn()!==false){
+            $account=$this->accountTx($sessionId);
+            $candidate=TaxService::calculateAccountLinesByOrigin((array)$account['items'],$type,$value);
+            $amount=(int)$candidate['discount'];
+        }
 
         $this->pdo->prepare(
             'INSERT INTO invoice_discount_audit(session_id,previous_type,previous_value,previous_amount,new_type,new_value,new_amount,subtotal,actor_user_id)
@@ -259,7 +441,7 @@ final class SettlementService
             if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
 
             // Stable session lock serializes lost-ACK retries before request lookup.
-            $this->lockSession($sessionId);
+            $this->sessionTx($sessionId);
             $requestId=self::requestId((string)($data['request_id']??''));
             $destination=(string)($data['destination']??'direct');
             if(!in_array($destination,['direct','subscriber','accommodation'],true))
@@ -305,7 +487,8 @@ final class SettlementService
                 if($ownsTransaction)$this->pdo->commit();
                 return $result;
             }
-            if($missingTenderForNewDirect)throw new SettlementException('tender_required','روش پرداخت را مشخص کن.',422);
+            // A zero-value invoice still closes a real accounted table; it needs no cash/card tender.
+            // Determine eligibility from the locked, server-calculated lines below, never client amount.
 
             $accommodationTransfer=null;
             if($destination==='accommodation'){
@@ -324,6 +507,11 @@ final class SettlementService
                 (string)($data['expected_signature']??'')
             );
             $review=$mode==='full'?$this->reviewAllRemaining($account):$this->reviewSelection($account,$selection);
+            if($missingTenderForNewDirect){
+                if((int)$review['total']!==0 || (int)$review['subtotal']<1 || (int)$review['discount']<1)
+                    throw new SettlementException('tender_required','روش پرداخت را مشخص کن.',422);
+                $tenderCaptureStatus='not_applicable'; // complimentary: no phantom tender and no legacy missing-payment status
+            }
             if($destination==='direct'&&$tenderCaptureStatus==='recorded')self::assertTenderTotal($tenders,(int)$review['total']);
             $eventUtc=$this->time->nowUtc();
             $settledAtUtc=$eventUtc->format('Y-m-d H:i:s');
@@ -515,7 +703,7 @@ final class SettlementService
             )->execute([$reason,(int)$actor['id'],$settlementId]);
 
             if((int)$record['closes_session']===1){
-                $session=$this->lockSession((int)$record['session_id']);$detached=!empty($session['service_detached_at']);
+                $session=$this->sessionTx((int)$record['session_id']);$detached=!empty($session['service_detached_at']);
                 if(!$detached){$other=$this->pdo->prepare("SELECT id FROM table_sessions WHERE table_id=? AND id<>? AND status IN('active','pending') AND live_table_guard IS NOT NULL LIMIT 1 FOR UPDATE");$other->execute([(int)$session['table_id'],(int)$session['id']]);if($other->fetchColumn()!==false)throw new SettlementStateConflict('table_in_use','میز در حساب فعال دیگری استفاده می‌شود و رسید فعلی قابل بازگشت خودکار نیست.',409);}
                 $this->pdo->prepare(
                     "UPDATE table_sessions SET status='active',live_table_guard=IF(service_detached_at IS NULL,table_id,NULL),checkout_subtotal=NULL,checkout_discount=NULL,
@@ -568,12 +756,29 @@ final class SettlementService
 
     public function accountTx(int $sessionId): array
     {
-        $session=$this->lockSession($sessionId);
+        return $this->buildAccountTx($sessionId,true);
+    }
+
+    /** Read-only projection inside the caller's coherent DB snapshot.
+     * Mutation paths retain locking accountTx and revalidate the signature.
+     */
+    public function projectionAccountTx(int $sessionId): array
+    {
+        if(!$this->pdo->inTransaction())throw new \LogicException('Account projection requires a caller-owned transaction.');
+        $account=$this->buildAccountTx($sessionId,false);
+        $account['followup_events']=$this->followupEventsTx($sessionId);
+        return $account;
+    }
+
+    private function buildAccountTx(int $sessionId,bool $lock): array
+    {
+        $suffix=$lock?' FOR UPDATE':'';
+        $session=$this->sessionTx($sessionId,$lock);
         if(!in_array((string)$session['status'],['active','pending'],true))
             throw new SettlementStateConflict('session_closed','این حساب دیگر در وضعیت قابل تسویه نیست.',409);
 
         $ordersStmt=$this->pdo->prepare(
-            "SELECT id,status,total_amount FROM orders WHERE session_id=? AND status IN('pending_approval','new','accounted') ORDER BY id FOR UPDATE"
+            "SELECT id,status,total_amount FROM orders WHERE session_id=? AND status IN('pending_approval','new','accounted') ORDER BY id".$suffix
         );
         $ordersStmt->execute([$sessionId]);$orders=$ordersStmt->fetchAll(PDO::FETCH_ASSOC);
         foreach($orders as $order){
@@ -588,12 +793,15 @@ final class SettlementService
         $ids=array_map('intval',array_column($confirmed,'id'));$ph=implode(',',array_fill(0,count($ids),'?'));
         $lineStmt=$this->pdo->prepare(
             "SELECT oi.id order_item_id,oi.order_id,oi.item_id,oi.item_name,oi.unit_price,oi.quantity,oi.line_total,oi.item_note,
-                    oi.tax_policy_snapshot,oi.tax_rate_bps_snapshot,oi.tax_rate_version_id,oi.tax_item_policy_version_id
-             FROM order_items oi WHERE oi.order_id IN($ph) AND oi.quantity>0 ORDER BY oi.id FOR UPDATE"
+                    oi.tax_policy_snapshot,oi.tax_rate_bps_snapshot,oi.tax_rate_version_id,oi.tax_item_policy_version_id,
+                    ord.accounting_origin
+             FROM order_items oi JOIN orders ord ON ord.id=oi.order_id
+             WHERE oi.order_id IN($ph) AND oi.quantity>0 ORDER BY oi.id".$suffix
         );
         $lineStmt->execute($ids);$lines=$lineStmt->fetchAll(PDO::FETCH_ASSOC);
         if(!$lines)throw new SettlementStateConflict('no_lines','برای این میز قلم قابل تسویه‌ای وجود ندارد.',409);
-        $calculated=TaxService::calculateInvoiceLines($lines,$discount);
+        $calculated=TaxService::calculateAccountLinesByOrigin(
+            $lines,$session['discount_type']??null,(int)($session['discount_value']??0));
         if((int)$calculated['subtotal']!==$subtotal)
             throw new SettlementStateConflict('subtotal_mismatch','جمع اقلام سفارش با مبلغ حساب هماهنگ نیست.',409);
 
@@ -648,11 +856,58 @@ final class SettlementService
             $line['paid_quantity']=$paidQty;
             $line['paid_discount_amount']=(int)($p['paid_discount']??0);
             $line['paid_tax_amount']=(int)($p['paid_tax']??0);
+            $line['paid_taxable_amount']=(int)($p['paid_taxable']??0);
             $line['remaining_quantity']=$remaining;
             $line['invoice_discount_amount']=(int)($calc['invoice_discount_amount']??0);
             $line['invoice_tax_amount']=(int)($calc['invoice_tax_amount']??0);
+            // Existing paid receipts are immutable: a new accounting cohort may
+            // never lower the amounts already recorded against a paid line.
+            if($line['invoice_discount_amount']<$line['paid_discount_amount']||
+                $line['invoice_tax_amount']<$line['paid_tax_amount']||
+                ($remaining===0&&($line['invoice_discount_amount']!==$line['paid_discount_amount']||
+                    $line['invoice_tax_amount']!==$line['paid_tax_amount'])))
+                throw new SettlementStateConflict('paid_allocation_changed',
+                    'سهم مالیات یا تخفیف اقلام پرداخت‌شده با سند قبلی سازگار نیست.',409);
             $remainingItems[]=$line;$byOrder[(int)$line['order_id']][]=$line;
             if($paidQty>0)$paidQuantities[$id]=$paidQty;
+        }
+
+        // A post-itemized grant is anchored to a fixed snapshot of unpaid
+        // order-item IDs. Prior paid line amounts and tax are never recomputed.
+        $grantQuery=$this->pdo->prepare('SELECT * FROM remaining_account_discount_grants WHERE session_id=? LIMIT 1'.$suffix);
+        $grantQuery->execute([$sessionId]);$grant=$grantQuery->fetch(PDO::FETCH_ASSOC);
+        if(is_array($grant)){
+            $gLines=$this->pdo->prepare('SELECT * FROM remaining_account_discount_lines WHERE grant_id=? ORDER BY order_item_id'.$suffix);
+            $gLines->execute([(int)$grant['id']]);$rows=$gLines->fetchAll(PDO::FETCH_ASSOC);
+            $assigned=0;$byId=[];
+            foreach($rows as $row)$byId[(int)$row['order_item_id']]=$row;
+            foreach($remainingItems as &$line){
+                $id=(int)$line['id'];$alloc=$byId[$id]??null;if(!is_array($alloc))continue;
+                $calc=$fullBy[$id]??null;
+                if(!is_array($calc)||(int)$line['quantity']!==(int)$alloc['quantity_snapshot']||
+                   (int)$line['paid_quantity']<(int)$alloc['paid_quantity_at_grant']||
+                   (int)$line['invoice_discount_amount']!==(int)$alloc['original_discount_snapshot'])
+                    throw new SettlementStateConflict('discounted_line_changed','قلم دارای تخفیف مانده تغییر کرده است؛ بررسی مسئول مالی لازم است.',409);
+                $extra=(int)$alloc['discount_amount'];$assigned+=$extra;
+                if($extra<0||(int)$line['invoice_discount_amount']+$extra>(int)$line['line_total'])
+                    throw new SettlementStateConflict('discount_allocation_invalid','مبلغ تخفیف مانده از سقف ردیف عبور کرده است.',409);
+                $taxBefore=(int)$calc['invoice_tax_amount'];$taxableBefore=(int)$calc['invoice_taxable_amount'];
+                $newTax=(int)$alloc['invoice_tax_after_grant'];$newTaxable=(int)$alloc['invoice_taxable_after_grant'];
+                if($newTax<(int)$line['paid_tax_amount']||$newTaxable<(int)$line['paid_taxable_amount'])
+                    throw new SettlementStateConflict('paid_allocation_changed','تخفیف نباید مالیات ثبت‌شده قبلی را تغییر دهد.',409);
+                $line['invoice_discount_amount']+=$extra;
+                $line['invoice_tax_amount']=$newTax;
+                $line['remaining_grant']=true;
+                $calculated['discount']+=$extra;$calculated['net']-=$extra;
+                $calculated['tax']+=$newTax-$taxBefore;$calculated['taxable']+=$newTaxable-$taxableBefore;
+                $calculated['total']+=($newTax-$taxBefore)-$extra;
+            }
+            unset($line);
+            if($assigned!==(int)$grant['discount_amount']||count($rows)<1)
+                throw new SettlementStateConflict('discount_grant_invalid','سند تخصیص تخفیف مانده ناقص است.',409);
+            $session['remaining_discount_grant']=[
+                'id'=>(int)$grant['id'],'type'=>(string)$grant['discount_type'],
+                'value'=>(int)$grant['discount_value'],'amount'=>(int)$grant['discount_amount']];
         }
 
         $paidSubtotal=(int)($paidTotals['paid_subtotal']??0);$paidDiscount=(int)($paidTotals['paid_discount']??0);
@@ -699,13 +954,25 @@ final class SettlementService
             $gross=(int)$item['unit_price']*$quantity;
             $fullDiscount=(int)$item['invoice_discount_amount'];
             $targetDiscount=TaxService::proportionalTarget($fullDiscount,$ordered,$newPaidQty,$newPaidQty===$ordered);
-            $lineDiscount=max(0,$targetDiscount-(int)$item['paid_discount_amount']);$lineDiscount=min($gross,$lineDiscount);
+            if(!empty($item['remaining_grant'])){
+                $outstandingDiscount=max(0,$fullDiscount-(int)$item['paid_discount_amount']);
+                $lineDiscount=TaxService::proportionalTarget($outstandingDiscount,(int)$item['remaining_quantity'],$quantity,$quantity===(int)$item['remaining_quantity']);
+            }else{
+                $lineDiscount=max(0,$targetDiscount-(int)$item['paid_discount_amount']);
+            }
+            $lineDiscount=min($gross,$lineDiscount);
             $net=$gross-$lineDiscount;
             $policy=(string)($item['tax_policy_snapshot']??'disabled');$rate=max(0,min(10000,(int)($item['tax_rate_bps_snapshot']??0)));
             $lineTaxable=($policy!=='disabled'&&$policy!=='exempt')?$net:0;
             $cumulativeGross=(int)$item['unit_price']*$newPaidQty;$cumulativeNet=$cumulativeGross-$targetDiscount;
             $targetTax=$lineTaxable>0?TaxService::roundAmount($cumulativeNet,$rate):0;
-            $lineTax=max(0,$targetTax-(int)$item['paid_tax_amount']);$final=$net+$lineTax;
+            if(!empty($item['remaining_grant'])){
+                $taxPending=max(0,(int)$item['invoice_tax_amount']-(int)$item['paid_tax_amount']);
+                $lineTax=TaxService::proportionalTarget($taxPending,(int)$item['remaining_quantity'],$quantity,$quantity===(int)$item['remaining_quantity']);
+            }else{
+                $lineTax=max(0,$targetTax-(int)$item['paid_tax_amount']);
+            }
+            $final=$net+$lineTax;
             $lines[]=[
                 'order_item_id'=>$itemId,'order_id'=>(int)$item['order_id'],
                 'item_id_snapshot'=>$item['item_id']!==null?(int)$item['item_id']:null,
@@ -840,10 +1107,10 @@ final class SettlementService
         return array_map(static fn(array $row):array=>['type'=>(string)$row['type'],'amount'=>(int)$row['amount']],$stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
-    private function lockSession(int $sessionId): array
+    private function sessionTx(int $sessionId,bool $lock=true): array
     {
         $stmt=$this->pdo->prepare(
-            'SELECT s.*,t.name table_name FROM table_sessions s JOIN cafe_tables t ON t.id=s.table_id WHERE s.id=? FOR UPDATE'
+            'SELECT s.*,t.name table_name FROM table_sessions s JOIN cafe_tables t ON t.id=s.table_id WHERE s.id=?'.($lock?' FOR UPDATE':'')
         );
         $stmt->execute([$sessionId]);$row=$stmt->fetch(PDO::FETCH_ASSOC);
         if(!is_array($row))throw new SettlementException('session_not_found','حساب میز پیدا نشد.',404);
@@ -917,7 +1184,8 @@ final class SettlementService
         $pq=[];foreach((array)($paid['paid_quantities']??[]) as $id=>$q)if((int)$q>0)$pq[(int)$id]=(int)$q;ksort($pq,SORT_NUMERIC);
         $payload=[
             'session_id'=>(int)$session['id'],'discount_type'=>(string)($session['discount_type']??''),
-            'discount_value'=>(int)($session['discount_value']??0),'orders'=>$normOrders,
+            'discount_value'=>(int)($session['discount_value']??0),
+            'remaining_discount_grant'=>$session['remaining_discount_grant']??null,'orders'=>$normOrders,
             'paid_state'=>[
                 'paid_quantities'=>$pq,'paid_subtotal'=>(int)($paid['paid_subtotal']??0),
                 'paid_discount'=>(int)($paid['paid_discount']??0),'paid_taxable'=>(int)($paid['paid_taxable']??0),

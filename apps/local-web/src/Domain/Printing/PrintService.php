@@ -271,7 +271,7 @@ final class PrintService
                 'consumer_name'=>$context==='staff_consumption'?$consumer:null,'customer_note'=>$order['customer_note'],
                 // Keep top-level `items` during rolling upgrades, but the canonical
                 // renderer contract is sections[].items[] with name/note fields.
-                'items'=>self::sortPreparationRows($rows),'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
+                'items'=>$rows,'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
             ];
             $payload=$this->templates->applyActive($payload);
             $r=$this->enqueueTx('preparation','prep_shared',$payload,'order',(string)$orderId,$actorUserId,'prep:order:'.$orderId,false);
@@ -345,7 +345,7 @@ final class PrintService
         $payload=[
             'schema'=>'sokna-print-document-v2','document_kind'=>'preparation','order_id'=>$orderId,'order_number'=>(int)$order['business_order_number'],
             'order_context'=>'table_service','table_name'=>self::faDigits((string)($order['table_name']??'')),'badge'=>'چاپ مجدد · فیش آماده‌سازی',
-            'customer_note'=>$order['customer_note'],'items'=>self::sortPreparationRows($rows),'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
+            'customer_note'=>$order['customer_note'],'items'=>$rows,'sections'=>self::preparationSections($rows),'created_at'=>\Sokna\Shared\IranTime::iso((string)$order['created_at']),'display_date'=>\Sokna\Shared\IranTime::display((string)$order['created_at']),
             'reprint'=>true,'reprint_request_id'=>$requestId,'reprint_requested_by_user_id'=>$actorUserId,
         ];
         $payload=$this->templates->applyActive($payload);
@@ -378,6 +378,11 @@ final class PrintService
             if(count($allRows)+count($rows)>3000)throw new PrintException('too_many_items','تعداد اقلام برای چاپ یکپارچه بیش از حد است؛ نوبت‌ها را جدا چاپ کنید.',409);
             $roundNumber=count($printedRounds)+1;
             $printedRounds[]=['order_id'=>(int)$round['id'],'order_number'=>(int)$round['business_order_number'],'item_count'=>count($rows)];
+            // Restore the original order within each round before merging. Legacy
+            // payload items are sorted separately, so historical agents keep their order.
+            usort($rows,static fn(array $a,array $b): int=>(int)($a['_print_original_index']??0)<=>(int)($b['_print_original_index']??0));
+            foreach($rows as &$line)$line['_print_original_index']=count($allRows)+($line['_print_original_index']??0);
+            unset($line);
             $allRows=array_merge($allRows,$rows);
             if($firstDate==='')$firstDate=(string)$round['created_at'];
             $note=trim((string)($round['customer_note']??''));
@@ -430,13 +435,14 @@ final class PrintService
         }
         if($items===[])throw new PrintException('no_lines','صورتحساب اولیه هیچ قلم معتبری ندارد.',409);
         $paid=max(0,(int)($account['paid_total']??0));$remaining=max(0,(int)($account['remaining_total']??0));
-        $footer='این برگه صورتحساب اولیه است؛ فاکتور رسمی یا رسید پرداخت نیست. مبلغ ممکن است تا زمان تسویه تغییر کند.';
-        if($paid>0)$footer.=' پرداخت‌شده: '.self::faDigits(number_format($paid)).' تومان؛ مانده: '.self::faDigits(number_format($remaining)).' تومان.';
+        // Preserve the immutable 'account_preview' role and unpaid status in receipt metadata.
+        // Do not force an unwanted explanatory paragraph into the user's custom footer.
+        $footer='';
         $session=$account['session'];
         // The invoice_number field is deliberately an empty string: no invoice ID is minted or implied.
         $payload=[
             'schema'=>'sokna-print-document-v2','document_kind'=>'customer','document_role'=>'account_preview',
-            'title'=>'کافه سکنا — صورتحساب اولیه (تسویه نشده)','invoice_number'=>'',
+            'title'=>'کافه سکنا','invoice_number'=>'',
             'badge'=>'حساب باز · تسویه نشده','table_name'=>self::faDigits((string)($session['table_name']??$session['table_id']??'')),
             'created_at'=>gmdate('c'),'currency'=>'تومان','sections'=>[['items'=>$items]],
             'subtotal'=>(int)$account['subtotal'],'discount'=>(int)$account['discount'],
@@ -445,18 +451,8 @@ final class PrintService
             'footer'=>$footer
         ];
         $payload=$this->templates->applyActive($payload);
-        // The active customer template may define its own footer. This job-specific warning
-        // must remain visible even when the template footer has been customized.
-        if(is_array($payload['template']??null)){
-            $normal=(string)($payload['template']['footer']??'');
-            $payload['template']['footer']=trim($normal!==''?$normal.' · '.$footer:$footer);
-            // Some customized customer templates exclude footer entirely. A prepayment
-            // document MUST show its non-receipt warning even under those templates.
-            $order=$payload['template']['design']['section_order']??null;
-            if(is_array($order)&&$order!==[]&&!in_array('footer',$order,true)){
-                $order[]='footer';$payload['template']['design']['section_order']=$order;
-            }
-        }
+        // Account-preview is still distinguishable as unpaid via document_role and badge.
+        // Optional text is fully controlled by the selected print template.
         return $this->enqueueTx('customer_account_preview','customer_receipt',$payload,'account_preview',(string)$sessionId,$actorUserId,
             'account:preview:session:'.$sessionId.':'.$requestId,false);
     }
@@ -693,7 +689,10 @@ final class PrintService
             if($rows===[]){if((string)$parent['preparation_station']!=='none')$out[]=['item_name'=>(string)$parent['item_name'],'quantity'=>(int)$parent['quantity'],'item_note'=>$parent['item_note'],'fulfillment_mode'=>(string)$parent['fulfillment_mode'],'preparation_station'=>(string)$parent['preparation_station'],'_note_identity'=>$identity];continue;}
             array_push($out,...self::bundlePreparationRows($parent,$rows,$identity));
         }
-        return self::oncePerSplitFulfillmentNote($out);
+        $prepared=self::oncePerSplitFulfillmentNote($out);
+        foreach($prepared as $index=>&$item)$item['_print_original_index']=(int)$index;
+        unset($item);
+        return self::sortPreparationRows($prepared);
     }
 
     /** Bundle parent notes are shared by components of one preparation station.
@@ -779,32 +778,21 @@ final class PrintService
      */
     private static function preparationSections(array $rows): array
     {
-        // Input rows are in original order_items / bundle-component order.
-        // The legacy print layout remains kitchen-first, as before R321.
-        // Per-item order_index permits an explicitly selected template to
-        // reconstruct original cross-station order in the Print Agent.
-        $indexed=[];
-        foreach($rows as $row){
-            if(!is_array($row))continue;
-            $row['_print_order_index']=count($indexed);
-            $indexed[]=$row;
-        }
         $items=[];
+        $indexed=[];
+        foreach($rows as $index=>$row)if(is_array($row))$indexed[]=$row+['_print_original_index'=>(int)$index];
         foreach(self::sortPreparationRows($indexed) as $row){
-            $station=trim((string)($row['preparation_station']??'other'));
-            if($station==='')$station='other';
             $items[]=[
                 'name'=>(string)($row['item_name']??$row['name']??'—'),
                 'quantity'=>max(1,(int)($row['quantity']??1)),
                 'note'=>self::nullable($row['item_note']??$row['note']??null,500),
                 'fulfillment_mode'=>(string)($row['fulfillment_mode']??'dine_in'),
-                'station'=>$station,
-                'order_index'=>(int)$row['_print_order_index'],
+                'station'=>(string)($row['preparation_station']??'other'),
+                'order_index'=>(int)($row['_print_original_index']??0),
             ];
         }
-        // Keep one unlabelled section and one column heading in the default
-        // layout. Explicit station ordering is applied by the renderer only
-        // when that mode is selected in a template.
+        // Empty title suppresses section labels even for templates with
+        // show_section_titles=true; a single section has just one column header.
         return $items===[]?[]:[['title'=>'','items'=>$items]];
     }
 

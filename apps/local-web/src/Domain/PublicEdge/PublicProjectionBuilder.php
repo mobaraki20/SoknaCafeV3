@@ -4,6 +4,7 @@ namespace Sokna\Local\Domain\PublicEdge;
 use PDO;
 use Throwable;
 use Sokna\Local\Domain\Finance\SettlementService;
+use Sokna\Local\Domain\Finance\SettlementStateConflict;
 use Sokna\Local\Domain\Supply\SupplyService;
 use Sokna\Local\Domain\GuestContent\GuestContentService;
 use Sokna\Local\Domain\Marketing\MarketingService;
@@ -12,11 +13,12 @@ use Sokna\Local\Domain\Notifications\NotificationService;
 use Sokna\Local\Domain\Sellables\CategoryIconLibrary;
 use Sokna\Local\Domain\Orders\OrderCatalogService;
 use Sokna\Local\Domain\Orders\OrderWorkspaceService;
+use Sokna\Local\Domain\Orders\BusinessClock;
 use Sokna\Local\Domain\Preparation\PreparationService;
 use Sokna\Local\Domain\Tax\TaxService;
 final class PublicProjectionBuilder
 {
-    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null,private readonly ?MarketingService $marketing=null,private readonly ?ReportingService $reporting=null,private readonly ?NotificationService $notifications=null,private readonly ?CategoryIconLibrary $categoryIcons=null,private readonly ?OrderCatalogService $orderCatalog=null,private readonly ?PreparationService $preparation=null,private readonly ?OrderWorkspaceService $orderWorkspace=null){}
+    public function __construct(private readonly PDO $pdo,private readonly ?SettlementService $settlements=null,private readonly ?SupplyService $supply=null,private readonly ?GuestContentService $guestContent=null,private readonly ?MarketingService $marketing=null,private readonly ?ReportingService $reporting=null,private readonly ?NotificationService $notifications=null,private readonly ?CategoryIconLibrary $categoryIcons=null,private readonly ?OrderCatalogService $orderCatalog=null,private readonly ?PreparationService $preparation=null,private readonly ?OrderWorkspaceService $orderWorkspace=null,private readonly ?BusinessClock $businessClock=null,private readonly ?\Sokna\Local\Domain\Orders\OrderAcceptanceService $orderAcceptance=null,private readonly ?\Sokna\Local\Domain\Orders\OrderStaffActionService $orderActions=null,private readonly bool $accommodationEnabled=false){}
     public function installation(string $installationId): array{return ['installation_id'=>$installationId,'display_name'=>$this->setting('cafe.name','SOKNA'),'remote_enabled'=>true,'order_intake_enabled'=>$this->settingBool('orders_accepting.cafe',true)];}
     public function authProjections(): array
     {
@@ -50,6 +52,7 @@ final class PublicProjectionBuilder
         if($has('shift_supervision'))$add($out,'operations.read','reports.read','preparation.read','preparation.monitor');
         if($has('inventory_view')||$has('inventory_operations')||$has('inventory_manage')||$has('inventory_finalize'))$add($out,'inventory.read');
         if($has('inventory_cost_view'))$add($out,'inventory.cost.read');
+        if($has('expenses_record'))$add($out,'expense.create.defer','deferred.context','operations.read');
         if($has('inventory_operations')||$has('inventory_manage')||$has('inventory_finalize'))$add($out,'supply.need.defer','supply.manage.defer','deferred.context');
         if($has('staff_consumption_reports'))$add($out,'reports.read');
         if($has('inventory_view')||$has('inventory_cost_view')||$has('inventory_operations')||$has('inventory_manage')||$has('inventory_finalize')||$has('preparation')||$has('shift_supervision'))$add($out,'operations.workspace.read');
@@ -64,6 +67,9 @@ final class PublicProjectionBuilder
     {
         $menus=$this->pdo->query("SELECT id,menu_key,name,sort_order FROM menus WHERE status='active' ORDER BY sort_order,id")->fetchAll(PDO::FETCH_ASSOC);
         $menuList=[];$catalogs=[];$manifest=[];
+        $featuredRaw=json_decode($this->setting('catalog.featured.order','[]'),true);
+        $featuredIds=is_array($featuredRaw)?array_values(array_filter(array_map('intval',$featuredRaw),static fn(int $id):bool=>$id>0)):[];
+        $featuredRank=[];foreach($featuredIds as $pos=>$id)if(!isset($featuredRank[$id]))$featuredRank[$id]=$pos+1;
         foreach($menus as $m){
             $menu=['menu_key'=>(string)$m['menu_key'],'name'=>(string)$m['name'],'sort_order'=>(int)$m['sort_order']];
             $menuList[]=$menu;
@@ -77,8 +83,33 @@ final class PublicProjectionBuilder
             }
             $iq=$this->pdo->prepare("SELECT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.featured,i.takeaway_allowed,i.preparation_station,i.suggested_item_id,i.image_path,i.sort_order FROM items i JOIN categories c ON c.id=i.category_id JOIN menu_items mi ON mi.item_id=i.id WHERE mi.menu_id=? AND i.lifecycle_status='active' AND i.guest_visible=1 AND c.lifecycle_status='active' AND c.guest_visible=1 AND i.sellable_kind='menu_item' ORDER BY c.sort_order,i.sort_order,i.id");
             $iq->execute([(int)$m['id']]);
+            // A displayed variant family is a single menu choice with several sizes.
+            // Older menu assignments can contain only the first two SKUs: include
+            // all *active, guest-visible, same-category* siblings of a SKU explicitly
+            // assigned to this menu. This is a read-only projection repair; it does
+            // not change menu_items, stock, historical prices or catalog settings.
+            $itemRows=$iq->fetchAll(PDO::FETCH_ASSOC)?:[];
+            $seenIds=array_fill_keys(array_map(static fn(array $r):int=>(int)$r['id'],$itemRows),true);
+            $memberQ=$this->pdo->prepare("SELECT DISTINCT i.id,i.category_id,c.name category_name,i.name,i.description,i.price,i.available,i.featured,i.takeaway_allowed,i.preparation_station,i.suggested_item_id,i.image_path,i.sort_order
+                 FROM item_variant_members vm
+                 JOIN items i ON i.id=vm.item_id
+                 JOIN item_variant_members anchor ON anchor.family_id=vm.family_id
+                 JOIN items a ON a.id=anchor.item_id
+                 JOIN menu_items mi ON mi.item_id=a.id AND mi.menu_id=?
+                 JOIN categories c ON c.id=i.category_id
+                 WHERE i.lifecycle_status='active' AND i.guest_visible=1 AND i.sellable_kind='menu_item'
+                   AND a.lifecycle_status='active' AND a.guest_visible=1 AND a.sellable_kind='menu_item'
+                   AND i.category_id=a.category_id
+                   AND c.lifecycle_status='active' AND c.guest_visible=1
+                 ORDER BY i.sort_order,i.id");
+            $memberQ->execute([(int)$m['id']]);
+            foreach($memberQ->fetchAll(PDO::FETCH_ASSOC)?:[] as $memberRow){
+                $id=(int)$memberRow['id'];
+                if(isset($seenIds[$id]))continue;
+                $seenIds[$id]=true;$itemRows[]=$memberRow;
+            }
             $items=[];
-            foreach($iq->fetchAll(PDO::FETCH_ASSOC) as $r){
+            foreach($itemRows as $r){
                 $source='';
                 if($this->guestContent!==null){
                     $resolved=$this->guestContent->publicMediaForSource((string)($r['image_path']??''));
@@ -91,12 +122,13 @@ final class PublicProjectionBuilder
                     'id'=>(int)$r['id'],'category_id'=>(int)$r['category_id'],'category_name'=>(string)$r['category_name'],
                     'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'price'=>(int)$r['price'],
                     'available'=>(bool)$r['available'],'featured'=>(bool)($r['featured']??false),
+                    'featured_position'=>$featuredRank[(int)$r['id']]??null,
                     'takeaway_allowed'=>(bool)($r['takeaway_allowed']??true),'preparation_station'=>(string)($r['preparation_station']??'other'),
                     'suggested_item_id'=>$r['suggested_item_id']!==null?(int)$r['suggested_item_id']:null,'image_path'=>$source,
                 ];
             }
             $visibleIds=array_fill_keys(array_map(static fn(array $i):int=>(int)$i['id'],$items),true);
-            $families=[];$fq=$this->pdo->prepare("SELECT f.id,f.family_key,f.category_id,f.name,f.description,f.image_path,f.sort_order,f.featured,m.item_id,m.label,m.sort_order member_sort FROM item_variant_families f JOIN item_variant_members m ON m.family_id=f.id JOIN menu_items mi ON mi.item_id=m.item_id WHERE mi.menu_id=? ORDER BY f.sort_order,f.id,m.sort_order,m.item_id");$fq->execute([(int)$m['id']]);foreach($fq->fetchAll(PDO::FETCH_ASSOC)?:[] as $r){$itemId=(int)$r['item_id'];if(!isset($visibleIds[$itemId]))continue;$fid=(int)$r['id'];if(!isset($families[$fid]))$families[$fid]=['id'=>$fid,'family_key'=>(string)$r['family_key'],'category_id'=>(int)$r['category_id'],'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'image_path'=>(string)($r['image_path']??''),'sort_order'=>(int)$r['sort_order'],'featured'=>(bool)$r['featured'],'members'=>[]];$families[$fid]['members'][]=['item_id'=>$itemId,'label'=>(string)$r['label'],'sort_order'=>(int)$r['member_sort']];}
+            $families=[];$fq=$this->pdo->prepare("SELECT f.id,f.family_key,f.category_id,f.name,f.description,f.image_path,f.sort_order,f.featured,m.item_id,m.label,m.sort_order member_sort FROM item_variant_families f JOIN item_variant_members m ON m.family_id=f.id ORDER BY f.sort_order,f.id,m.sort_order,m.item_id");$fq->execute();foreach($fq->fetchAll(PDO::FETCH_ASSOC)?:[] as $r){$itemId=(int)$r['item_id'];if(!isset($visibleIds[$itemId]))continue;$fid=(int)$r['id'];if(!isset($families[$fid]))$families[$fid]=['id'=>$fid,'family_key'=>(string)$r['family_key'],'category_id'=>(int)$r['category_id'],'name'=>(string)$r['name'],'description'=>(string)($r['description']??''),'image_path'=>(string)($r['image_path']??''),'sort_order'=>(int)$r['sort_order'],'featured'=>(bool)$r['featured'],'members'=>[]];$families[$fid]['members'][]=['item_id'=>$itemId,'label'=>(string)$r['label'],'sort_order'=>(int)$r['member_sort']];}
             $suggestions=[];$sq=$this->pdo->query("SELECT source_item_id,suggested_item_id,sort_order FROM item_suggestions WHERE active=1 ORDER BY source_item_id,sort_order,suggested_item_id");foreach($sq->fetchAll(PDO::FETCH_ASSOC)?:[] as $r){$src=(int)$r['source_item_id'];$dst=(int)$r['suggested_item_id'];if(isset($visibleIds[$src],$visibleIds[$dst])&&count($suggestions[$src]??[])<2)$suggestions[$src][]=$dst;}
             $bundles=[];$bq=$this->pdo->query("SELECT b.bundle_item_id,b.choice_label,c.component_item_id,c.mode,c.quantity,c.price_delta,c.sort_order FROM item_bundles b JOIN item_bundle_components c ON c.bundle_item_id=b.bundle_item_id ORDER BY b.bundle_item_id,c.sort_order,c.id");foreach($bq->fetchAll(PDO::FETCH_ASSOC)?:[] as $r){$bid=(int)$r['bundle_item_id'];$cid=(int)$r['component_item_id'];if(!isset($visibleIds[$bid]))continue;if(!isset($bundles[$bid]))$bundles[$bid]=['bundle_item_id'=>$bid,'choice_label'=>(string)($r['choice_label']??''),'components'=>[]];$bundles[$bid]['components'][]=['item_id'=>$cid,'mode'=>(string)$r['mode'],'quantity'=>(int)$r['quantity'],'price_delta'=>(int)$r['price_delta'],'sort_order'=>(int)$r['sort_order']];}
             $familyByItem=[];foreach($families as $family){foreach((array)$family['members'] as $member)$familyByItem[(int)$member['item_id']]=['id'=>(int)$family['id'],'name'=>(string)$family['name'],'description'=>(string)$family['description'],'image_path'=>(string)$family['image_path'],'featured'=>(bool)$family['featured'],'members'=>$family['members'],'label'=>(string)$member['label']];}
@@ -142,8 +174,38 @@ final class PublicProjectionBuilder
             foreach((array)($catalog['categories']??[]) as $category){if(!is_array($category))continue;$id=(int)($category['id']??0);if($id>0&&!isset($categories[$id]))$categories[$id]=$category;}
             foreach((array)($catalog['items']??[]) as $item){if(!is_array($item))continue;$id=(int)($item['id']??0);if($id>0&&!isset($items[$id]))$items[$id]=$item;}
         }
+        // The collapsed public menu combines several separate published menus.
+        // Its variant-family membership must be recomputed from ALL visible member
+        // IDs, not inherited from whichever menu happened to contain the first SKU.
+        $families=[];$bundles=[];
+        foreach($catalogs as $catalog){
+            if(!is_array($catalog))continue;
+            foreach((array)($catalog['variant_families']??[]) as $family){
+                if(!is_array($family))continue;$fid=(int)($family['id']??0);if($fid<1)continue;
+                if(!isset($families[$fid])){$families[$fid]=$family;$families[$fid]['members']=[];}
+                foreach((array)($family['members']??[]) as $member){
+                    if(!is_array($member))continue;$id=(int)($member['item_id']??0);
+                    if(!isset($items[$id])||(int)($items[$id]['variant_family_id']??0)!==$fid)continue;
+                    if(!isset($families[$fid]['members'][$id]))$families[$fid]['members'][$id]=$member;
+                }
+            }
+            foreach((array)($catalog['bundles']??[]) as $bundle){
+                if(!is_array($bundle))continue;$id=(int)($bundle['bundle_item_id']??0);
+                if(isset($items[$id])&&!isset($bundles[$id]))$bundles[$id]=$bundle;
+            }
+        }
+        foreach($families as $fid=>&$family){
+            $members=array_values($family['members']);
+            usort($members,static fn(array $a,array $b):int=>(int)($a['sort_order']??0)<=>(int)($b['sort_order']??0) ?: (int)($a['item_id']??0)<=>(int)($b['item_id']??0));
+            if($members===[]){unset($families[$fid]);continue;}
+            $family['members']=$members;
+        }unset($family);
+        foreach($items as &$item){
+            $fid=(int)($item['variant_family_id']??0);
+            if($fid>0&&isset($families[$fid]))$item['variant_members']=$families[$fid]['members'];
+        }unset($item);
         $one=['menu_key'=>$key,'name'=>(string)($first['name']??'منو'),'sort_order'=>(int)($first['sort_order']??0)];
-        return [[$one],[$key=>['menu'=>$one,'categories'=>array_values($categories),'items'=>array_values($items)]]];
+        return [[$one],[$key=>['menu'=>$one,'categories'=>array_values($categories),'items'=>array_values($items),'variant_families'=>array_values($families),'bundles'=>array_values($bundles)]]];
     }
 
     public function guestMediaPayloads(array $manifest): array
@@ -174,6 +236,12 @@ final class PublicProjectionBuilder
             foreach(['table_id','source_table_id','target_table_id','destination_table_id','from_table_id','to_table_id'] as $key)if((int)($source[$key]??0)>0)$ids[]=(int)$source[$key];
             foreach(['session_id','expected_session_id'] as $key)if((int)($source[$key]??0)>0){$q=$this->pdo->prepare('SELECT table_id FROM table_sessions WHERE id=? LIMIT 1');$q->execute([(int)$source[$key]]);$id=(int)$q->fetchColumn();if($id>0)$ids[]=$id;}
         }
+        // Committed item corrections identify their canonical order, not a client
+        // table/session. Resolve that owner before building the receipt readback.
+        if((int)($result['order_id']??0)>0){
+            $q=$this->pdo->prepare('SELECT table_id FROM orders WHERE id=? LIMIT 1');
+            $q->execute([(int)$result['order_id']]);$id=(int)$q->fetchColumn();if($id>0)$ids[]=$id;
+        }
         $rows=$this->orderWorkspace->publicTableStates($ids);
         return $rows===[]?null:['format'=>'sokna-committed-table-states-v1','sequence'=>$sequence,'rows'=>$rows];
     }
@@ -200,24 +268,27 @@ final class PublicProjectionBuilder
         $add=function(string $key,array $payload) use (&$models,$wanted,$now):void {
             if(isset($wanted[$key]))$models[]=$this->model($key,$payload,$now);
         };
-        if(isset($wanted['operations'])){
-            $hall=$this->orderWorkspace?->publicHallProjection()??[];
-            $add('operations',[
-                'orders'=>$this->operationOrders(),
-                'waiter_calls'=>$hall['waiter_calls']??$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50"),
-                'settlement_accounts'=>$this->settlementAccounts(),
-                'hall'=>$hall,
-            ]);
-        }
+        if(isset($wanted['operations']))$add('operations',$this->remoteHallWorkspace());
         if(isset($wanted['preparation']))$add('preparation',$this->preparation?->publicProjection()??['orders'=>[]]);
         if(isset($wanted['inventory']))$add('inventory',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,ii.default_department,COALESCE(b.quantity_base,0) quantity_base,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")]);
         if(isset($wanted['inventory_cost']))$add('inventory_cost',['items'=>$this->rows("SELECT ii.id,ii.item_code,ii.name,ii.base_unit,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at FROM inventory_items ii LEFT JOIN inventory_balances b ON b.inventory_item_id=ii.id WHERE ii.active=1 ORDER BY ii.name LIMIT 500")]);
         if(isset($wanted['operations_workspace']))$add('operations_workspace',$this->remoteOperationsWorkspace());
         if(isset($wanted['subscribers']))$add('subscribers',$this->remoteSubscriberWorkspace());
         if(isset($wanted['reports']))$add('reports',$this->remoteReportWorkspace());
-        if(isset($wanted['notifications']))$add('notifications',['items'=>$this->notifications?->remoteRows()??[],'push'=>$this->notifications?->remotePushConfig()??['vapid_public_key'=>'','bridge_configured'=>false]]);
+        if(isset($wanted['notifications'])){
+            // The bell's daily scope must use the same Local business clock as all reports.
+            // Do not infer the cutoff from browser or Public server wall-clock settings.
+            $notificationClock=($this->businessClock??new BusinessClock($this->pdo))->assignment();
+            $add('notifications',['items'=>$this->notifications?->remoteRows()??[],
+                'business_clock'=>['business_date'=>(string)$notificationClock['business_date'],
+                    'cutoff'=>(string)$notificationClock['cutoff']],
+                'push'=>$this->notifications?->remotePushConfig()??['vapid_public_key'=>'','bridge_configured'=>false]]);
+        }
         if(isset($wanted['deferred_context']))$add('deferred_context',[
             'inventory_items'=>$this->rows("SELECT id,item_code,name,base_unit,default_department FROM inventory_items WHERE active=1 ORDER BY name LIMIT 500"),
+            // Public displays purchase-unit choices, but Local remains the only conversion authority.
+            // Needs-review units must request an actual physical quantity, never extrapolate a stale factor.
+            'purchase_units'=>$this->rows("SELECT pu.id,pu.inventory_item_id,pu.name,pu.base_quantity,pu.review_status,CASE WHEN pu.review_status='needs_review' THEN 'actual_quantity' ELSE pu.conversion_mode END effective_mode FROM inventory_purchase_units pu INNER JOIN inventory_items i ON i.id=pu.inventory_item_id WHERE pu.active=1 AND i.active=1 ORDER BY pu.inventory_item_id,pu.name,pu.id LIMIT 1000"),
             'count_drafts'=>$this->rows("SELECT id,status,created_at FROM inventory_count_sessions WHERE status='draft' ORDER BY id DESC LIMIT 50"),
             'subscribers'=>$this->rows("SELECT s.id,s.name,s.mobile,s.active,COALESCE((SELECT l.balance_after FROM subscriber_ledger l WHERE l.subscriber_id=s.id ORDER BY l.id DESC LIMIT 1),0) balance,(SELECT MAX(l3.created_at) FROM subscriber_ledger l3 WHERE l3.subscriber_id=s.id) last_activity FROM subscribers s WHERE s.active=1 ORDER BY s.name LIMIT 300"),
             'expense_categories'=>$this->rows("SELECT category_key,name FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),
@@ -395,7 +466,39 @@ final class PublicProjectionBuilder
     private function remoteReportWorkspace(): array
     {
         $owns=!$this->pdo->inTransaction();if($owns){$this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');$this->pdo->beginTransaction();}
-        try{$report=$this->reporting?->report()??[];if($this->reporting!==null){$report['dashboard']=$this->reporting->dashboardSnapshot();$report['archive']=$this->reporting->remoteArchive();}if($owns)$this->pdo->commit();return $report;}catch(\Throwable $e){if($owns&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+        try{
+            // Keep the report's explicit calendar-date filters unchanged; dashboard KPI
+            // must use the same business day as Local home (including cutoff hours).
+            $clock=($this->businessClock??new BusinessClock($this->pdo))->assignment();
+            $businessDate=(string)$clock['business_date'];
+            $report=$this->reporting?->report()??[];
+            if($this->reporting!==null){
+                $report['dashboard']=$this->reporting->dashboardSnapshot($businessDate);
+                $report['archive']=$this->reporting->remoteArchive();
+            }
+            // R313: Public must receive genuine operational activity independently
+            // from the notification inbox. This projection is read-only, bounded and
+            // intentionally fail-soft: a missing activity log cannot break sales sync.
+            $activity=['format'=>'sokna-dashboard-operational-activity-v1','status'=>'unavailable',
+                'business_date'=>$businessDate,'cutoff'=>(string)$clock['cutoff'],'items'=>[]];
+            try{
+                if($this->reporting!==null)$activity=PublicOperationalActivityProjector::build(
+                    $this->reporting->dashboardOperationalActivity(),$businessDate,(string)$clock['cutoff']);
+            }catch(\Throwable){/* The reports projection must remain usable if audit activity is unavailable. */}
+            $report['dashboard_activity']=$activity;
+            // R314: explicit, bounded daily SKU facts. Public must not infer complete
+            // category sales from only the top-five items in the dashboard.
+            $sales=['format'=>'sokna-item-sales-daily-archive-v1','status'=>'unavailable'];
+            try{$sales=\Sokna\Local\Domain\Reporting\PublicItemSalesSnapshot::build($this->pdo,$businessDate,60);}catch(\Throwable){/* report KPIs remain independent */}
+            $report['item_sales_archive']=$sales;
+            // R315: read-only, bounded invoices for authorized Public cashier history.
+            $invoices=['format'=>'sokna-public-invoice-history-v1','status'=>'unavailable'];
+            try{$invoices=\Sokna\Local\Domain\Reporting\PublicInvoiceHistorySnapshot::build($this->pdo,$businessDate);}catch(\Throwable){/* Do not block ordinary report KPIs if archive unavailable. */}
+            $report['invoice_history_archive']=$invoices;
+            $report['business_date']=$businessDate;
+            $report['business_clock']=['business_date'=>$businessDate,'civil_date'=>(string)$clock['civil_date'],'cutoff'=>(string)$clock['cutoff']];
+            if($owns)$this->pdo->commit();return $report;
+        }catch(\Throwable $e){if($owns&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
     }
 
     private function remoteOperationsWorkspace(): array
@@ -407,8 +510,9 @@ final class PublicProjectionBuilder
     {
         $stateRows=$this->pdo->query("SELECT setting_key,setting_value FROM settings WHERE setting_key IN ('module.inventory.enabled','module.supply.enabled','inventory_initialized','inventory_reconciliation_required')")->fetchAll(PDO::FETCH_KEY_PAIR)?:[];
         $flag=static function(string $key,bool $default) use ($stateRows): bool {if(!array_key_exists($key,$stateRows))return $default;return in_array(strtolower(trim((string)$stateRows[$key])),['1','true','yes','on'],true);};
-        $inventoryEnabled=$flag('module.inventory.enabled',true);$supplyEnabled=$flag('module.supply.enabled',true);$initialized=$flag('inventory_initialized',false);$reconciliation=$flag('inventory_reconciliation_required',false);$ready=$inventoryEnabled&&$initialized&&!$reconciliation;
-        $items=$this->rows("SELECT i.id,i.item_code,i.name,i.category,c.name category_name,i.base_unit,i.default_department,i.warning_threshold,i.review_status,i.review_note,i.active,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at balance_updated_at,(SELECT r.total_cost/r.received_quantity_base FROM inventory_supply_receipts r JOIN inventory_movements m ON m.id=r.movement_id WHERE r.inventory_item_id=i.id AND r.total_cost IS NOT NULL AND r.received_quantity_base>0 AND NOT EXISTS(SELECT 1 FROM inventory_movements rv WHERE rv.reversal_of_id=m.id) ORDER BY m.occurred_at DESC,m.id DESC LIMIT 1) last_purchase_base_unit_cost,(SELECT m.occurred_at FROM inventory_supply_receipts r JOIN inventory_movements m ON m.id=r.movement_id WHERE r.inventory_item_id=i.id AND r.total_cost IS NOT NULL AND r.received_quantity_base>0 AND NOT EXISTS(SELECT 1 FROM inventory_movements rv WHERE rv.reversal_of_id=m.id) ORDER BY m.occurred_at DESC,m.id DESC LIMIT 1) last_purchase_at FROM inventory_items i JOIN inventory_categories c ON c.category_key=i.category LEFT JOIN inventory_balances b ON b.inventory_item_id=i.id ORDER BY i.active DESC,i.review_status DESC,c.sort_order,i.name,i.id LIMIT 500");
+        $inventoryEnabled=$flag('module.inventory.enabled',true);$supplyEnabled=$flag('module.supply.enabled',true);$initialized=$flag('inventory_initialized',false);$reconciliation=$flag('inventory_reconciliation_required',false);$activatedCount=(int)$this->scalar('SELECT COUNT(*) FROM inventory_opening_activations');$remainingCount=(int)$this->scalar('SELECT COUNT(*) FROM inventory_items i WHERE i.active=1 AND NOT EXISTS(SELECT 1 FROM inventory_opening_activations a WHERE a.inventory_item_id=i.id)');$ready=$inventoryEnabled&&($initialized||$activatedCount>0)&&!$reconciliation;
+        $initializedInt=$initialized?1:0;
+        $items=$this->rows("SELECT i.id,i.item_code,i.name,i.category,c.name category_name,i.base_unit,i.default_department,i.warning_threshold,i.review_status,i.review_note,i.active,COALESCE(b.quantity_base,0) quantity_base,b.average_unit_cost,b.cost_status,b.updated_at balance_updated_at,CASE WHEN {$initializedInt}=1 THEN 1 ELSE (SELECT COUNT(*) FROM inventory_opening_activations oa WHERE oa.inventory_item_id=i.id) END opening_counted,(SELECT r.total_cost/r.received_quantity_base FROM inventory_supply_receipts r JOIN inventory_movements m ON m.id=r.movement_id WHERE r.inventory_item_id=i.id AND r.total_cost IS NOT NULL AND r.received_quantity_base>0 AND NOT EXISTS(SELECT 1 FROM inventory_movements rv WHERE rv.reversal_of_id=m.id) ORDER BY m.occurred_at DESC,m.id DESC LIMIT 1) last_purchase_base_unit_cost,(SELECT m.occurred_at FROM inventory_supply_receipts r JOIN inventory_movements m ON m.id=r.movement_id WHERE r.inventory_item_id=i.id AND r.total_cost IS NOT NULL AND r.received_quantity_base>0 AND NOT EXISTS(SELECT 1 FROM inventory_movements rv WHERE rv.reversal_of_id=m.id) ORDER BY m.occurred_at DESC,m.id DESC LIMIT 1) last_purchase_at FROM inventory_items i JOIN inventory_categories c ON c.category_key=i.category LEFT JOIN inventory_balances b ON b.inventory_item_id=i.id ORDER BY i.active DESC,i.review_status DESC,c.sort_order,i.name,i.id LIMIT 500");
         $aliasMap=[];foreach($this->rows("SELECT inventory_item_id,alias FROM inventory_item_aliases WHERE active=1 ORDER BY inventory_item_id,alias LIMIT 3000") as $a)$aliasMap[(int)$a['inventory_item_id']][]=(string)$a['alias'];
         foreach($items as &$item)$item['aliases']=$aliasMap[(int)$item['id']]??[];unset($item);
         $categories=$this->rows("SELECT category_key,name,active,system_category,sort_order FROM inventory_categories ORDER BY active DESC,sort_order,name");
@@ -435,7 +539,7 @@ final class PublicProjectionBuilder
         $receipts=$this->rows("SELECT r.id,r.received_quantity_base,r.remaining_quantity_after,r.purchase_unit_id,r.purchase_unit_name_snapshot,r.purchase_unit_count,r.conversion_base_quantity_snapshot,r.total_cost,r.supplier,r.note,r.received_at,i.name item_name,i.base_unit,u.display_name actor_name,pe.id purchase_price_event_id,pe.normalized_unit_cost,pe.last_unit_cost,pe.weighted_average_before,pe.weighted_average_after,pe.delta_last_percent,pe.delta_average_percent,pe.direction price_direction,pe.notification_level FROM inventory_supply_receipts r JOIN inventory_items i ON i.id=r.inventory_item_id LEFT JOIN users u ON u.id=r.actor_user_id LEFT JOIN inventory_purchase_price_events pe ON pe.receipt_id=r.id AND pe.raw_total_cost=r.total_cost ORDER BY r.received_at DESC,r.id DESC LIMIT 40");
         $missingCostCount=(int)$this->pdo->query("SELECT COUNT(*) FROM inventory_supply_receipts WHERE total_cost IS NULL")->fetchColumn();
         $missingCosts=$this->rows("SELECT r.id,r.inventory_item_id,r.movement_id,r.received_quantity_base,r.purchase_unit_id,r.purchase_unit_name_snapshot,r.purchase_unit_count,r.conversion_base_quantity_snapshot,r.total_cost,r.supplier,r.note,r.received_at,i.name item_name,i.base_unit,u.display_name actor_name FROM inventory_supply_receipts r JOIN inventory_items i ON i.id=r.inventory_item_id LEFT JOIN users u ON u.id=r.actor_user_id WHERE r.total_cost IS NULL ORDER BY r.received_at DESC,r.id DESC LIMIT 100");
-        return ['module_state'=>['inventory_enabled'=>$inventoryEnabled,'supply_enabled'=>$supplyEnabled,'inventory_initialized'=>$initialized,'inventory_reconciliation_required'=>$reconciliation,'inventory_runtime_ready'=>$ready,'supply_runtime_ready'=>$supplyEnabled&&$ready],'inventory'=>['items'=>$items,'categories'=>$categories,'purchase_units'=>$purchaseUnits,'recent_movements'=>$movements,'open_count'=>$this->remoteOpenCount()],'supply'=>['purchases'=>$this->supply?->purchases()??[],'groups'=>$this->supply?->purchaseGroups()??[],'recent_receipts'=>$receipts,'purchase_price_policy'=>$this->supply?->purchasePricePolicy()??['enabled'=>false,'threshold_percent'=>10.0,'high_threshold_percent'=>25.0]],'data_quality'=>['missing_cost_receipt_count'=>$missingCostCount,'missing_cost_receipts'=>$missingCosts],'expenses'=>['categories'=>$this->rows("SELECT category_key,name,active FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'recent'=>$this->rows("SELECT e.id,e.category_key,c.name category_name,e.amount,e.description,e.occurred_at,e.status,fp.title period_title FROM expenses e JOIN expense_categories c ON c.category_key=e.category_key JOIN financial_periods fp ON fp.id=e.financial_period_id ORDER BY e.occurred_at DESC,e.id DESC LIMIT 60")],'errors'=>[]];
+        return ['module_state'=>['inventory_enabled'=>$inventoryEnabled,'supply_enabled'=>$supplyEnabled,'inventory_initialized'=>$initialized,'inventory_reconciliation_required'=>$reconciliation,'opening_active_count'=>$activatedCount,'opening_remaining_count'=>$initialized?0:$remainingCount,'inventory_runtime_ready'=>$ready,'supply_runtime_ready'=>$supplyEnabled&&$ready],'inventory'=>['items'=>$items,'categories'=>$categories,'purchase_units'=>$purchaseUnits,'recent_movements'=>$movements,'open_count'=>$this->remoteOpenCount()],'supply'=>['purchases'=>$this->supply?->purchases()??[],'groups'=>$this->supply?->purchaseGroups()??[],'recent_receipts'=>$receipts,'purchase_price_policy'=>$this->supply?->purchasePricePolicy()??['enabled'=>false,'threshold_percent'=>10.0,'high_threshold_percent'=>25.0]],'data_quality'=>['missing_cost_receipt_count'=>$missingCostCount,'missing_cost_receipts'=>$missingCosts],'expenses'=>['categories'=>$this->rows("SELECT category_key,name,active FROM expense_categories WHERE active=1 ORDER BY sort_order,category_key"),'recent'=>$this->rows("SELECT e.id,e.category_key,c.name category_name,e.amount,e.description,e.occurred_at,e.status,fp.title period_title FROM expenses e JOIN expense_categories c ON c.category_key=e.category_key JOIN financial_periods fp ON fp.id=e.financial_period_id ORDER BY e.occurred_at DESC,e.id DESC LIMIT 60")],'errors'=>[]];
     }
 
     private function remoteOpenCount(): ?array
@@ -573,9 +677,52 @@ final class PublicProjectionBuilder
         return $orders;
     }
 
-    private function settlementAccounts(): array
+    /** Hall, orders, settings and settlement accounts belong to one MVCC view.
+     * No write locks or nested account transactions are used by this reader.
+     */
+    private function remoteHallWorkspace(): array
     {
-        if($this->settlements===null)return [];
+        $owns=!$this->pdo->inTransaction();
+        if($owns){
+            $this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+            $this->pdo->exec('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
+        }
+        try{
+            $payload=$this->hallWorkspaceTx();
+            if($owns)$this->pdo->commit();
+            return $payload;
+        }catch(Throwable $e){
+            if($owns&&$this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    private function hallWorkspaceTx(): array
+    {
+        $hall=$this->orderWorkspace?->publicHallProjection()??[];
+        $hall['order_acceptance']=$this->orderAcceptance?->snapshot();
+        $hall['print_quick_preferences']=$this->orderActions?->printQuickPreferencesSnapshot();
+        $hall['accommodation_enabled']=$this->accommodationEnabled;
+        $hall['hall_settings_available']=$this->orderAcceptance!==null&&$this->orderActions!==null;
+        $hall['final_amount_rial']=$this->settingBool('payment.final_amount_rial',false);
+        $hall['default_tender']=$this->setting('payment.default_tender','pos');
+        // An inconsistent financial account must never be represented as a valid zero balance.
+        // Do not hold waiter calls, orders and hall state hostage to a distinct finance error.
+        // Keep all financial accounts unavailable as a group until the source is coherent.
+        $finance=$this->settlementAccountsProjection();
+        return [
+            'orders'=>$this->operationOrders(),
+            'waiter_calls'=>$hall['waiter_calls']??$this->rows("SELECT w.id,w.public_code,w.status,w.created_at,t.name table_name FROM waiter_calls w JOIN cafe_tables t ON t.id=w.table_id WHERE w.status IN ('new','accepted') ORDER BY w.id DESC LIMIT 50"),
+            'settlement_accounts'=>$finance['accounts'],
+            'finance_projection'=>$finance['state'],
+            'hall'=>$hall,
+        ];
+    }
+
+
+    private function settlementAccountsProjection(): array
+    {
+        if($this->settlements===null)return ['accounts'=>[],'state'=>['status'=>'unavailable','reason_code'=>'service_unavailable']];
         // Only sessions that are presently settleable belong in the finance projection.
         // A pending Guest order is a normal operational state, not a projection failure:
         // Hall/order projections keep showing it, while settlement stays unavailable until
@@ -586,10 +733,19 @@ final class PublicProjectionBuilder
             // A partial finance projection is more dangerous than a delayed projection: the
             // Staff UI may interpret an omitted live account as an empty/missing account.
             // Let the event/full sync retry and keep Public's previous coherent model.
-            $a=$this->settlements->account((int)$id);
+            try{
+                $a=$this->settlements->projectionAccountTx((int)$id);
+            }catch(SettlementStateConflict $e){
+                // This is a truthful, explicit finance outage. No partial account set,
+                // optimistic zeros, or silently swallowed validation errors are published.
+                return ['accounts'=>[],'state'=>[
+                    'status'=>'blocked','reason_code'=>$e->errorCode,
+                    'session_id'=>(int)$id,
+                ]];
+            }
             $out[]=['session_id'=>(int)($a['session']['id']??$id),'table_name'=>(string)($a['session']['table_name']??''),'remaining_total'=>(int)($a['remaining_total']??0),'signature'=>(string)($a['signature']??''),'account'=>$a];
         }
-        return $out;
+        return ['accounts'=>$out,'state'=>['status'=>'ready','reason_code'=>'']];
     }
     private function model(string $key,array $payload,string $at): array{$payload=\Sokna\Shared\IranTime::transport($payload);return ['format'=>'sokna-remote-read-v1','model_key'=>$key,'source_version'=>self::hash($payload),'generated_at'=>$at,'payload'=>$payload];}
     private function caps(int $id): array{$q=$this->pdo->prepare('SELECT capability FROM user_capabilities WHERE user_id=? AND enabled=1');$q->execute([$id]);return array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN));}
