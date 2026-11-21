@@ -1,0 +1,384 @@
+{
+  "schema": "sokna-qa-source-overlay-v1",
+  "project": "Sokna Cafe",
+  "status": "QA_ONLY_NOT_INSTALL",
+  "built_at_utc": "2026-11-21T07:05:06.322653+00:00",
+  "baselines": {
+    "local": "R307-231fw Local released web.zip",
+    "public": "R306-35in Public emergency payload"
+  },
+  "stages_applied": [
+    "R309 finance+hall",
+    "R310 local+public currency",
+    "R311 local reports/UI",
+    "R312 public stale dashboard",
+    "R313 activity Local/Public",
+    "R314 bell+family Public",
+    "R315 invoices+keyword Local/Public",
+    "R316 preparation tabs",
+    "R317 reports/print/operations navigation",
+    "R318 print editor",
+    "R319 direct-selection",
+    "R320 precise draft fixture"
+  ],
+  "print_agent": {
+    "branch": "qa/sokna-r323-print-render-raster-qa-20261121",
+    "Windows_raster_run": 44878041763,
+    "mariadb_run": 44878477777,
+    "paper_mm": [
+      58,
+      80
+    ]
+  },
+  "results": {
+    "patch_rejects": 0,
+    "php_parse_errors": 0,
+    "js_parse_errors": 0,
+    "php_check_scope": "all 409 PHP files in combined Local/Public stage",
+    "js_check_scope": "10 changed files from patch inventory",
+    "r321_php_checks": 19,
+    "r321_default_parity_cases": 7,
+    "r323_raster_qa": "PASS",
+    "r323_mariadb_m8": "PASS"
+  },
+  "release_gates_open": [
+    "functional cross-host Local/Public test",
+    "full current MariaDB catalog-seeded migration suite",
+    "Print Agent physical print at 58/80mm",
+    "end-to-end full UI screenshots authenticated",
+    "132-item backlog field acceptance",
+    "universal updater and clean-install validation"
+  ],
+  "file_count": 47,
+  "files": [
+    {
+      "scope": "local",
+      "path": "public/admin/index.php",
+      "status": "modified",
+      "bytes": 23083,
+      "sha256": "78aeedcf4535f3b408689e55d0abaad3d356f34a677d7ffedbb110fee0cb36a2"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/dashboard-open-accounts.js",
+      "status": "modified",
+      "bytes": 1486,
+      "sha256": "391f2f90aafe7cb539ba82aa2711ae4a18c966d5959b2a25ee444dd26444e2de"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/hall-settlement-v32.js",
+      "status": "modified",
+      "bytes": 63627,
+      "sha256": "8be2279f62fe80e0dd1be04147426b5a7a429ea5f65cf5a7ffd9a7709e635b73"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/printing-workspace.js",
+      "status": "modified",
+      "bytes": 69016,
+      "sha256": "1079c80adad94bdb1ba283f54e65841a11d063f996caf8dd7542f0fd87f3db87"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/product-shell.js",
+      "status": "modified",
+      "bytes": 18476,
+      "sha256": "48d7ffbcb023b2a11c0175830ebd8152f933a9963174eb157d31f7e440df3058"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/product-ui.css",
+      "status": "modified",
+      "bytes": 673875,
+      "sha256": "61a83da1d339bcf9e2bb1098852fb218c5fc3e3545103f4687d1f2dd02fdfdd8"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/reports-workspace.js",
+      "status": "modified",
+      "bytes": 75144,
+      "sha256": "0c41d1eaea84b3dd89332c44b0d5782a0b77e1e42c8afc41ddf0fe00d64323ed"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/staff-app/hall-workspace.js",
+      "status": "modified",
+      "bytes": 146419,
+      "sha256": "27b6006fabc8ffc3e8a4ecc2f2843dfad5a5fd224ecaf28d21a2231f8ffda717"
+    },
+    {
+      "scope": "local",
+      "path": "public/assets/staff-app/preparation-workspace.js",
+      "status": "modified",
+      "bytes": 13536,
+      "sha256": "ab9378e0e6ba3d1b2f3fbba08524540b03a85350a0dca67ec0d176d726b66f6c"
+    },
+    {
+      "scope": "local",
+      "path": "public/index.php",
+      "status": "modified",
+      "bytes": 19953,
+      "sha256": "a2a97d384dc65b02f65fd350f5d76760246fc1543f241a04953aa6e154f1f5a4"
+    },
+    {
+      "scope": "local",
+      "path": "public/printing/index.php",
+      "status": "modified",
+      "bytes": 32375,
+      "sha256": "49c3ef4c151df609a818063464379e972ddd628746a12a0cee97cb76cc71b823"
+    },
+    {
+      "scope": "local",
+      "path": "public/reports/api.php",
+      "status": "modified",
+      "bytes": 4002,
+      "sha256": "de59ea69e31081619e434ca907eed8f7db997f845d1a8d60d5a5ed74065dd939"
+    },
+    {
+      "scope": "local",
+      "path": "public/reports/index.php",
+      "status": "modified",
+      "bytes": 4895,
+      "sha256": "cedccd850c5f4301a6d76f6378500986778b2d35f7e96e9473d09fdd071bf221"
+    },
+    {
+      "scope": "local",
+      "path": "resources/shared-staff-ui/dashboard-workspace.php",
+      "status": "modified",
+      "bytes": 10104,
+      "sha256": "005662f893535e77b2b3cdc7c6b045c9d1f8e33214c3b11767a69091c651171d"
+    },
+    {
+      "scope": "local",
+      "path": "resources/shared-staff-ui/operations-workspace.php",
+      "status": "modified",
+      "bytes": 64024,
+      "sha256": "113b089db0bac3f1f8891b91aace11539614af3bc97319246e2d0c7ae2715ff1"
+    },
+    {
+      "scope": "local",
+      "path": "resources/shared-staff-ui/reports-workspace.php",
+      "status": "modified",
+      "bytes": 22141,
+      "sha256": "493ec8b49c26f050a17b4a6ab9e01c2c7a87375bae3aeaa5a249a6dc6d49c8a6"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/Finance/SettlementService.php",
+      "status": "modified",
+      "bytes": 94707,
+      "sha256": "112344c03b1c6760fb7a21264cd8909605b58bd559578f880655cccaeeac0175"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/Printing/PrintService.php",
+      "status": "modified",
+      "bytes": 91082,
+      "sha256": "3be53b3940ab541840939fcb512400b04c9056a887eff40611c98392e58ad4cb"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/Printing/PrintTemplatePackageService.php",
+      "status": "modified",
+      "bytes": 32800,
+      "sha256": "97455978791829658c650d58109f68837802c30dc2e26e9173ea8912dc30212d"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/PublicEdge/PublicOperationalActivityProjector.php",
+      "status": "added",
+      "bytes": 1858,
+      "sha256": "1c6b58b97fdb5d349e44918cc7f85373f6be1dd4622fec9e22e5782a46094da3"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/PublicEdge/PublicProjectionBuilder.php",
+      "status": "modified",
+      "bytes": 71359,
+      "sha256": "b58c643fca9e5dcd318a4a41ab32a4d3ce2276dadc06e26e0efbce060aed7759"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/Reporting/PublicInvoiceHistorySnapshot.php",
+      "status": "added",
+      "bytes": 4216,
+      "sha256": "811401c75c5b1c601c36e5e5775141fa5ba00af1700989cee8820c422af6afd9"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/Reporting/PublicItemSalesSnapshot.php",
+      "status": "added",
+      "bytes": 3585,
+      "sha256": "ad58b2300f2536594fd4aca78c67b595edcda2d3d8b6fbfbefc4b491ff96c3b2"
+    },
+    {
+      "scope": "local",
+      "path": "src/Domain/Reporting/ReportingService.php",
+      "status": "modified",
+      "bytes": 128890,
+      "sha256": "ec8b268a3ae8e97b01dffafd4e75760d9aff44be3cde6b588b21e99d98e0709b"
+    },
+    {
+      "scope": "local",
+      "path": "src/UI/ProductShell.php",
+      "status": "modified",
+      "bytes": 28891,
+      "sha256": "a8c8b41770f1b4eeb28315c45829f63c9c5f1ddd8dc025fa95f7761f586d8d1b"
+    },
+    {
+      "scope": "public",
+      "path": "assets/hall-settlement-v32.js",
+      "status": "modified",
+      "bytes": 48968,
+      "sha256": "515e09cbd48f3750a90f3aec7a9ef1d05a809bca823f774cb74d0d9a41dfc51b"
+    },
+    {
+      "scope": "public",
+      "path": "assets/product-ui.css",
+      "status": "modified",
+      "bytes": 636589,
+      "sha256": "3154a4f967fb84d4ce8c55ae93e97cf5bee6ec25eda0a46095c8559ae9237bd3"
+    },
+    {
+      "scope": "public",
+      "path": "assets/reports-workspace.js",
+      "status": "modified",
+      "bytes": 67916,
+      "sha256": "5d0b01499d7475b4bcaa020881dba8fa032e7c68887dcbccf29ba4c3103bd60b"
+    },
+    {
+      "scope": "public",
+      "path": "assets/scds/remote-staff.css",
+      "status": "modified",
+      "bytes": 27177,
+      "sha256": "49bf92471f0b1d0ca637fd5604bc0c785233f7c5fe3f28b429a50cc68831daae"
+    },
+    {
+      "scope": "public",
+      "path": "assets/staff-app/hall-workspace.js",
+      "status": "modified",
+      "bytes": 121148,
+      "sha256": "911e976cce5091ad5124bdc1862899024aeba08c2dc71eb769e54410891755c2"
+    },
+    {
+      "scope": "public",
+      "path": "assets/staff-app/preparation-workspace.js",
+      "status": "modified",
+      "bytes": 13751,
+      "sha256": "9c1310b921bc58a4b728fa8d13133e73adbe6a5ad3a65d1455bfee614d78d33f"
+    },
+    {
+      "scope": "public",
+      "path": "assets/staff-app/public-bell.js",
+      "status": "added",
+      "bytes": 2777,
+      "sha256": "adbe20392ee0181f02aa72b7054be990abf94d14495f277e6a1f548b055e705f"
+    },
+    {
+      "scope": "public",
+      "path": "assets/staff-app/public-invoice-history.js",
+      "status": "added",
+      "bytes": 6613,
+      "sha256": "3b6e31128be4054b0c811a8f693c94ca7487ae014b219b3eee0024dbb3441e26"
+    },
+    {
+      "scope": "public",
+      "path": "resources/public-dashboard-stale-snapshot.php",
+      "status": "added",
+      "bytes": 2114,
+      "sha256": "38e1f515f8b97016a92c3406335503221a8385ca7f8c0ecacb490e5c375d242e"
+    },
+    {
+      "scope": "public",
+      "path": "resources/shared-staff-ui/dashboard-workspace.php",
+      "status": "modified",
+      "bytes": 9995,
+      "sha256": "bc177956e8135a92ed14744b73839803e8f229416087b91c00f6f474b06cca3e"
+    },
+    {
+      "scope": "public",
+      "path": "resources/shared-staff-ui/operations-workspace.php",
+      "status": "modified",
+      "bytes": 57346,
+      "sha256": "87678de4d35db65d2cf84fd29e057e973f875c375b3ee22a11bb4ea6e3813e90"
+    },
+    {
+      "scope": "public",
+      "path": "resources/shared-staff-ui/reports-workspace.php",
+      "status": "modified",
+      "bytes": 20537,
+      "sha256": "f538e15cd1aaa88af4be7869a5e47fa0924d00faceae9555eb6c2399d7edccc6"
+    },
+    {
+      "scope": "public",
+      "path": "src/Http/PublicHttpKernel.php",
+      "status": "modified",
+      "bytes": 58548,
+      "sha256": "73cf634377e3200bc8e13b9238fda26a06c74962dec1c4661cb45b744b73c4e7"
+    },
+    {
+      "scope": "public",
+      "path": "src/Http/PublicStaffWorkspaceHttpAdapter.php",
+      "status": "modified",
+      "bytes": 23219,
+      "sha256": "1c51e123a78540306350aef377010b277ad285eb4d3bd1340ec86d19caeab59e"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/PublicDashboardFinance.php",
+      "status": "modified",
+      "bytes": 17507,
+      "sha256": "35bbe16577cefc1b9b81890ab24160a1bc020ab056b1de07f884df7ef6bb6cb8"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/PublicDashboardOperationalActivity.php",
+      "status": "added",
+      "bytes": 2002,
+      "sha256": "2856726c533bc290bf6b360735f5f84fffe3d3fea77592ea3e942ad80f8d8c20"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/PublicInvoiceHistoryArchive.php",
+      "status": "added",
+      "bytes": 2819,
+      "sha256": "5e7718b809047bfb0daeffc03b7975e126fc6dce50e4ccc4c3ccf3fb7811ce34"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/PublicItemSalesArchive.php",
+      "status": "added",
+      "bytes": 6025,
+      "sha256": "ccf694131e0a4dc7e5c35c766ebb069f0f4bdb07e769bc57e8abae808f005bb4"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/PublicNotificationToday.php",
+      "status": "added",
+      "bytes": 2534,
+      "sha256": "50c279b6a4c83329cc6743194691b46c47392284e77341a7c063b4d64854afa0"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/RemoteReadModelService.php",
+      "status": "modified",
+      "bytes": 46318,
+      "sha256": "c43be496c3155e95f70c50696e90fd354ac03d1b52c77998e8cb6cd8d663c3a9"
+    },
+    {
+      "scope": "public",
+      "path": "src/Remote/RemoteStaffPageRenderer.php",
+      "status": "modified",
+      "bytes": 51303,
+      "sha256": "58fc5c1bfa50bf501cf56f994a8d4c0ae91fc47d786e7eb2c3993041f5729778"
+    },
+    {
+      "scope": "public",
+      "path": "src/UI/ProductShell.php",
+      "status": "modified",
+      "bytes": 27027,
+      "sha256": "87f239d41bd05e6d8ff2d94fa95ff8547f024fde426b4353def30878802ff2d8"
+    }
+  ]
+}
