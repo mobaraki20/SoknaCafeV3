@@ -613,7 +613,10 @@ final class PrintService
 
     private static function preparationSections(array $rows): array
     {
-        $groups=[];$order=[];
+        // Preserve the original ordering of preparation rows before grouping by
+        // station.  The renderer needs this for 'as ordered', bar-first and
+        // kitchen-first; grouping alone irreversibly loses cross-station order.
+        $groups=[];$order=[];$sequence=0;
         foreach($rows as $row){
             if(!is_array($row))continue;
             $station=trim((string)($row['preparation_station']??'other'));if($station==='')$station='other';
@@ -623,10 +626,12 @@ final class PrintService
                 'quantity'=>max(1,(int)($row['quantity']??1)),
                 'note'=>self::nullable($row['item_note']??$row['note']??null,500),
                 'fulfillment_mode'=>(string)($row['fulfillment_mode']??'dine_in'),
+                'station'=>$station,
+                'order_index'=>$sequence++,
             ];
         }
-        $titles=['kitchen'=>'آشپزخانه','bar'=>'بار','other'=>'سایر'];$out=[];
-        foreach($order as $station)$out[]=['title'=>$titles[$station]??'آماده‌سازی','items'=>$groups[$station]];
+        $titles=['kitchen'=>'آشپزخانه','bar'=>'بار','hot_bar'=>'بار گرم','cold_bar'=>'بار سرد','other'=>'سایر'];$out=[];
+        foreach($order as $station)$out[]=['station'=>$station,'title'=>$titles[$station]??'آماده‌سازی','items'=>$groups[$station]];
         return $out;
     }
 
