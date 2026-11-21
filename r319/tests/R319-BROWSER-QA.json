@@ -1,0 +1,182 @@
+{
+  "count": 44,
+  "passed": 44,
+  "cases": [
+    {
+      "case": "desktop: source preview renders",
+      "pass": true
+    },
+    {
+      "case": "desktop: title selectable",
+      "pass": true
+    },
+    {
+      "case": "desktop: subtitle selectable",
+      "pass": true
+    },
+    {
+      "case": "desktop: header item selection",
+      "pass": true
+    },
+    {
+      "case": "desktop: note selectable",
+      "pass": true
+    },
+    {
+      "case": "desktop: footer absent when empty",
+      "pass": true
+    },
+    {
+      "case": "desktop: no horizontal scroll",
+      "pass": true
+    },
+    {
+      "case": "desktop: title is focused",
+      "pass": true
+    },
+    {
+      "case": "desktop: title highlighted",
+      "pass": true
+    },
+    {
+      "case": "desktop: selection status",
+      "pass": true
+    },
+    {
+      "case": "desktop: keyboard selects subtitle",
+      "pass": true
+    },
+    {
+      "case": "desktop: note details opened",
+      "pass": true
+    },
+    {
+      "case": "desktop: note font focused",
+      "pass": true
+    },
+    {
+      "case": "desktop: layout focused",
+      "pass": true
+    },
+    {
+      "case": "desktop: item font focused",
+      "pass": true
+    },
+    {
+      "case": "desktop: text live updates",
+      "pass": true
+    },
+    {
+      "case": "desktop: footer now selectable",
+      "pass": true
+    },
+    {
+      "case": "desktop: footer input focused",
+      "pass": true
+    },
+    {
+      "case": "desktop: removed footer absent",
+      "pass": true
+    },
+    {
+      "case": "desktop: three column mode",
+      "pass": true
+    },
+    {
+      "case": "desktop: 58mm safe fallback",
+      "pass": true
+    },
+    {
+      "case": "desktop: no js errors",
+      "pass": true
+    },
+    {
+      "case": "mobile: source preview renders",
+      "pass": true
+    },
+    {
+      "case": "mobile: title selectable",
+      "pass": true
+    },
+    {
+      "case": "mobile: subtitle selectable",
+      "pass": true
+    },
+    {
+      "case": "mobile: header item selection",
+      "pass": true
+    },
+    {
+      "case": "mobile: note selectable",
+      "pass": true
+    },
+    {
+      "case": "mobile: footer absent when empty",
+      "pass": true
+    },
+    {
+      "case": "mobile: no horizontal scroll",
+      "pass": true
+    },
+    {
+      "case": "mobile: title is focused",
+      "pass": true
+    },
+    {
+      "case": "mobile: title highlighted",
+      "pass": true
+    },
+    {
+      "case": "mobile: selection status",
+      "pass": true
+    },
+    {
+      "case": "mobile: keyboard selects subtitle",
+      "pass": true
+    },
+    {
+      "case": "mobile: note details opened",
+      "pass": true
+    },
+    {
+      "case": "mobile: note font focused",
+      "pass": true
+    },
+    {
+      "case": "mobile: layout focused",
+      "pass": true
+    },
+    {
+      "case": "mobile: item font focused",
+      "pass": true
+    },
+    {
+      "case": "mobile: text live updates",
+      "pass": true
+    },
+    {
+      "case": "mobile: footer now selectable",
+      "pass": true
+    },
+    {
+      "case": "mobile: footer input focused",
+      "pass": true
+    },
+    {
+      "case": "mobile: removed footer absent",
+      "pass": true
+    },
+    {
+      "case": "mobile: three column mode",
+      "pass": true
+    },
+    {
+      "case": "mobile: 58mm safe fallback",
+      "pass": true
+    },
+    {
+      "case": "mobile: no js errors",
+      "pass": true
+    }
+  ]
+}
