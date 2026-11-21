@@ -1,0 +1,63 @@
+{
+  "schema": "sokna-r315-cumulative-source-qa-v1",
+  "date": "2026-11-21",
+  "parent": "R314 full cumulative QA",
+  "mode": "NO_INSTALL_QA_ONLY",
+  "source_changed_count": 17,
+  "source_changed_files": [
+    "local/public/assets/product-ui.css",
+    "local/public/assets/reports-workspace.js",
+    "local/public/reports/api.php",
+    "local/resources/shared-staff-ui/reports-workspace.php",
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php",
+    "local/src/Domain/Reporting/PublicInvoiceHistorySnapshot.php",
+    "local/src/Domain/Reporting/ReportingService.php",
+    "public/assets/product-ui.css",
+    "public/assets/reports-workspace.js",
+    "public/assets/staff-app/public-invoice-history.js",
+    "public/resources/shared-staff-ui/reports-workspace.php",
+    "public/src/Http/PublicHttpKernel.php",
+    "public/src/Http/PublicStaffWorkspaceHttpAdapter.php",
+    "public/src/Remote/PublicInvoiceHistoryArchive.php",
+    "public/src/Remote/PublicItemSalesArchive.php",
+    "public/src/Remote/RemoteReadModelService.php",
+    "public/src/Remote/RemoteStaffPageRenderer.php"
+  ],
+  "checks": {
+    "php_syntax_and_js_syntax": "PASS",
+    "php_history_contracts": "PASS 18 assertions",
+    "php_keyword_group_contracts": "PASS 10 assertions",
+    "playwright_invoice_mobile_desktop": "PASS 2 viewports",
+    "playwright_keyword_mobile_desktop": "PASS 2 viewports",
+    "mysql_mariadb_real": "NOT_RUN",
+    "production_end_to_end": "NOT_RUN"
+  },
+  "security": "cashier-only invoice history; direct raw report redaction; no private notes in snapshot",
+  "range_limits": {
+    "invoice_max_days": 90,
+    "invoice_record_cap": 240,
+    "sku_name_group_limit": 300,
+    "public_sku_archive_days": 60
+  },
+  "installed_local_unchanged": "231fw / R307",
+  "installed_public_unchanged": "35in / R306",
+  "file_sha256": {
+    "local/public/assets/product-ui.css": "ae50a4386ff1833258b89bc40bc9deafd4a1711b68ecd12d961361ef195343ef",
+    "local/public/assets/reports-workspace.js": "06e025d4839a90f1ed5f8ed52aa9b95c92cbcc5a57be1a5c72024f889f261944",
+    "local/public/reports/api.php": "de59ea69e31081619e434ca907eed8f7db997f845d1a8d60d5a5ed74065dd939",
+    "local/resources/shared-staff-ui/reports-workspace.php": "313ee1ed72288e02b243800cbd3b07672e0d782bf1e0615935b8c4fc7d715f64",
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php": "b58c643fca9e5dcd318a4a41ab32a4d3ce2276dadc06e26e0efbce060aed7759",
+    "local/src/Domain/Reporting/PublicInvoiceHistorySnapshot.php": "811401c75c5b1c601c36e5e5775141fa5ba00af1700989cee8820c422af6afd9",
+    "local/src/Domain/Reporting/ReportingService.php": "ec8b268a3ae8e97b01dffafd4e75760d9aff44be3cde6b588b21e99d98e0709b",
+    "public/assets/product-ui.css": "ecec8ed86cadc7894c754328bccdcd132a2268bb9e4b6b7318c18970fd6addff",
+    "public/assets/reports-workspace.js": "aef5c170f1a927f01ce09a7211b34174f3b3d6745fe80bab3bc851f5fda72498",
+    "public/assets/staff-app/public-invoice-history.js": "3b6e31128be4054b0c811a8f693c94ca7487ae014b219b3eee0024dbb3441e26",
+    "public/resources/shared-staff-ui/reports-workspace.php": "8fa19f49ea3bc71b4d2cb9a593d13098eb0de451121f10ea527a65586a9d9111",
+    "public/src/Http/PublicHttpKernel.php": "73cf634377e3200bc8e13b9238fda26a06c74962dec1c4661cb45b744b73c4e7",
+    "public/src/Http/PublicStaffWorkspaceHttpAdapter.php": "1c51e123a78540306350aef377010b277ad285eb4d3bd1340ec86d19caeab59e",
+    "public/src/Remote/PublicInvoiceHistoryArchive.php": "5e7718b809047bfb0daeffc03b7975e126fc6dce50e4ccc4c3ccf3fb7811ce34",
+    "public/src/Remote/PublicItemSalesArchive.php": "ccf694131e0a4dc7e5c35c766ebb069f0f4bdb07e769bc57e8abae808f005bb4",
+    "public/src/Remote/RemoteReadModelService.php": "c43be496c3155e95f70c50696e90fd354ac03d1b52c77998e8cb6cd8d663c3a9",
+    "public/src/Remote/RemoteStaffPageRenderer.php": "58fc5c1bfa50bf501cf56f994a8d4c0ae91fc47d786e7eb2c3993041f5729778"
+  }
+}
