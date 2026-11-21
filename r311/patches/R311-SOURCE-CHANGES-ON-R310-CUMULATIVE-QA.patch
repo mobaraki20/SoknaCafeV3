@@ -302,7 +302,7 @@
  $canInventory=home_any($core,$user,['inventory_operations','inventory_finalize','inventory_manage','preparation','shift_supervision']);
  $dashboardRialMode=false; // Dashboards and reporting ALWAYS display toman; rial is confined to settlement UI.
  $tzName='Asia/Tehran';try{$tz=new DateTimeZone($tzName);}catch(Throwable){$tz=new DateTimeZone('Asia/Tehran');}
-@@ -148,24 +149,24 @@
+@@ -148,24 +149,33 @@
      $attention[]=['tone'=>'warning','context'=>'پیگیری','status'=>'باز','title'=>$title?:'مورد نیازمند رسیدگی','subtitle'=>$body,'href'=>(string)($item['target_url']??'/notifications/')];
      if(count($attention)>=4)break;
  }}
@@ -326,12 +326,21 @@
 +        'فعالیت‌های عملیاتی امروز فعلاً در دسترس نیست.',fn():array=>$core->reporting()->dashboardOperationalActivity());
 +    $recentError=$activitySection['error'];
 +    if($recentError===null){
-+        foreach((array)$activitySection['value'] as $item){
-+            $created=(string)($item['created_at']??'');if($created==='')continue;
-+            try{$date=(string)$core->businessClock()->assignment($created)['business_date'];}
-+            catch(Throwable){$recentError=['message'=>'تاریخ فعالیت‌ها فعلاً قابل اعتماد نیست.'];$recent=[];break;}
-+            if($date!==$todayKey)continue;
-+            $recent[]=$item;if(count($recent)>=5)break;
++        // Avoid a database round trip to BusinessClock for every event. The same
++        // server-issued cutoff used for the dashboard's todayKey defines this range.
++        $cutoff=trim((string)($clockSection['value']['cutoff']??''));
++        if(!preg_match('/^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/',$cutoff)){
++            $recentError=['message'=>'مرز روز کاری برای نمایش فعالیت‌ها معتبر نیست.'];
++        }else{
++            $todayWindow=new DateTimeImmutable($todayKey.' '.$cutoff.':00',$tz);
++            $tomorrowWindow=$todayWindow->modify('+1 day');
++            foreach((array)$activitySection['value'] as $item){
++                $created=(string)($item['created_at']??'');if($created==='')continue;
++                try{$date=new DateTimeImmutable($created,$tz);}
++                catch(Throwable){$recentError=['message'=>'تاریخ فعالیت‌ها فعلاً قابل اعتماد نیست.'];$recent=[];break;}
++                if($date<$todayWindow||$date>=$tomorrowWindow)continue;
++                $recent[]=$item;if(count($recent)>=5)break;
++            }
 +        }
      }
 -    if(!$currentBusinessDay)continue; // Older informational items stay in full history, regardless of unread state.
