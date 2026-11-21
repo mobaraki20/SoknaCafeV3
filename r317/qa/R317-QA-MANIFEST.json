@@ -1,0 +1,94 @@
+{
+  "schema": "sokna-r317-unified-ui-qa-v1",
+  "date": "2026-11-21",
+  "parent": "R316 QA + R315 cumulative QA; source-only candidate",
+  "mode": "SOURCE_QA_NO_INSTALL_NO_HOST_CHANGES",
+  "installed_local_preserved": "231fw/R307",
+  "installed_public_preserved": "35in/R306",
+  "scope": [
+    "Local and Public reports navigation consistent with Connections",
+    "Local printing toolbar grouping",
+    "Local/Public operations secondary workflow and labels"
+  ],
+  "changed_file_count": 9,
+  "changed_files": [
+    {
+      "path": "local/public/assets/product-ui.css",
+      "before_sha256": "649840ce8df679918446a387247fd1555862bc370532c60c4750885fed1a99b4",
+      "after_sha256": "a383b2227c8aca39562701f45253849f0ab35ba4b15568035da7afe1bc560abe",
+      "before_bytes": 674807,
+      "after_bytes": 670685
+    },
+    {
+      "path": "local/public/assets/reports-workspace.js",
+      "before_sha256": "06e025d4839a90f1ed5f8ed52aa9b95c92cbcc5a57be1a5c72024f889f261944",
+      "after_sha256": "0c41d1eaea84b3dd89332c44b0d5782a0b77e1e42c8afc41ddf0fe00d64323ed",
+      "before_bytes": 75116,
+      "after_bytes": 75144
+    },
+    {
+      "path": "local/public/printing/index.php",
+      "before_sha256": "2d0bf751009ad20054f2d8e3ae752f8ae546693b06b08735ad09e52f526dd569",
+      "after_sha256": "a88cda8f5f0a7a345c0f6428dd20550c4627709a30469be18bbd588a4f737903",
+      "before_bytes": 28119,
+      "after_bytes": 28244
+    },
+    {
+      "path": "local/resources/shared-staff-ui/operations-workspace.php",
+      "before_sha256": "8e3d8976230380e586733062c0759d62412c54dc02aec40d37494bb64a1d0d49",
+      "after_sha256": "113b089db0bac3f1f8891b91aace11539614af3bc97319246e2d0c7ae2715ff1",
+      "before_bytes": 64014,
+      "after_bytes": 64024
+    },
+    {
+      "path": "local/resources/shared-staff-ui/reports-workspace.php",
+      "before_sha256": "313ee1ed72288e02b243800cbd3b07672e0d782bf1e0615935b8c4fc7d715f64",
+      "after_sha256": "493ec8b49c26f050a17b4a6ab9e01c2c7a87375bae3aeaa5a249a6dc6d49c8a6",
+      "before_bytes": 22182,
+      "after_bytes": 22141
+    },
+    {
+      "path": "public/assets/product-ui.css",
+      "before_sha256": "a744218453eb4db09ee4bd694a6d33f0546d0f1ee480f084b74c975d30b3b832",
+      "after_sha256": "3154a4f967fb84d4ce8c55ae93e97cf5bee6ec25eda0a46095c8559ae9237bd3",
+      "before_bytes": 640022,
+      "after_bytes": 636589
+    },
+    {
+      "path": "public/assets/reports-workspace.js",
+      "before_sha256": "aef5c170f1a927f01ce09a7211b34174f3b3d6745fe80bab3bc851f5fda72498",
+      "after_sha256": "5d0b01499d7475b4bcaa020881dba8fa032e7c68887dcbccf29ba4c3103bd60b",
+      "before_bytes": 67886,
+      "after_bytes": 67916
+    },
+    {
+      "path": "public/resources/shared-staff-ui/operations-workspace.php",
+      "before_sha256": "96b1762fbe7ec6607617e6e6d53130a6b22bc5e431e6adfa4914a4909682db54",
+      "after_sha256": "87678de4d35db65d2cf84fd29e057e973f875c375b3ee22a11bb4ea6e3813e90",
+      "before_bytes": 57490,
+      "after_bytes": 57346
+    },
+    {
+      "path": "public/resources/shared-staff-ui/reports-workspace.php",
+      "before_sha256": "8fa19f49ea3bc71b4d2cb9a593d13098eb0de451121f10ea527a65586a9d9111",
+      "after_sha256": "f538e15cd1aaa88af4be7869a5e47fa0924d00faceae9555eb6c2399d7edccc6",
+      "before_bytes": 20308,
+      "after_bytes": 20537
+    }
+  ],
+  "contract_test_passed": 39,
+  "contract_test_total": 39,
+  "browser_views": 20,
+  "browser_overflow_count": 0,
+  "browser_error_count": 0,
+  "screen_parity": "source fragment + actual CSS, synthetic content, not authenticated production",
+  "not_completed": [
+    "Full authenticated Local/Public E2E",
+    "Business/finance calculation integration",
+    "R317 source rebuild against deployment hashes",
+    "MariaDB cross-host projection test",
+    "Thermal printer real output",
+    "Release build and update validation"
+  ],
+  "no_deployment_authorized": true
+}
