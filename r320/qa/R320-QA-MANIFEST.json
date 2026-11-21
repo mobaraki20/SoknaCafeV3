@@ -1,0 +1,44 @@
+{
+  "schema": "sokna-r320-print-preview-render-parity-source-qa-v1",
+  "date": "2026-11-21",
+  "parent": "R319 over R318 cumulative source QA",
+  "branch": "qa/sokna-r320-print-render-preview-parity-20261121",
+  "status": "SOURCE_QA_ONLY_NOT_INSTALLABLE",
+  "installed_local_preserved": "231fw/R307",
+  "installed_public_preserved": "35in/R306",
+  "source_changes": [
+    {
+      "path": "apps/local-web/src/Domain/Printing/PrintTemplatePackageService.php",
+      "sha256": "97455978791829658c650d58109f68837802c30dc2e26e9173ea8912dc30212d",
+      "purpose": "renderer-grade mixed-station draft preview fixture"
+    },
+    {
+      "path": "windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs",
+      "purpose": "unpaid account status marker; stored on branch",
+      "note": "C# source not compiled here"
+    }
+  ],
+  "tests": {
+    "php_fixture": {
+      "passed": 25,
+      "total": 25,
+      "result": "PASS"
+    },
+    "print_agent_source_contract": {
+      "passed": 11,
+      "total": 11,
+      "result": "PASS_SOURCE_ONLY"
+    },
+    "php_syntax": "PASS",
+    "javascript_syntax": "PASS"
+  },
+  "blocked": [
+    "windows_dotnet_10_compile",
+    "print_agent_bridge_live_preview",
+    "58_80_physical_print_acceptance",
+    "authenticated_end_to_end"
+  ],
+  "ui_screenshots": "No UI controls changed in R320; R319 existing UI screenshot evidence reused. Real PrintAgent rendered screenshot unavailable.",
+  "release_or_install": false,
+  "register_item_count": 132
+}
