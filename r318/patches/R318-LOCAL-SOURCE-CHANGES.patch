@@ -148,11 +148,10 @@
 
 --- a/local/public/assets/product-ui.css
 +++ b/local/public/assets/product-ui.css
-@@ -6639,3 +6639,29 @@
- /* R315: same native controls for across-category item-family query. */
- .sc-item-sales-keyword-note{margin-block:0 .75rem;line-height:1.7;font-size:.83rem}.sc-item-sales-keyword{margin-top:.3rem}
+@@ -6604,6 +6604,32 @@
+  .sc-print-template-editor .sc-entity-editor__footer{grid-area:actions}
+ }
  
-+
 +/* R318: Editor uses the existing SCDS dialog, card and control language. */
 +.sc-print-template-user-text{background:var(--sc-surface,#fff);border-radius:12px}
 +.sc-print-template-editor .sc-entity-editor__section-head p{max-inline-size:66ch}
@@ -178,6 +177,15 @@
 + .sc-print-template-editor .sc-entity-editor__body{flex:1 1 auto;min-block-size:0;max-block-size:none;overflow:auto;order:1}
 + .sc-print-template-editor .sc-entity-editor__footer{flex:0 0 auto;order:2}
 +}
++
+ /* R311 — historical order view shares the native Reports/SCDS visual language. */
+ .sc-history-order{margin:0 0 16px;scroll-margin-top:100px;overflow:hidden}
+ .sc-history-order>.sc-card__body{display:grid;gap:16px}
+@@ -6638,4 +6664,3 @@
+ 
+ /* R315: same native controls for across-category item-family query. */
+ .sc-item-sales-keyword-note{margin-block:0 .75rem;line-height:1.7;font-size:.83rem}.sc-item-sales-keyword{margin-top:.3rem}
+-
 
 --- a/local/src/Domain/Printing/PrintTemplatePackageService.php
 +++ b/local/src/Domain/Printing/PrintTemplatePackageService.php
