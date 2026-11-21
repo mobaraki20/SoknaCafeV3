@@ -1,0 +1,33 @@
+name: R323 Print Render Raster QA (no release)
+on:
+  push:
+    branches: ['qa/sokna-r323-print-render-raster-qa-20261121']
+    paths:
+      - '.github/workflows/r323-print-render-qa.yml'
+      - 'windows/print-agent/source/src/Sokna.PrintAgent.Worker/**'
+      - 'windows/print-agent/source/tests/Sokna.PrintAgent.Worker.Tests/**'
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  raster-qa:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run 58 and 80 mm Print Agent raster tests
+        working-directory: windows/print-agent/source
+        env:
+          SOKNA_RENDER_QA_OUTPUT: r323-render-evidence
+        run: dotnet run --project tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj -c Release
+      - name: Collect raster evidence even on test failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sokna-r323-print-render-58-80-raster
+          path: windows/print-agent/source/r323-render-evidence/*.png
+          retention-days: 7
+          if-no-files-found: warn
