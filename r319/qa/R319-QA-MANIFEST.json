@@ -1,0 +1,42 @@
+{
+  "format": "sokna-r319-cumulative-no-install-qa-v1",
+  "date": "2026-11-21",
+  "parent": "SOKNA-R318-PRINT-TEMPLATE-SOURCE-QA-NOT-INSTALL.zip (source overlay)",
+  "parent_library": "/Cafe/SOKNA-Workspace/WORKING/20261121-R318-PRINT-TEMPLATE-EDITOR-QA/",
+  "github_parent_branch": "qa/sokna-r318-print-template-editor-contract-20261121",
+  "mode": "NO_INSTALL_QA_ONLY",
+  "installed_local": "231fw/R307 unchanged",
+  "installed_public": "35in/R306 unchanged",
+  "source_files": {
+    "public/assets/printing-workspace.js": {
+      "baseline_sha256": "9ac42fb4d866e41744451b8c69b1beb00ab4a397890019571ce94c713b9e6b56",
+      "r319_sha256": "1079c80adad94bdb1ba283f54e65841a11d063f996caf8dd7542f0fd87f3db87"
+    },
+    "public/printing/index.php": {
+      "baseline_sha256": "b5977a325da86b4e71a75c446aeb4dd07725077283c7be0eb55682fb1f46a072",
+      "r319_sha256": "49c3ef4c151df609a818063464379e972ddd628746a12a0cee97cb76cc71b823"
+    },
+    "public/assets/product-ui.css": {
+      "baseline_sha256": "c3bcb834e2e994dcc4b9f12b1ca709e75193358dbdf3b9becbb50f2b172c8ed2",
+      "r319_sha256": "61a83da1d339bcf9e2bb1098852fb218c5fc3e3545103f4687d1f2dd02fdfdd8"
+    }
+  },
+  "changed_count": 3,
+  "qa": {
+    "browser": 44,
+    "source_contract": 9,
+    "php_lint": "PASS",
+    "node_syntax": "PASS",
+    "desktop_screen": "R319-print-direct-selection-desktop.png",
+    "mobile_screen": "R319-print-direct-selection-mobile.png",
+    "agent_build": "NOT_RUN",
+    "actual_thermal_print": "NOT_RUN",
+    "host_update": "NOT_RUN"
+  },
+  "registry_count": 132,
+  "risks": [
+    "No .NET compiler in current environment; R318 renderer changes not built",
+    "Visual harness uses source HTML/CSS/JS and test data, not fully authenticated production UI",
+    "Physical 58/80mm and Public parity are pending"
+  ]
+}
