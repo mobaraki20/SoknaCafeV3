@@ -1,0 +1,459 @@
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -817,7 +817,7 @@
+ 
+ /* Printing owns its own operational workspace. */
+ .sc-print-main{display:grid;gap:12px;min-inline-size:0}
+-.sc-print-tabs{inline-size:fit-content;max-inline-size:100%;margin:0}
++
+ .sc-print-main>[data-print-panel]{min-inline-size:0}
+ .sc-print-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}.sc-print-kpis .sc-metric{min-block-size:100px!important;justify-content:center}.sc-print-kpis .sc-metric>strong{font-size:1.6rem!important;line-height:1.15}.sc-print-kpis .sc-metric>span{font-weight:760;color:var(--sc-muted-strong)}
+ .sc-print-pairs{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px!important}.sc-print-pairs>.sc-card{min-block-size:0}
+@@ -2418,15 +2418,28 @@
+ @media(max-width:900px){.sc-entity-editor{inline-size:min(46rem,calc(100vw - 1rem));max-block-size:calc(100dvh - 1rem)!important}.sc-entity-editor__body{grid-template-columns:1fr}.sc-entity-editor__wide{grid-column:auto}}
+ @media(max-width:620px){.sc-entity-editor{inline-size:100vw;max-inline-size:none!important;block-size:100dvh;max-block-size:100dvh!important;margin:0;border-radius:0;border-inline:0}.sc-entity-editor__form{block-size:100%}.sc-entity-editor__head{padding:.85rem .9rem .7rem}.sc-entity-editor__body{padding:.75rem .8rem 1rem;gap:.65rem}.sc-entity-editor__section{padding:.75rem}.sc-entity-editor__fields,.sc-entity-editor__split,.sc-entity-editor__recipe-add,.sc-entity-editor__checks{grid-template-columns:1fr}.sc-entity-editor__span-2{grid-column:auto}.sc-entity-editor__footer{align-items:stretch;flex-direction:column;padding:.65rem .8rem max(.65rem,env(safe-area-inset-bottom));--sc-button-inline-size:100%}.sc-entity-editor__footer-hint{display:none}.sc-entity-editor__footer .sc-actions{display:grid;grid-template-columns:1fr 1fr;inline-size:100%}}
+ 
++
++/* R317 | Canonical page navigation: shared with Connections; section content owns its own header. */
++body[data-page="reports"] .sc-report-nav-toolbar .sc-report-section-nav{min-inline-size:0}
++body[data-page="reports"] .sc-report-section-nav>.sc-tab{display:inline-flex;align-items:center;text-decoration:none}
++body[data-page="reports"] [data-report-section]{scroll-margin-block-start:18px}
++body[data-page="printing"] .sc-print-nav-toolbar .sc-print-tabs{flex:1 1 auto;min-inline-size:0;inline-size:auto;margin:0}
++body[data-page="printing"] .sc-print-nav-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:nowrap}
++/* Operations stages are secondary controls, not a second row of main tabs. */
++body[data-page="operations"] .sc-ops-workflow-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr));gap:6px;padding:7px 0 10px;border-block-end:1px solid var(--sc-page-rule)}
++body[data-page="operations"] .sc-ops-workflow-link{min-inline-size:0;min-block-size:43px;padding:7px 10px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;text-align:start;border:1px solid var(--sc-border);border-radius:9px;background:var(--sc-surface-subtle);color:var(--sc-text);cursor:pointer}
++body[data-page="operations"] .sc-ops-workflow-link strong{font-size:.73rem;line-height:1.4;color:var(--sc-text-strong)}
++body[data-page="operations"] .sc-ops-workflow-link small,body[data-page="operations"] .sc-ops-mobile-title{display:none}
++body[data-page="operations"] .sc-ops-workflow-link.is-active{background:color-mix(in srgb,var(--sc-accent-soft) 60%,var(--sc-surface-subtle));border-color:color-mix(in srgb,var(--sc-accent) 35%,var(--sc-border));box-shadow:inset -3px 0 0 var(--sc-accent)}
++body[data-page="operations"] .sc-ops-workflow-link:hover{background:var(--sc-surface-hover)}
++body[data-page="operations"] .sc-ops-workflow-link:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
++body[data-page="operations"] .sc-ops-more{min-inline-size:0}
++body[data-page="operations"] .sc-ops-more>summary{min-block-size:43px;padding:7px 10px;display:flex;align-items:center;border:1px solid var(--sc-border);border-radius:9px;background:var(--sc-surface-subtle);font-size:.73rem;font-weight:700;cursor:pointer}
++body[data-page="operations"] .sc-ops-more>div{min-inline-size:0;display:grid;gap:6px}
++@media(max-width:760px){body[data-page="printing"] .sc-print-nav-actions{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px;inline-size:100%;overflow:visible}body[data-page="printing"] .sc-print-nav-actions>[data-page-action]{min-inline-size:0;inline-size:100%;white-space:nowrap}body[data-page="printing"] .sc-print-nav-actions>[data-refresh]{min-inline-size:44px;inline-size:44px;padding:0}body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(2,minmax(0,1fr))}}
++
+ /* H91 — Operations workflow IA: inventory-first, supply nested by task */
+ body[data-page="operations"] .sc-operations-hub{gap:12px}
+-body[data-page="operations"] .sc-ops-workflow-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+-body[data-page="operations"] .sc-ops-workflow-link{min-inline-size:0;min-block-size:60px;padding:8px 10px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-raised);color:var(--sc-text);text-align:start;display:flex;flex-direction:column;justify-content:center;gap:3px;cursor:pointer}
+-body[data-page="operations"] .sc-ops-workflow-link strong{font-size:12px;line-height:1.45;color:var(--sc-text-strong)}
+-body[data-page="operations"] .sc-ops-workflow-link small{font-size:.75rem;line-height:1.5;color:var(--sc-muted)}
+-body[data-page="operations"] .sc-ops-workflow-link:hover{border-color:color-mix(in srgb,var(--sc-accent) 36%,var(--sc-border));background:var(--sc-surface-subtle)}
+-body[data-page="operations"] .sc-ops-workflow-link.is-active{border:2px solid var(--sc-accent);background:var(--sc-accent-soft);box-shadow:none;padding:7px 9px}
+-body[data-page="operations"] .sc-ops-workflow-link:focus-visible{outline:3px solid color-mix(in srgb,var(--sc-accent) 30%,transparent);outline-offset:2px}
+ body[data-page="operations"] .sc-ops-workflow-view{display:grid;gap:12px;min-inline-size:0}
+ body[data-page="operations"] .sc-ops-workflow-view[hidden]{display:none!important}
+ body[data-page="operations"] .sc-ops-summary{grid-template-columns:repeat(5,minmax(0,1fr))}
+@@ -2440,9 +2453,8 @@
+ body[data-page="operations"] .sc-ops-attention-card[data-tone="info"]{border-inline-start:3px solid var(--sc-accent)}
+ body[data-page="operations"] .sc-ops-supply-card{border-inline-start:3px solid color-mix(in srgb,var(--sc-accent) 58%,var(--sc-border))}
+ body[data-page="operations"] .sc-empty--positive{border:1px dashed var(--sc-border);border-radius:12px;background:var(--sc-surface-subtle)}
+-@media(max-width:1180px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(3,minmax(0,1fr))}}
+-@media(max-width:980px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-page="operations"] .sc-ops-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+-@media(max-width:640px){body[data-page="operations"] .sc-ops-workflow-nav{display:flex;overflow-x:auto;scroll-snap-type:inline proximity;padding-block-end:2px;scrollbar-width:none}body[data-page="operations"] .sc-ops-workflow-nav::-webkit-scrollbar{display:none}body[data-page="operations"] .sc-ops-workflow-link{flex:0 0 min(78vw,260px);scroll-snap-align:start;min-block-size:68px}body[data-page="operations"] .sc-ops-summary{grid-template-columns:1fr 1fr}body[data-page="operations"] .sc-ops-attention-list{grid-template-columns:1fr}}
++@media(max-width:980px){body[data-page="operations"] .sc-ops-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
++@media(max-width:640px){body[data-page="operations"] .sc-ops-summary{grid-template-columns:1fr 1fr}body[data-page="operations"] .sc-ops-attention-list{grid-template-columns:1fr}}
+ 
+ /* H92 — Customer account master-detail + structured payment flow */
+ body[data-page="subscribers"] .sc-subscriber-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+@@ -2688,14 +2700,10 @@
+ .sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:10px 12px 12px}
+ .sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-card{min-block-size:94px;border:1px solid var(--sc-border)!important;border-radius:11px!important;background:var(--sc-surface-raised)}
+ .sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-card:last-child{border:1px solid var(--sc-border)!important}
+-
+-body[data-page="reports"] .sc-report-section-nav{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:thin;padding:7px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-raised);position:sticky;inset-block-start:72px;z-index:8}
+-body[data-page="reports"] .sc-report-section-nav a{flex:0 0 auto;min-block-size:34px;display:inline-flex;align-items:center;padding:6px 10px;border-radius:8px;color:var(--sc-muted);font-size:.75rem;font-weight:700;text-decoration:none;white-space:nowrap}
+-body[data-page="reports"] .sc-report-section-nav a:hover,body[data-page="reports"] .sc-report-section-nav a:focus-visible,body[data-page="reports"] .sc-report-section-nav a[aria-current="true"]{background:var(--sc-accent-soft);color:var(--sc-accent)}
+ body[data-page="reports"] .sc-report-section-anchor{scroll-margin-block-start:126px}
+ body[data-page="reports"] .sc-report-activity-list{max-block-size:520px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-inline-end:2px}
+ @media(max-width:1050px){.sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+-@media(max-width:760px){.sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:1fr;padding:8px}.sc-finance-account-row{min-block-size:68px}body[data-page="reports"] .sc-report-section-nav{inset-block-start:60px}}
++@media(max-width:760px){.sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:1fr;padding:8px}.sc-finance-account-row{min-block-size:68px}}
+ 
+ /* H134 — residual management screenshot convergence */
+ .sc-notifications-compose,.sc-connection-advanced{overflow:hidden}
+@@ -4068,11 +4076,6 @@
+ .sc-ops-item-picker{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-subtle)}
+ .sc-ops-item-picker[hidden]{display:none!important}.sc-ops-item-picker>.sc-muted{align-self:center;white-space:nowrap;font-size:.75rem}
+ @media(max-width:640px){
+- body[data-page="operations"] .sc-ops-workflow-nav{gap:6px;padding-block-end:4px}
+- body[data-page="operations"] .sc-ops-workflow-link{flex:0 0 auto;min-block-size:42px;padding:7px 11px;border-radius:999px;display:block;white-space:nowrap}
+- body[data-page="operations"] .sc-ops-workflow-link.is-active{padding:6px 10px}
+- body[data-page="operations"] .sc-ops-workflow-link strong{font-size:11.5px}
+- body[data-page="operations"] .sc-ops-workflow-link small{display:none}
+  body[data-page="operations"] .sc-section-head{gap:8px}
+  body[data-page="operations"] .sc-section-head>.sc-actions{display:grid;grid-template-columns:1fr 1fr;inline-size:100%}
+  body[data-page="operations"] .sc-ops-supply-card .sc-actions{display:grid;grid-template-columns:1fr 1fr}
+@@ -4107,8 +4110,6 @@
+  body[data-page="operations"] .sc-count-taskbar>.sc-actions{grid-template-columns:1fr 1fr!important}
+  body[data-page="operations"] .sc-count-taskbar>.sc-actions .sc-button:last-child{grid-column:1/-1}
+ }
+-@media(min-width:1181px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(7,minmax(0,1fr))}}
+-@media(min-width:981px) and (max-width:1180px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(4,minmax(0,1fr))}}
+ .sc-ops-inline-guidance{margin-block-start:8px;font-size:.75rem;line-height:1.65}
+ 
+ /* H251b — progressive disclosure for secondary operation metadata */
+@@ -4400,11 +4401,6 @@
+   body[data-page="reports"] .sc-report-range-field>.sc-jalali-control{
+     min-inline-size:0!important;max-inline-size:100%;
+   }
+-  body[data-page="reports"] .sc-report-section-nav{
+-    max-inline-size:100%;min-inline-size:0;overscroll-behavior-inline:contain;
+-    scroll-padding-inline:10px;
+-  }
+-  body[data-page="reports"] .sc-report-section-nav a{min-block-size:42px}
+   /* Operational notices wrap even when embedded beside a narrow toolbar. */
+   .sc-workspace .sc-alert,.sc-workspace [role="status"]{
+     min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere;
+@@ -4684,23 +4680,6 @@
+ /* PRE-HOME INV-10 — every daily operation is discoverable without horizontal scrolling. */
+ @media(max-width:640px){
+  [data-operations-workspace] .sc-operations-hub{min-inline-size:0;max-inline-size:100%;overflow-x:clip}
+- [data-operations-workspace] .sc-ops-workflow-nav{
+-   display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+-   gap:7px!important;overflow:visible!important;inline-size:100%;min-inline-size:0;
+-   scroll-snap-type:none!important;padding-block-end:0;
+- }
+- [data-operations-workspace] .sc-ops-workflow-link{
+-   display:flex!important;flex-direction:column!important;justify-content:center;align-items:flex-start;
+-   flex:none!important;inline-size:100%!important;min-inline-size:0!important;min-block-size:58px!important;
+-   white-space:normal!important;overflow-wrap:anywhere;padding:9px!important;
+-   border-radius:12px!important;text-align:start!important;
+- }
+- [data-operations-workspace] .sc-ops-workflow-link.is-active{padding:8px!important}
+- [data-operations-workspace] .sc-ops-workflow-link strong{font-size:12px!important;line-height:1.45}
+- [data-operations-workspace] .sc-ops-workflow-link small{display:block!important;font-size:10px!important;line-height:1.4}
+- [data-operations-workspace] .sc-ops-more{min-inline-size:0;inline-size:100%}
+- [data-operations-workspace] .sc-ops-more>summary{min-block-size:58px;display:flex;align-items:center}
+- [data-operations-workspace] .sc-ops-more>div{min-inline-size:0}
+ }
+ 
+ 
+@@ -6316,15 +6295,6 @@
+ body[data-page="reports"] .sc-report-export-disclosure>summary:focus-visible{outline:2px solid var(--sc-accent);outline-offset:3px;border-radius:8px}
+ body[data-page="reports"] .sc-report-export-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 10px 10px}
+ body[data-page="reports"] .sc-report-export-actions a{font-size:.75rem;min-block-size:36px}
+-body[data-page="reports"] .sc-report-section-nav{position:sticky;inset-block-start:64px;z-index:8;max-inline-size:100%;overflow-x:auto;scroll-snap-type:inline proximity;scrollbar-width:thin;border-color:var(--sc-border);box-shadow:0 5px 16px rgba(3,55,51,.05)}
+-body[data-page="reports"] .sc-report-section-nav a{scroll-snap-align:start;white-space:nowrap}
+-body[data-page="reports"] .sc-report-section-nav a[aria-selected="true"]{background:var(--sc-accent-soft);color:var(--sc-accent-strong);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--sc-accent) 18%,transparent)}
+-body[data-page="reports"] .sc-report-section-intro{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:13px 17px;border:1px solid var(--sc-border);border-radius:14px;background:var(--sc-surface-raised);scroll-margin-block-start:128px;min-inline-size:0}
+-body[data-page="reports"] .sc-report-section-intro__copy{min-inline-size:0}
+-body[data-page="reports"] .sc-report-section-intro__copy strong{display:block;font-size:1rem;line-height:1.45;color:var(--sc-text-strong)}
+-body[data-page="reports"] .sc-report-section-intro__copy p{font-size:.75rem;color:var(--sc-muted);line-height:1.6;margin:4px 0 0}
+-body[data-page="reports"] .sc-report-eyebrow{display:block;font-size:.68rem;font-weight:750;color:var(--sc-accent);margin-block-end:2px}
+-body[data-page="reports"] .sc-report-section-intro__hint{color:var(--sc-muted);font-size:.72rem;max-inline-size:210px;line-height:1.6}
+ body[data-page="reports"] .sc-report-summary{grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
+ body[data-page="reports"] .sc-report-summary>[data-report-kpi]{min-inline-size:0;min-block-size:102px;border-radius:13px;box-shadow:0 3px 10px rgba(13,49,45,.04)}
+ body[data-page="reports"] .sc-report-summary>[data-report-kpi] strong{font-size:clamp(.95rem,1.3vw,1.3rem);line-height:1.45;overflow-wrap:anywhere}
+@@ -6345,7 +6315,7 @@
+ body[data-page="reports"] .sc-report-operations-card,body[data-page="reports"] .sc-report-inventory-card,body[data-page="reports"] .sc-report-margin-card,body[data-page="reports"] .sc-report-tender-card,body[data-page="reports"] .sc-report-financial-context-card,body[data-page="reports"] .sc-report-activity-card{border-radius:15px;overflow:hidden}
+ body[data-page="reports"] .sc-report-service-metric{border-radius:11px;min-inline-size:0}
+ body[data-page="reports"] .sc-table-wrap{max-inline-size:100%;overflow-x:auto;overscroll-behavior-inline:contain}
+-@media(max-width:850px){body[data-page="reports"] .sc-report-summary{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-page="reports"] .sc-report-summary>[data-report-kpi="net_sales"],body[data-page="reports"] .sc-report-summary>[data-report-kpi="reversals"]{grid-column:span 2}body[data-page="reports"] .sc-report-section-intro__hint{display:none}}
++@media(max-width:850px){body[data-page="reports"] .sc-report-summary{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-page="reports"] .sc-report-summary>[data-report-kpi="net_sales"],body[data-page="reports"] .sc-report-summary>[data-report-kpi="reversals"]{grid-column:span 2}}
+ @media(max-width:640px){
+  body[data-page="reports"] .sc-reports-workspace{gap:9px}
+  body[data-page="reports"] .sc-report-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+@@ -6359,10 +6329,6 @@
+  body[data-page="reports"] .sc-report-export-disclosure>summary{min-block-size:42px;box-sizing:border-box;font-size:.72rem;padding:7px 9px}
+  body[data-page="reports"] .sc-report-export-disclosure[open]{grid-column:1/-1}
+  body[data-page="reports"] .sc-report-export-actions{display:grid;grid-template-columns:1fr}
+- body[data-page="reports"] .sc-report-section-nav{inset-block-start:54px;padding:5px;gap:5px}
+- body[data-page="reports"] .sc-report-section-nav a{font-size:.73rem;padding:7px 11px;min-block-size:39px}
+- body[data-page="reports"] .sc-report-section-intro{padding:11px 13px;scroll-margin-block-start:112px}
+- body[data-page="reports"] .sc-report-section-intro__copy strong{font-size:.95rem}
+  body[data-page="reports"] .sc-report-summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  body[data-page="reports"] .sc-report-summary>[data-report-kpi]{min-block-size:90px}
+  body[data-page="reports"] .sc-report-summary>[data-report-kpi]>.sc-card__body{padding:9px 10px!important}
+@@ -6422,8 +6388,6 @@
+ .sc-template-live-paper .sc-template-live-row{font-size:var(--sc-draft-item-size,13px);padding-block:var(--sc-draft-row-gap,3px)}
+ body[data-page="printing"] .sc-print-main:has([data-print-panel="devices"][hidden])>.sc-print-readiness,
+ body[data-page="printing"] .sc-print-main:has([data-print-panel="devices"][hidden])>.sc-print-kpis{display:none!important}
+-body[data-page="printing"] .sc-print-tabs{display:flex;inline-size:100%;gap:6px;align-items:center;flex-wrap:wrap}
+-body[data-page="printing"] .sc-print-tabs .sc-tab{min-block-size:40px;white-space:nowrap}
+ body[data-page="printing"] .sc-print-main [data-print-template-list] .sc-list-item{padding:10px 12px;gap:6px}
+ body[data-page="printing"] .sc-print-main [data-print-template-list] .sc-list-item__head{gap:8px}
+ body[data-page="printing"] .sc-print-main [data-print-template-list] .sc-actions{gap:6px}
+--- a/local/public/assets/reports-workspace.js
++++ b/local/public/assets/reports-workspace.js
+@@ -13,7 +13,7 @@
+ let reportSectionKey='overview',reportAvailableSections=null,reportInvalid=false,reportRequestId=0;const reportHiddenBefore=new WeakMap();
+ function reportSectionFromLocation(){const hash=String(location.hash||'').replace('#report-','');if(hash&&root.querySelector(`[data-report-section="${hash}"]`))return hash;const f=String(root.dataset.focus||'').trim(),map={sales:'overview',orders:'overview',avg_ticket:'overview',overview:'overview',operations:'operations',inventory:'inventory',margin:'margin',financial:'financial',activity:'activity',tenders:'tenders',trend:'trends',top:'trends',item_sales:'item-sales'};const key=map[f]||'';return key&&root.querySelector(`[data-report-section="${key}"]`)?key:'overview'}
+ const reportSectionGuide={overview:['خلاصه عملکرد','فروش نهایی، تخفیف و تعداد سفارش‌ها در یک نگاه'],operations:['عملیات و کیفیت سرویس','زمان پذیرش، وضعیت سفارش‌ها و فراخوان گارسون'],inventory:['انبار و بهای مصرف','مصرف مواد و تغییر قیمت‌های خرید در بازه انتخابی'],margin:['حاشیه مشارکت','درآمد و هزینه مواد هر محصول؛ نه سود خالص کسب‌وکار'],pricing:['قیمت‌گذاری محصولات','بررسی فاصله قیمت فروش و هزینه مواد اولیه'],financial:['حساب مشتری و اقامتگاه','سندهای مشتریان و نقل‌وانتقال‌های اقامتگاه'],activity:['فعالیت کاربران','ردیابی عملیات ثبت‌شده بدون نمایش اطلاعات محرمانه'],tenders:['روش‌های پرداخت','تطبیق دریافتی‌های نقدی، کارتخوان و انتقال بانکی'],trends:['روند و آیتم‌های برتر','مقایسه روزهای فروش و محصولات پرفروش'],'item-sales':['فروش محصولات انتخابی','تعداد و مبلغ خالص یک یا چند محصول دلخواه در بازه گزارش']};
+-function applyReportSection(key=reportSectionKey,{scroll=false,historyMode=false}={}){const sections=$$('[data-report-section]'),links=$$('[data-report-section-nav] a');if(!sections.length)return;const existing=sections.some(x=>x.dataset.reportSection===key);reportSectionKey=existing?key:'overview';const guide=reportSectionGuide[reportSectionKey]||reportSectionGuide.overview;const heading=$('[data-report-current-title]'),description=$('[data-report-current-description]');if(heading)heading.textContent=guide[0];if(description)description.textContent=guide[1];sections.forEach(x=>{const active=x.dataset.reportSection===reportSectionKey;x.hidden=!active||reportInvalid;x.setAttribute('aria-hidden',active?'false':'true')});links.forEach(a=>{const active=a.getAttribute('href')===`#report-${reportSectionKey}`;if(active)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');a.setAttribute('aria-selected',active?'true':'false');a.tabIndex=active?0:-1});const active=links.find(a=>a.getAttribute('href')===`#report-${reportSectionKey}`),nav=$('[data-report-section-nav]');if(active&&nav){const item=active.getBoundingClientRect(),box=nav.getBoundingClientRect(),margin=8;const dx=item.left<box.left+margin?item.left-box.left-margin:item.right>box.right-margin?item.right-box.right+margin:0;if(dx)nav.scrollBy({left:dx,behavior:'auto'})}if(historyMode)history.replaceState(null,'',`#report-${reportSectionKey}`);if(scroll)$('[data-report-section-intro]')?.scrollIntoView?.({block:'start'})}
++function applyReportSection(key=reportSectionKey,{scroll=false,historyMode=false}={}){const sections=$$('[data-report-section]'),links=$$('[data-report-section-nav] a');if(!sections.length)return;const existing=sections.some(x=>x.dataset.reportSection===key);reportSectionKey=existing?key:'overview';const guide=reportSectionGuide[reportSectionKey]||reportSectionGuide.overview;const heading=$('[data-report-current-title]'),description=$('[data-report-current-description]');if(heading)heading.textContent=guide[0];if(description)description.textContent=guide[1];sections.forEach(x=>{const active=x.dataset.reportSection===reportSectionKey;x.hidden=!active||reportInvalid;x.setAttribute('aria-hidden',active?'false':'true')});links.forEach(a=>{const active=a.getAttribute('href')===`#report-${reportSectionKey}`;if(active)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');a.setAttribute('aria-selected',active?'true':'false');a.tabIndex=active?0:-1});const active=links.find(a=>a.getAttribute('href')===`#report-${reportSectionKey}`),nav=$('[data-report-section-nav]');if(active&&nav){const item=active.getBoundingClientRect(),box=nav.getBoundingClientRect(),margin=8;const dx=item.left<box.left+margin?item.left-box.left-margin:item.right>box.right-margin?item.right-box.right+margin:0;if(dx)nav.scrollBy({left:dx,behavior:'auto'})}if(historyMode)history.replaceState(null,'',`#report-${reportSectionKey}`);if(scroll)sections.find(x=>x.dataset.reportSection===reportSectionKey)?.scrollIntoView?.({block:'start'})}
+ function setupReportSections(){reportSectionKey=reportSectionFromLocation();applyReportSection(reportSectionKey);const links=$$('[data-report-section-nav] a');links.forEach((a,index)=>{a.addEventListener('click',e=>{const key=String(a.getAttribute('href')||'').replace('#report-','');if(!root.querySelector(`[data-report-section="${key}"]`))return;e.preventDefault();applyReportSection(key,{scroll:true,historyMode:true})});a.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','Home','End'].includes(e.key))return;e.preventDefault();let next=index;if(e.key==='Home')next=0;else if(e.key==='End')next=links.length-1;else next=(index+(e.key==='ArrowLeft'?1:-1)+links.length)%links.length;links[next]?.focus();links[next]?.click()})})}
+ 
+ const el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
+--- a/local/public/printing/index.php
++++ b/local/public/printing/index.php
+@@ -5,15 +5,19 @@
+ ProductShell::start($core,$user,'چاپ','printing','مقصدهای چاپ را تنظیم کن، وضعیت سرویس را ببین و فقط وقتی لازم است وارد جزئیات فنی شو.',false);
+ ?>
+ <section class="sc-workspace" data-printing-workspace data-api="printing/api.php" data-csrf="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">
+-  <a class="sc-button sc-button--secondary" data-page-action aria-label="تنظیم اتصال چاپ" href="<?= htmlspecialchars(LocalUrl::path('/integrations/?tab=windows'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">تنظیم اتصال چاپ</a>
+-  <button class="sc-button sc-button--secondary sc-refresh-action" type="button" data-refresh aria-label="بازخوانی اطلاعات" title="بازخوانی اطلاعات"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.1-5.2L4 8m0-5v5h5M4 13a8 8 0 0 0 14.1 5.2L20 16m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+   <div class="sc-visually-hidden" role="status" aria-live="polite" data-status hidden></div>
+   <div class="sc-visually-hidden" role="status" aria-live="polite" data-printing-state>در حال دریافت وضعیت چاپ…</div>
++  <div class="sc-toolbar sc-local-nav sc-print-nav-toolbar">
+   <div class="sc-tabs sc-print-tabs" role="tablist" aria-label="بخش‌های چاپ" data-scds-tabs>
+     <button class="sc-tab" type="button" role="tab" aria-selected="true" aria-controls="print-panel-devices" data-print-tab="devices">وضعیت و مقصدها</button>
+     <button class="sc-tab" type="button" role="tab" aria-selected="false" aria-controls="print-panel-queue" data-print-tab="queue">صف و رسیدگی <span class="sc-badge" data-print-queue-badge>۰</span></button>
+     <button class="sc-tab" type="button" role="tab" aria-selected="false" aria-controls="print-panel-templates" data-print-tab="templates">قالب‌ها</button>
+     <button class="sc-tab" type="button" role="tab" aria-selected="false" aria-controls="print-panel-history" data-print-tab="history">تاریخچه</button>
++  </div>
++  <div class="sc-actions sc-print-nav-actions">
++<a class="sc-button sc-button--secondary" data-page-action aria-label="تنظیم اتصال چاپ" href="<?= htmlspecialchars(LocalUrl::path('/integrations/?tab=windows'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">تنظیم اتصال چاپ</a>
++  <button class="sc-button sc-button--secondary sc-refresh-action" type="button" data-refresh aria-label="بازخوانی اطلاعات" title="بازخوانی اطلاعات"><svg class="sc-ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.1-5.2L4 8m0-5v5h5M4 13a8 8 0 0 0 14.1 5.2L20 16m0 5v-5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
++  </div>
+   </div>
+   <div class="sc-print-main">
+     <div class="sc-readiness-strip sc-print-readiness" aria-label="لایه‌های آمادگی چاپ">
+--- a/local/resources/shared-staff-ui/operations-workspace.php
++++ b/local/resources/shared-staff-ui/operations-workspace.php
+@@ -11,7 +11,7 @@
+ 
+   <section class="sc-work-panel sc-operations-hub" data-panel="inventory">
+     <h2 class="sc-visually-hidden">عملیات موجودی و خرید</h2>
+-    <nav class="sc-ops-workflow-nav" aria-label="مسیر عملیات روزانه">
++    <nav class="sc-ops-workflow-nav" aria-label="مرحله کاری انبار و تأمین">
+       <button type="button" class="sc-ops-workflow-link is-active" data-ops-workflow="attention" aria-pressed="true"><strong>امروز</strong><span class="sc-ops-mobile-title" aria-hidden="true">امروز</span><small>کم‌موجود، نیاز بررسی و خریدهای باز</small></button>
+       <button type="button" class="sc-ops-workflow-link" data-ops-workflow="purchase" aria-pressed="false"><strong>نیاز و خرید</strong><span class="sc-ops-mobile-title" aria-hidden="true">نیاز و خرید</span><small>نیازها و شروع خرید</small></button>
+       <button type="button" class="sc-ops-workflow-link" data-ops-workflow="receive" aria-pressed="false"><strong>تحویل خرید</strong><span class="sc-ops-mobile-title" aria-hidden="true">تحویل خرید</span><small>تحویل تکی/گروهی و رسیدها</small></button>
+--- a/local/resources/shared-staff-ui/reports-workspace.php
++++ b/local/resources/shared-staff-ui/reports-workspace.php
+@@ -25,13 +25,12 @@
+     </form>
+   </section>
+   <div class="sc-alert" data-status hidden></div>
+-  <nav class="sc-report-section-nav" aria-label="نوع گزارش" data-report-section-nav role="tablist">
+-    <a href="#report-overview" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" role="tab" aria-selected="false">انبار</a><a href="#report-margin" role="tab" aria-selected="false">حاشیه سود</a><?php if(!empty($pricingEnabled)): ?><a href="#report-pricing" role="tab" aria-selected="false">قیمت‌گذاری محصولات</a><?php endif; ?><a href="#report-financial" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" role="tab" aria-selected="false">فروش محصولات</a>
++  <div class="sc-toolbar sc-local-nav sc-report-nav-toolbar">
++  <nav class="sc-tabs sc-report-section-nav" aria-label="نوع گزارش" data-report-section-nav role="tablist">
++    <a href="#report-overview" class="sc-tab" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" class="sc-tab" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" class="sc-tab" role="tab" aria-selected="false">انبار</a><a href="#report-margin" class="sc-tab" role="tab" aria-selected="false">حاشیه سود</a><?php if(!empty($pricingEnabled)): ?><a href="#report-pricing" class="sc-tab" role="tab" aria-selected="false">قیمت‌گذاری محصولات</a><?php endif; ?><a href="#report-financial" class="sc-tab" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" class="sc-tab" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" class="sc-tab" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" class="sc-tab" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" class="sc-tab" role="tab" aria-selected="false">فروش محصولات</a>
+   </nav>
+-  <div class="sc-report-section-intro" data-report-section-intro aria-live="polite">
+-    <div class="sc-report-section-intro__copy"><span class="sc-report-eyebrow">نمای فعلی گزارش</span><strong data-report-current-title>خلاصه عملکرد</strong><p data-report-current-description>مهم‌ترین شاخص‌های فروش و تخفیف را در یک نگاه ببین.</p></div>
+-    <span class="sc-report-section-intro__hint">برای جزئیات، یکی از بخش‌های بالا را انتخاب کن</span>
+   </div>
++  <p class="sc-visually-hidden" data-report-section-intro aria-live="polite"><span data-report-current-title>خلاصه عملکرد</span><span data-report-current-description>مهم‌ترین شاخص‌های فروش و تخفیف را در یک نگاه ببین.</span></p>
+   <section class="sc-report-section-anchor" id="report-overview" data-report-section="overview">
+   <div class="sc-summary-grid sc-report-summary" data-summary></div>
+   <div class="sc-report-insight-grid">
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -817,7 +817,7 @@
+ 
+ /* Printing owns its own operational workspace. */
+ .sc-print-main{display:grid;gap:12px;min-inline-size:0}
+-.sc-print-tabs{inline-size:fit-content;max-inline-size:100%;margin:0}
++
+ .sc-print-main>[data-print-panel]{min-inline-size:0}
+ .sc-print-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}.sc-print-kpis .sc-metric{min-block-size:100px!important;justify-content:center}.sc-print-kpis .sc-metric>strong{font-size:1.6rem!important;line-height:1.15}.sc-print-kpis .sc-metric>span{font-weight:760;color:var(--sc-muted-strong)}
+ .sc-print-pairs{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px!important}.sc-print-pairs>.sc-card{min-block-size:0}
+@@ -2418,15 +2418,28 @@
+ @media(max-width:900px){.sc-entity-editor{inline-size:min(46rem,calc(100vw - 1rem));max-block-size:calc(100dvh - 1rem)!important}.sc-entity-editor__body{grid-template-columns:1fr}.sc-entity-editor__wide{grid-column:auto}}
+ @media(max-width:620px){.sc-entity-editor{inline-size:100vw;max-inline-size:none!important;block-size:100dvh;max-block-size:100dvh!important;margin:0;border-radius:0;border-inline:0}.sc-entity-editor__form{block-size:100%}.sc-entity-editor__head{padding:.85rem .9rem .7rem}.sc-entity-editor__body{padding:.75rem .8rem 1rem;gap:.65rem}.sc-entity-editor__section{padding:.75rem}.sc-entity-editor__fields,.sc-entity-editor__split,.sc-entity-editor__recipe-add,.sc-entity-editor__checks{grid-template-columns:1fr}.sc-entity-editor__span-2{grid-column:auto}.sc-entity-editor__footer{align-items:stretch;flex-direction:column;padding:.65rem .8rem max(.65rem,env(safe-area-inset-bottom));--sc-button-inline-size:100%}.sc-entity-editor__footer-hint{display:none}.sc-entity-editor__footer .sc-actions{display:grid;grid-template-columns:1fr 1fr;inline-size:100%}}
+ 
++
++/* R317 | Canonical page navigation: shared with Connections; section content owns its own header. */
++body[data-page="reports"] .sc-report-nav-toolbar .sc-report-section-nav{min-inline-size:0}
++body[data-page="reports"] .sc-report-section-nav>.sc-tab{display:inline-flex;align-items:center;text-decoration:none}
++body[data-page="reports"] [data-report-section]{scroll-margin-block-start:18px}
++body[data-page="printing"] .sc-print-nav-toolbar .sc-print-tabs{flex:1 1 auto;min-inline-size:0;inline-size:auto;margin:0}
++body[data-page="printing"] .sc-print-nav-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:nowrap}
++/* Operations stages are secondary controls, not a second row of main tabs. */
++body[data-page="operations"] .sc-ops-workflow-nav{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr));gap:6px;padding:7px 0 10px;border-block-end:1px solid var(--sc-page-rule)}
++body[data-page="operations"] .sc-ops-workflow-link{min-inline-size:0;min-block-size:43px;padding:7px 10px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:1px;text-align:start;border:1px solid var(--sc-border);border-radius:9px;background:var(--sc-surface-subtle);color:var(--sc-text);cursor:pointer}
++body[data-page="operations"] .sc-ops-workflow-link strong{font-size:.73rem;line-height:1.4;color:var(--sc-text-strong)}
++body[data-page="operations"] .sc-ops-workflow-link small,body[data-page="operations"] .sc-ops-mobile-title{display:none}
++body[data-page="operations"] .sc-ops-workflow-link.is-active{background:color-mix(in srgb,var(--sc-accent-soft) 60%,var(--sc-surface-subtle));border-color:color-mix(in srgb,var(--sc-accent) 35%,var(--sc-border));box-shadow:inset -3px 0 0 var(--sc-accent)}
++body[data-page="operations"] .sc-ops-workflow-link:hover{background:var(--sc-surface-hover)}
++body[data-page="operations"] .sc-ops-workflow-link:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
++body[data-page="operations"] .sc-ops-more{min-inline-size:0}
++body[data-page="operations"] .sc-ops-more>summary{min-block-size:43px;padding:7px 10px;display:flex;align-items:center;border:1px solid var(--sc-border);border-radius:9px;background:var(--sc-surface-subtle);font-size:.73rem;font-weight:700;cursor:pointer}
++body[data-page="operations"] .sc-ops-more>div{min-inline-size:0;display:grid;gap:6px}
++@media(max-width:760px){body[data-page="printing"] .sc-print-nav-actions{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px;inline-size:100%;overflow:visible}body[data-page="printing"] .sc-print-nav-actions>[data-page-action]{min-inline-size:0;inline-size:100%;white-space:nowrap}body[data-page="printing"] .sc-print-nav-actions>[data-refresh]{min-inline-size:44px;inline-size:44px;padding:0}body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(2,minmax(0,1fr))}}
++
+ /* H91 — Operations workflow IA: inventory-first, supply nested by task */
+ body[data-page="operations"] .sc-operations-hub{gap:12px}
+-body[data-page="operations"] .sc-ops-workflow-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+-body[data-page="operations"] .sc-ops-workflow-link{min-inline-size:0;min-block-size:60px;padding:8px 10px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-raised);color:var(--sc-text);text-align:start;display:flex;flex-direction:column;justify-content:center;gap:3px;cursor:pointer}
+-body[data-page="operations"] .sc-ops-workflow-link strong{font-size:12px;line-height:1.45;color:var(--sc-text-strong)}
+-body[data-page="operations"] .sc-ops-workflow-link small{font-size:.75rem;line-height:1.5;color:var(--sc-muted)}
+-body[data-page="operations"] .sc-ops-workflow-link:hover{border-color:color-mix(in srgb,var(--sc-accent) 36%,var(--sc-border));background:var(--sc-surface-subtle)}
+-body[data-page="operations"] .sc-ops-workflow-link.is-active{border:2px solid var(--sc-accent);background:var(--sc-accent-soft);box-shadow:none;padding:7px 9px}
+-body[data-page="operations"] .sc-ops-workflow-link:focus-visible{outline:3px solid color-mix(in srgb,var(--sc-accent) 30%,transparent);outline-offset:2px}
+ body[data-page="operations"] .sc-ops-workflow-view{display:grid;gap:12px;min-inline-size:0}
+ body[data-page="operations"] .sc-ops-workflow-view[hidden]{display:none!important}
+ body[data-page="operations"] .sc-ops-summary{grid-template-columns:repeat(5,minmax(0,1fr))}
+@@ -2440,9 +2453,8 @@
+ body[data-page="operations"] .sc-ops-attention-card[data-tone="info"]{border-inline-start:3px solid var(--sc-accent)}
+ body[data-page="operations"] .sc-ops-supply-card{border-inline-start:3px solid color-mix(in srgb,var(--sc-accent) 58%,var(--sc-border))}
+ body[data-page="operations"] .sc-empty--positive{border:1px dashed var(--sc-border);border-radius:12px;background:var(--sc-surface-subtle)}
+-@media(max-width:1180px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(3,minmax(0,1fr))}}
+-@media(max-width:980px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-page="operations"] .sc-ops-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+-@media(max-width:640px){body[data-page="operations"] .sc-ops-workflow-nav{display:flex;overflow-x:auto;scroll-snap-type:inline proximity;padding-block-end:2px;scrollbar-width:none}body[data-page="operations"] .sc-ops-workflow-nav::-webkit-scrollbar{display:none}body[data-page="operations"] .sc-ops-workflow-link{flex:0 0 min(78vw,260px);scroll-snap-align:start;min-block-size:68px}body[data-page="operations"] .sc-ops-summary{grid-template-columns:1fr 1fr}body[data-page="operations"] .sc-ops-attention-list{grid-template-columns:1fr}}
++@media(max-width:980px){body[data-page="operations"] .sc-ops-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
++@media(max-width:640px){body[data-page="operations"] .sc-ops-summary{grid-template-columns:1fr 1fr}body[data-page="operations"] .sc-ops-attention-list{grid-template-columns:1fr}}
+ 
+ /* H92 — Customer account master-detail + structured payment flow */
+ body[data-page="subscribers"] .sc-subscriber-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+@@ -2688,14 +2700,10 @@
+ .sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;padding:10px 12px 12px}
+ .sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-card{min-block-size:94px;border:1px solid var(--sc-border)!important;border-radius:11px!important;background:var(--sc-surface-raised)}
+ .sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-card:last-child{border:1px solid var(--sc-border)!important}
+-
+-body[data-page="reports"] .sc-report-section-nav{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:thin;padding:7px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-raised);position:sticky;inset-block-start:72px;z-index:8}
+-body[data-page="reports"] .sc-report-section-nav a{flex:0 0 auto;min-block-size:34px;display:inline-flex;align-items:center;padding:6px 10px;border-radius:8px;color:var(--sc-muted);font-size:.75rem;font-weight:700;text-decoration:none;white-space:nowrap}
+-body[data-page="reports"] .sc-report-section-nav a:hover,body[data-page="reports"] .sc-report-section-nav a:focus-visible,body[data-page="reports"] .sc-report-section-nav a[aria-current="true"]{background:var(--sc-accent-soft);color:var(--sc-accent)}
+ body[data-page="reports"] .sc-report-section-anchor{scroll-margin-block-start:126px}
+ body[data-page="reports"] .sc-report-activity-list{max-block-size:520px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-inline-end:2px}
+ @media(max-width:1050px){.sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
+-@media(max-width:760px){.sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:1fr;padding:8px}.sc-finance-account-row{min-block-size:68px}body[data-page="reports"] .sc-report-section-nav{inset-block-start:60px}}
++@media(max-width:760px){.sc-subscriber-layout:not(:has(.sc-subscriber-detail:not(.sc-hidden))) .sc-subscriber-list{grid-template-columns:1fr;padding:8px}.sc-finance-account-row{min-block-size:68px}}
+ 
+ /* H134 — residual management screenshot convergence */
+ .sc-notifications-compose,.sc-connection-advanced{overflow:hidden}
+@@ -4068,11 +4076,6 @@
+ .sc-ops-item-picker{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--sc-border);border-radius:12px;background:var(--sc-surface-subtle)}
+ .sc-ops-item-picker[hidden]{display:none!important}.sc-ops-item-picker>.sc-muted{align-self:center;white-space:nowrap;font-size:.75rem}
+ @media(max-width:640px){
+- body[data-page="operations"] .sc-ops-workflow-nav{gap:6px;padding-block-end:4px}
+- body[data-page="operations"] .sc-ops-workflow-link{flex:0 0 auto;min-block-size:42px;padding:7px 11px;border-radius:999px;display:block;white-space:nowrap}
+- body[data-page="operations"] .sc-ops-workflow-link.is-active{padding:6px 10px}
+- body[data-page="operations"] .sc-ops-workflow-link strong{font-size:11.5px}
+- body[data-page="operations"] .sc-ops-workflow-link small{display:none}
+  body[data-page="operations"] .sc-section-head{gap:8px}
+  body[data-page="operations"] .sc-section-head>.sc-actions{display:grid;grid-template-columns:1fr 1fr;inline-size:100%}
+  body[data-page="operations"] .sc-ops-supply-card .sc-actions{display:grid;grid-template-columns:1fr 1fr}
+@@ -4107,8 +4110,6 @@
+  body[data-page="operations"] .sc-count-taskbar>.sc-actions{grid-template-columns:1fr 1fr!important}
+  body[data-page="operations"] .sc-count-taskbar>.sc-actions .sc-button:last-child{grid-column:1/-1}
+ }
+-@media(min-width:1181px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(7,minmax(0,1fr))}}
+-@media(min-width:981px) and (max-width:1180px){body[data-page="operations"] .sc-ops-workflow-nav{grid-template-columns:repeat(4,minmax(0,1fr))}}
+ .sc-ops-inline-guidance{margin-block-start:8px;font-size:.75rem;line-height:1.65}
+ 
+ /* H251b — progressive disclosure for secondary operation metadata */
+@@ -4400,11 +4401,6 @@
+   body[data-page="reports"] .sc-report-range-field>.sc-jalali-control{
+     min-inline-size:0!important;max-inline-size:100%;
+   }
+-  body[data-page="reports"] .sc-report-section-nav{
+-    max-inline-size:100%;min-inline-size:0;overscroll-behavior-inline:contain;
+-    scroll-padding-inline:10px;
+-  }
+-  body[data-page="reports"] .sc-report-section-nav a{min-block-size:42px}
+   /* Operational notices wrap even when embedded beside a narrow toolbar. */
+   .sc-workspace .sc-alert,.sc-workspace [role="status"]{
+     min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere;
+@@ -4684,23 +4680,6 @@
+ /* PRE-HOME INV-10 — every daily operation is discoverable without horizontal scrolling. */
+ @media(max-width:640px){
+  [data-operations-workspace] .sc-operations-hub{min-inline-size:0;max-inline-size:100%;overflow-x:clip}
+- [data-operations-workspace] .sc-ops-workflow-nav{
+-   display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+-   gap:7px!important;overflow:visible!important;inline-size:100%;min-inline-size:0;
+-   scroll-snap-type:none!important;padding-block-end:0;
+- }
+- [data-operations-workspace] .sc-ops-workflow-link{
+-   display:flex!important;flex-direction:column!important;justify-content:center;align-items:flex-start;
+-   flex:none!important;inline-size:100%!important;min-inline-size:0!important;min-block-size:58px!important;
+-   white-space:normal!important;overflow-wrap:anywhere;padding:9px!important;
+-   border-radius:12px!important;text-align:start!important;
+- }
+- [data-operations-workspace] .sc-ops-workflow-link.is-active{padding:8px!important}
+- [data-operations-workspace] .sc-ops-workflow-link strong{font-size:12px!important;line-height:1.45}
+- [data-operations-workspace] .sc-ops-workflow-link small{display:block!important;font-size:10px!important;line-height:1.4}
+- [data-operations-workspace] .sc-ops-more{min-inline-size:0;inline-size:100%}
+- [data-operations-workspace] .sc-ops-more>summary{min-block-size:58px;display:flex;align-items:center}
+- [data-operations-workspace] .sc-ops-more>div{min-inline-size:0}
+ }
+ 
+ 
+@@ -5493,17 +5472,6 @@
+ /* R107: R104 + R106 mobile CSS delivered through the live ProductShell asset path. */
+ /* R104 inventory mobile: scoped to inventory workspace; desktop behavior is untouched. */
+ @media(max-width:640px){
+- body[data-page="operations"] [data-operations-workspace] .sc-ops-workflow-nav{
+-  display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;
+-  gap:7px!important;overflow:visible!important;scroll-snap-type:none!important;
+- }
+- body[data-page="operations"] [data-operations-workspace] .sc-ops-workflow-link{
+-  display:flex!important;flex:none!important;min-inline-size:0!important;inline-size:100%!important;
+-  min-block-size:50px!important;padding:9px 10px!important;white-space:normal!important;
+-  border-radius:12px!important;overflow-wrap:anywhere!important;
+- }
+- body[data-page="operations"] [data-operations-workspace] .sc-ops-workflow-link strong{font-size:12px!important;line-height:1.5!important}
+- body[data-page="operations"] [data-operations-workspace] .sc-ops-workflow-link small{display:none!important}
+  body[data-page="operations"] [data-operations-workspace] .sc-ops-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  body[data-page="operations"] [data-operations-workspace] .sc-ops-summary>.sc-metric{min-block-size:94px!important;padding:12px!important}
+  body[data-page="operations"] [data-operations-workspace] .sc-ops-summary>.sc-metric strong{font-size:clamp(1.1rem,5vw,1.65rem)!important}
+@@ -5539,13 +5507,6 @@
+ 
+ /* R104 matching Local/Public seven-step inventory mobile navigation. */
+ [data-operations-workspace] .sc-ops-mobile-title{display:none}
+-@media(max-width:640px){
+- [data-operations-workspace] .sc-ops-workflow-link>.sc-ops-mobile-title{display:block;font-size:12px;font-weight:800;line-height:1.5}
+- [data-operations-workspace] .sc-ops-workflow-link>strong{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+- [data-operations-workspace] .sc-ops-more[open]{display:contents!important}
+- [data-operations-workspace] .sc-ops-more[open]>summary{display:none!important}
+- [data-operations-workspace] .sc-ops-more[open]>div{display:contents!important}
+-}
+ 
+ @media(min-width:641px){body[data-page="operations"] [data-operations-workspace] .sc-ops-history-paging{display:none!important}}
+ 
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -5,7 +5,7 @@
+ const displayMoney=v=>L.money?L.money(v):`${L.integer(v)} تومان`;
+ let reportSectionKey='overview',reportAvailableSections=null,reportInvalid=false,reportRequestId=0;const reportHiddenBefore=new WeakMap();
+ function reportSectionFromLocation(){const hash=String(location.hash||'').replace('#report-','');if(hash&&root.querySelector(`[data-report-section="${hash}"]`))return hash;const f=String(root.dataset.focus||'').trim(),map={sales:'overview',orders:'overview',avg_ticket:'overview',overview:'overview',operations:'operations',inventory:'inventory',margin:'margin',financial:'financial',activity:'activity',tenders:'tenders',trend:'trends',top:'trends',item_sales:'item-sales'};const key=map[f]||'';return key&&root.querySelector(`[data-report-section="${key}"]`)?key:'overview'}
+-function applyReportSection(key=reportSectionKey,{scroll=false,historyMode=false}={}){const sections=$$('[data-report-section]'),links=$$('[data-report-section-nav] a');if(!sections.length)return;const existing=sections.some(x=>x.dataset.reportSection===key);reportSectionKey=existing?key:'overview';sections.forEach(x=>{const active=x.dataset.reportSection===reportSectionKey;x.hidden=!active||reportInvalid;x.setAttribute('aria-hidden',active?'false':'true')});links.forEach(a=>{const active=a.getAttribute('href')===`#report-${reportSectionKey}`;if(active)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');a.setAttribute('aria-selected',active?'true':'false');a.tabIndex=active?0:-1});const active=links.find(a=>a.getAttribute('href')===`#report-${reportSectionKey}`),nav=$('[data-report-section-nav]');if(active&&nav){const item=active.getBoundingClientRect(),box=nav.getBoundingClientRect(),margin=8;const dx=item.left<box.left+margin?item.left-box.left-margin:item.right>box.right-margin?item.right-box.right+margin:0;if(dx)nav.scrollBy({left:dx,behavior:'auto'})}if(historyMode)history.replaceState(null,'',`#report-${reportSectionKey}`);if(scroll)$('[data-report-section-nav]')?.scrollIntoView?.({block:'start'})}
++function applyReportSection(key=reportSectionKey,{scroll=false,historyMode=false}={}){const sections=$$('[data-report-section]'),links=$$('[data-report-section-nav] a');if(!sections.length)return;const existing=sections.some(x=>x.dataset.reportSection===key);reportSectionKey=existing?key:'overview';sections.forEach(x=>{const active=x.dataset.reportSection===reportSectionKey;x.hidden=!active||reportInvalid;x.setAttribute('aria-hidden',active?'false':'true')});links.forEach(a=>{const active=a.getAttribute('href')===`#report-${reportSectionKey}`;if(active)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');a.setAttribute('aria-selected',active?'true':'false');a.tabIndex=active?0:-1});const active=links.find(a=>a.getAttribute('href')===`#report-${reportSectionKey}`),nav=$('[data-report-section-nav]');if(active&&nav){const item=active.getBoundingClientRect(),box=nav.getBoundingClientRect(),margin=8;const dx=item.left<box.left+margin?item.left-box.left-margin:item.right>box.right-margin?item.right-box.right+margin:0;if(dx)nav.scrollBy({left:dx,behavior:'auto'})}if(historyMode)history.replaceState(null,'',`#report-${reportSectionKey}`);if(scroll)sections.find(x=>x.dataset.reportSection===reportSectionKey)?.scrollIntoView?.({block:'start'})}
+ function setupReportSections(){reportSectionKey=reportSectionFromLocation();applyReportSection(reportSectionKey);const links=$$('[data-report-section-nav] a');links.forEach((a,index)=>{a.addEventListener('click',e=>{const key=String(a.getAttribute('href')||'').replace('#report-','');if(!root.querySelector(`[data-report-section="${key}"]`))return;e.preventDefault();applyReportSection(key,{scroll:true,historyMode:true})});a.addEventListener('keydown',e=>{if(!['ArrowRight','ArrowLeft','Home','End'].includes(e.key))return;e.preventDefault();let next=index;if(e.key==='Home')next=0;else if(e.key==='End')next=links.length-1;else next=(index+(e.key==='ArrowLeft'?1:-1)+links.length)%links.length;links[next]?.focus();links[next]?.click()})})}
+ 
+ const el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
+--- a/public/resources/shared-staff-ui/operations-workspace.php
++++ b/public/resources/shared-staff-ui/operations-workspace.php
+@@ -9,14 +9,14 @@
+ 
+   <section class="sc-work-panel sc-operations-hub" data-panel="inventory">
+     <h2 class="sc-visually-hidden">عملیات موجودی و خرید</h2>
+-    <nav class="sc-ops-workflow-nav" aria-label="مسیر عملیات روزانه">
+-      <button type="button" class="sc-ops-workflow-link is-active" data-ops-workflow="attention" aria-pressed="true"><strong>الان چه چیزی نیاز به توجه دارد؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">امروز</span><small>کم‌موجود، نیاز بررسی و خریدهای باز</small></button>
+-      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="quality" aria-pressed="false"><strong>کدام داده‌ها نیاز به اصلاح دارند؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">تکمیل اطلاعات</span><small>واحد خرید، هزینه و رسیدهای ناقص</small></button>
+-      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="purchase" aria-pressed="false"><strong>چه چیزی باید بخریم؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">نیاز و خرید</span><small>نیازها و شروع خرید</small></button>
+-      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="receive" aria-pressed="false"><strong>چه چیزی رسید؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">تحویل خرید</span><small>تحویل تکی/گروهی و رسیدها</small></button>
+-      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="consume" aria-pressed="false"><strong>چه چیزی مصرف یا ضایع شد؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">ضایعات و اصلاح</span><small>ضایعات و اصلاح عملیاتی</small></button>
+-      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="stock" aria-pressed="false"><strong>موجودی واقعی چیست؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">موجودی و شمارش</span><small>کالاها، شمارش و اطلاعات پایه</small></button>
+-      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="history" aria-pressed="false"><strong>سابقه و هزینه چه بوده؟</strong><span class="sc-ops-mobile-title" aria-hidden="true">تاریخچه</span><small>دفتر حرکت‌های موجودی</small></button>
++    <nav class="sc-ops-workflow-nav" aria-label="مرحله کاری انبار و تأمین">
++      <button type="button" class="sc-ops-workflow-link is-active" data-ops-workflow="attention" aria-pressed="true"><strong>امروز</strong><span class="sc-ops-mobile-title" aria-hidden="true">امروز</span><small>کم‌موجود، نیاز بررسی و خریدهای باز</small></button>
++      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="quality" aria-pressed="false"><strong>تکمیل اطلاعات</strong><span class="sc-ops-mobile-title" aria-hidden="true">تکمیل اطلاعات</span><small>واحد خرید، هزینه و رسیدهای ناقص</small></button>
++      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="purchase" aria-pressed="false"><strong>نیاز و خرید</strong><span class="sc-ops-mobile-title" aria-hidden="true">نیاز و خرید</span><small>نیازها و شروع خرید</small></button>
++      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="receive" aria-pressed="false"><strong>تحویل خرید</strong><span class="sc-ops-mobile-title" aria-hidden="true">تحویل خرید</span><small>تحویل تکی/گروهی و رسیدها</small></button>
++      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="consume" aria-pressed="false"><strong>ضایعات و اصلاح</strong><span class="sc-ops-mobile-title" aria-hidden="true">ضایعات و اصلاح</span><small>ضایعات و اصلاح عملیاتی</small></button>
++      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="stock" aria-pressed="false"><strong>موجودی و شمارش</strong><span class="sc-ops-mobile-title" aria-hidden="true">موجودی و شمارش</span><small>کالاها، شمارش و اطلاعات پایه</small></button>
++      <button type="button" class="sc-ops-workflow-link" data-ops-workflow="history" aria-pressed="false"><strong>تاریخچه</strong><span class="sc-ops-mobile-title" aria-hidden="true">تاریخچه</span><small>دفتر حرکت‌های موجودی</small></button>
+     </nav>
+ 
+     <section class="sc-ops-workflow-view" data-ops-workflow-view="attention">
+--- a/public/resources/shared-staff-ui/reports-workspace.php
++++ b/public/resources/shared-staff-ui/reports-workspace.php
+@@ -25,9 +25,11 @@
+     </form>
+   </section>
+   <div class="sc-alert" data-status hidden></div>
+-  <nav class="sc-report-section-nav" aria-label="نوع گزارش" data-report-section-nav role="tablist">
+-    <a href="#report-overview" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" role="tab" aria-selected="false">انبار</a><a href="#report-margin" role="tab" aria-selected="false">حاشیه سود</a><a href="#report-financial" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" role="tab" aria-selected="false">فروش محصولات</a><?php if(($canInvoiceHistory??false)): ?><a href="#report-invoices" role="tab" aria-selected="false">فاکتورها</a><?php endif; ?>
++  <div class="sc-toolbar sc-local-nav sc-report-nav-toolbar">
++  <nav class="sc-tabs sc-report-section-nav" aria-label="نوع گزارش" data-report-section-nav role="tablist">
++    <a href="#report-overview" class="sc-tab" role="tab" aria-selected="true">خلاصه</a><a href="#report-operations" class="sc-tab" role="tab" aria-selected="false">عملیات</a><a href="#report-inventory" class="sc-tab" role="tab" aria-selected="false">انبار</a><a href="#report-margin" class="sc-tab" role="tab" aria-selected="false">حاشیه سود</a><a href="#report-financial" class="sc-tab" role="tab" aria-selected="false">مشتری و اقامتگاه</a><?php if($canAudit): ?><a href="#report-activity" class="sc-tab" role="tab" aria-selected="false">فعالیت</a><?php endif; ?><a href="#report-tenders" class="sc-tab" role="tab" aria-selected="false">پرداخت‌ها</a><a href="#report-trends" class="sc-tab" role="tab" aria-selected="false">روند</a><a href="#report-item-sales" class="sc-tab" role="tab" aria-selected="false">فروش محصولات</a><?php if(($canInvoiceHistory??false)): ?><a href="#report-invoices" class="sc-tab" role="tab" aria-selected="false">فاکتورها</a><?php endif; ?>
+   </nav>
++  </div>
+   <section class="sc-report-section-anchor" id="report-overview" data-report-section="overview">
+   <div class="sc-summary-grid sc-report-summary" data-summary></div>
+   <div class="sc-report-insight-grid">
