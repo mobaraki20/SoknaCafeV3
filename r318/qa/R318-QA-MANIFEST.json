@@ -21,8 +21,8 @@
     {
       "path": "local/public/assets/product-ui.css",
       "baseline_sha256": "a383b2227c8aca39562701f45253849f0ab35ba4b15568035da7afe1bc560abe",
-      "qa_sha256": "c8d1a075b7cb26dd508a6b4406be8950da10840ba7c5761217237b2ab8caa864",
-      "added_lines": 26
+      "qa_sha256": "c3bcb834e2e994dcc4b9f12b1ca709e75193358dbdf3b9becbb50f2b172c8ed2",
+      "added_lines": 25
     },
     {
       "path": "local/src/Domain/Printing/PrintTemplatePackageService.php",
