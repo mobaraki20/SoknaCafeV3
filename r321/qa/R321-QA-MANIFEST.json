@@ -1,0 +1,33 @@
+{
+  "schema": "sokna-r321-print-station-order-qa-v1",
+  "date": "2026-11-21",
+  "status": "SOURCE_QA_PARTIAL_NOT_INSTALLABLE",
+  "parent_qa": "R320; source mismatch resolved against installed R307 package for PrintService",
+  "github_branch": "qa/sokna-r321-print-station-global-order-20261121",
+  "baseline_r307_printservice_sha256": "12362daac640c83ee3e7c3ab4f8c7776bd1ff4281f5bf4b4286d7ece6dd30667",
+  "qa_r321_printservice_sha256": "5761d0614e4db47c7b93074479b0684789b7245ca91f67408c82077ea9c81f29",
+  "baseline_source_divergence": {
+    "R307_has_more_print_operations": true,
+    "R320_old_grouped_PrintService_not_authoritative": true,
+    "full_integration_gate_open": true
+  },
+  "code_paths": [
+    "apps/local-web/src/Domain/Printing/PrintService.php",
+    "windows/print-agent/source/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs",
+    "tests/r321-print-station-order-selftest.php"
+  ],
+  "tests": {
+    "php_lint": "PASS",
+    "php_station_order": "19/19 PASS",
+    "r307_default_exact_parity": "7/7 PASS",
+    "csharp_static_contract": "12/12 PASS",
+    "dotnet_compilation": "NOT_RUN",
+    "paper_58_80": "NOT_RUN",
+    "live_mariadb": "NOT_RUN"
+  },
+  "release": {
+    "build_installer": false,
+    "modify_installed_cafe": false,
+    "mode": "QA_ONLY"
+  }
+}
