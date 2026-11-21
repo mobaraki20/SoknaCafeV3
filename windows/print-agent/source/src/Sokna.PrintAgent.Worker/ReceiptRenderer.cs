@@ -96,29 +96,80 @@ internal static class ReceiptRenderer
         }
         private void DrawPreparationItems(JsonElement root)
         {
-            if(root.TryGetProperty("sections",out var sections)&&sections.ValueKind==JsonValueKind.Array)foreach(var section in sections.EnumerateArray())
+            if(!root.TryGetProperty("sections",out var sections)||sections.ValueKind!=JsonValueKind.Array)return;
+
+            // A legacy template (default) must retain its original station groups,
+            // headers and ordering. New sorting modes deliberately operate on the
+            // entire preparation document rather than one section at a time.
+            if(_stationOrder is not ("as_ordered" or "bar_first" or "kitchen_first"))
             {
-                var sectionTitle=Get(section,"title","");if(_showSectionTitles&&sectionTitle.Length>0)Text(sectionTitle,Math.Max(20,_base),true,StringAlignment.Center,2);
-                if(!section.TryGetProperty("items",out var sourceItems)||sourceItems.ValueKind!=JsonValueKind.Array)continue;
-                var items=sourceItems.EnumerateArray().ToList();
-                if(_stationOrder is "as_ordered" or "bar_first" or "kitchen_first")
+                foreach(var section in sections.EnumerateArray())
                 {
-                    items=items.Select((item,i)=>(item,index:i)).OrderBy(pair=>{
-                        var station=Get(pair.item,"station","other");
-                        var kitchen=station=="kitchen";var bar=station is "bar" or "hot_bar" or "cold_bar";
-                        if(_stationOrder=="bar_first")return bar?0:kitchen?1:2;
-                        if(_stationOrder=="kitchen_first")return kitchen?0:bar?1:2;
-                        return 0;
-                    }).ThenBy(pair=>GetInt(pair.item,"order_index",pair.index)).Select(pair=>pair.item).ToList();
+                    if(!section.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)continue;
+                    DrawPreparationGroup(Get(section,"title",""),items.EnumerateArray().ToList());
                 }
-                var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"columnar-compact":"columnar"):_layout;
-                if(layout=="columnar-notes"&&_paperWidth>60){DrawPreparationColumnsWithNotes(items);continue;}
-                if(layout is "columnar" or "columnar-compact" or "columnar-notes"){DrawPreparationColumns(items,layout!="columnar");continue;}
-                foreach(var item in items)
+                return;
+            }
+
+            var rows=new List<(JsonElement Item,string Station,string Title,int Position,int SourceIndex)>();
+            var sourceIndex=0;
+            foreach(var section in sections.EnumerateArray())
+            {
+                if(!section.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)continue;
+                var sectionStation=Get(section,"station","other");
+                var title=Get(section,"title","");
+                foreach(var item in items.EnumerateArray())
                 {
-                    var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
-                    DrawPreparationAnnotations(item,quantity);Hairline();
+                    var station=Get(item,"station",sectionStation);
+                    var position=GetInt(item,"order_index",sourceIndex);
+                    rows.Add((item,station,title,position,sourceIndex));
+                    sourceIndex++;
                 }
+            }
+
+            // If older saved jobs have no per-row indices, the source order is
+            // the only trustworthy order: never fabricate a reconstruction.
+            // New jobs provide these indices from order_items id / bundle order.
+            var ordered=rows.OrderBy(row=>PreparationStationRank(row.Station,_stationOrder))
+                            .ThenBy(row=>row.Position)
+                            .ThenBy(row=>row.SourceIndex)
+                            .ToList();
+            var currentStation=(string?)null;
+            var currentTitle="";
+            var group=new List<JsonElement>();
+            foreach(var row in ordered)
+            {
+                if(group.Count>0&&(row.Station!=currentStation||row.Title!=currentTitle))
+                {
+                    DrawPreparationGroup(currentTitle,group);
+                    group=new List<JsonElement>();
+                }
+                currentStation=row.Station;
+                currentTitle=row.Title;
+                group.Add(row.Item);
+            }
+            if(group.Count>0)DrawPreparationGroup(currentTitle,group);
+        }
+        private static int PreparationStationRank(string station,string mode)
+        {
+            if(mode=="as_ordered")return 0;
+            var bar=station is "bar" or "hot_bar" or "cold_bar";
+            var kitchen=station=="kitchen";
+            if(mode=="bar_first")return bar?0:kitchen?1:2;
+            if(mode=="kitchen_first")return kitchen?0:bar?1:2;
+            return 0;
+        }
+        private void DrawPreparationGroup(string title,List<JsonElement> items)
+        {
+            if(_showSectionTitles&&title.Length>0)Text(title,Math.Max(20,_base),true,StringAlignment.Center,2);
+            var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"columnar-compact":"columnar"):_layout;
+            if(layout=="columnar-notes"&&_paperWidth>60){DrawPreparationColumnsWithNotes(items);return;}
+            if(layout is "columnar" or "columnar-compact" or "columnar-notes"){DrawPreparationColumns(items,layout!="columnar");return;}
+            foreach(var item in items)
+            {
+                var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");
+                Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
+                DrawPreparationAnnotations(item,quantity);Hairline();
             }
         }
         private void DrawPreparationColumns(List<JsonElement> items,bool compact)
