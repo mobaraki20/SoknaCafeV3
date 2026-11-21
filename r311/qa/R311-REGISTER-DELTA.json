@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-21",
+  "base_register": "SOKNA-14D-UNIFIED-REGISTER-20261121.json",
+  "source_state": "QA_NOT_INSTALL",
+  "r311_completed_source_scope": [
+    "sales attributed to table_session business date while settlement cash dated by immutable receipt business date",
+    "independent sales and cash reconciliation in reports",
+    "group category and variant-family item sales filtering",
+    "dashboard real orders/table-session/drafts/settlements timeline",
+    "quick bell current business-day filter with historical inbox preserved",
+    "printing editor simplified via progressive disclosure and independent live typography sample; Windows actual printer not verified",
+    "read-only historical invoice UI matches native SCDS responsive styles"
+  ],
+  "field_verified": false,
+  "production_modified": false,
+  "remaining_gates": [
+    "real MariaDB schema/query and finance E2E cross-day test",
+    "Public projection schema and report parity",
+    "all reporting formulas audit with long-term events/reversals",
+    "notification bell fallback on Public staff requiring authoritative business date",
+    "actual PrintAgent printing output and custom strings/title/subtitle features",
+    "variant analytics category custom cross-category grouping",
+    "full QA for dashboard event source access and shift operation",
+    "remaining 129-issue register work",
+    "version/update/install qualification only after all issues closed"
+  ]
+}
