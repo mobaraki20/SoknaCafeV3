@@ -1,0 +1,104 @@
+{
+  "schema": "sokna-r310-first-batch-qa-v1",
+  "date": "2026-11-21",
+  "scope": "checkout-currency-display-and-fixed-discount-input",
+  "original_installed_local": "R307/231fw exact source 069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa",
+  "cumulative_qa_on_top": [
+    "R308 safe-note patch",
+    "R309 second remaining discount patch"
+  ],
+  "public_baseline": "R306/35in",
+  "production_install_authorized": false,
+  "r310_qa_not_install": true,
+  "local_changed_files": [
+    "public/assets/staff-app/hall-workspace.js",
+    "public/assets/hall-settlement-v32.js",
+    "public/assets/dashboard-open-accounts.js",
+    "public/index.php",
+    "resources/shared-staff-ui/dashboard-workspace.php",
+    "public/admin/index.php"
+  ],
+  "public_changed_files": [
+    "assets/staff-app/hall-workspace.js",
+    "assets/hall-settlement-v32.js"
+  ],
+  "currency_policy": "toman accounting, rial for final table payable and checkout when enabled, dashboard always toman",
+  "checks": [
+    "JS syntax",
+    "PHP lint",
+    "currency conversion regression",
+    "R309 finance unit test"
+  ],
+  "still_open": [
+    "full live-source UI screenshot and complete visual review",
+    "end-to-end authenticated Local/Public setting parity across sync",
+    "MariaDB and Windows integration for combined candidate",
+    "business-day sales attribution design/test",
+    "dashboard/reports/printing workstreams"
+  ],
+  "patch_hashes": {
+    "R310-PUBLIC-CURRENCY-ON-35IN-QA.patch": "d61a3f512294923fc53fb6bebeaee62532403b422103095cffa8f0517cb03967",
+    "R310-LOCAL-CURRENCY-ON-R309-QA.patch": "156a72f3361f46ef388592f21dbb9d81e85d78f241e63c3e407b28e0f1f7a857"
+  },
+  "test_results": {
+    "result": "PASS",
+    "cases": 13,
+    "local": "R307+R308+R309+R310-QA",
+    "public": "35in+R310-QA",
+    "canonical_database_unit": "toman",
+    "installed": false
+  },
+  "r309_php_unit_result": "PASS",
+  "php_lint": "PASS",
+  "node_syntax": "PASS",
+  "patch_apply_dry_run": "PASS",
+  "screenshots": [
+    {
+      "file": "R310-desktop-after-rial.png",
+      "sha256": "b703f3714fac8d4bc734125fb853dc4441af6217eac2b93016c97a3f55d1ba34",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-desktop-before-rial.png",
+      "sha256": "1544f9d646b2d715ab3e543507dae55404a9c092505095dd18acc7137baa48e6",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-discount-desktop-after.png",
+      "sha256": "74a19d5201e5a8086b32ed590b33bd94feeb52258b339b33b03bf7b1d1fa3bf3",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-discount-desktop-before.png",
+      "sha256": "3bb112aebc257435d2405552987b26655e92136babfacb64c58b176f3d4f4de2",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-discount-mobile-after.png",
+      "sha256": "a344013643e33b3cf6f39a850b733566de8e9e0b60b79212e64151e2b88f69ce",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-discount-mobile-before.png",
+      "sha256": "ae755ffe25f02946f97e18b5194420093ae1e0921bdd18b14aeaf028bb8e3782",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-mobile-after-rial.png",
+      "sha256": "63aee5b15a268e3c849fc6867470e09004d272d09fc8dd0f88308ea4748109c8",
+      "scope": "source-derived mocked viewport, not live cafe"
+    },
+    {
+      "file": "R310-mobile-before-rial.png",
+      "sha256": "061df5568c4d73956ad209969ec224c5561964021d5ebceac62cf7c72f9d6e91",
+      "scope": "source-derived mocked viewport, not live cafe"
+    }
+  ],
+  "visual_qa": "INCOMPLETE_SOURCE_DERIVED_ONLY_NO_FULL_SHELL_FIELD",
+  "mariadb_combined_r310": "NOT_RUN",
+  "last_confirmed_installed": {
+    "local": "R307",
+    "public": "R306"
+  },
+  "full_business_day_accounting": "NOT_PATCHED_NEEDS_POLICY_AND_MIGRATION_TEST"
+}
