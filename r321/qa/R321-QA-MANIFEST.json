@@ -1,0 +1,64 @@
+{
+  "phase": "R321",
+  "status": "GITHUB_PHP_CONTRACT_AND_WINDOWS_PRINT_RASTER_QA_PASS_NOT_INSTALLED",
+  "parent": "R320 source QA; no installation",
+  "source_branch": "qa/sokna-r321-print-station-order-global-20261121",
+  "changes": [
+    "PrintService.php now preserves section.station and items[].station/order_index across preparation station grouping",
+    "ReceiptRenderer.cs globally flattens all grouped sections before station/order selection; default mode retains historical grouped layout",
+    "Windows-only QA visual harness will render 58 mm and 80 mm PNG receipts from the actual renderer with no print queue"
+  ],
+  "tests": {
+    "php_regression": {
+      "result": "PASS",
+      "assertions": 19,
+      "run_id": 44871209892
+    },
+    "print_agent_source_build": {
+      "result": "PASS",
+      "warnings": 0,
+      "errors": 0,
+      "run_id": 44870961470
+    },
+    "actual_print_raster": {
+      "result": "PASS",
+      "cases": 9,
+      "run_id": 44871209892,
+      "artifact_id": 14693559640,
+      "engine": "Sokna.PrintAgent.Worker.ReceiptRenderer"
+    },
+    "visual_review": {
+      "result": "REVIEWED",
+      "checks": [
+        "all 4 items visible across modes",
+        "bar-first and kitchen-first globally distinct",
+        "as-ordered preserves alternating station order",
+        "58mm 2-column with notes below",
+        "80mm 3-column with notes in cells",
+        "open-account marker survives empty footer"
+      ]
+    },
+    "physical_paper": {
+      "result": "NOT_PERFORMED"
+    },
+    "real_agent_bridge": {
+      "result": "NOT_PERFORMED"
+    },
+    "release_update_install": {
+      "result": "NOT_STARTED_BY_USER_INSTRUCTION"
+    }
+  },
+  "git_commits": {
+    "php": "ad439060fe571b8911192bb8ce82158def5f9c58",
+    "csharp": "35b40690166b92cdb4c7716288ca1e771bba1b7f",
+    "workflow": "515f699c8485e1eb04b2180a7fae2c7daf9285c8",
+    "visual_harness_fix": "cd80f280c083ae280e93772c52759482b4e2f6dd"
+  },
+  "risk_and_compatibility": [
+    "Old already-enqueued preparation documents may lack original per-item index; legacy cross-station original order cannot be perfectly reconstructed",
+    "The installed Print Agent on the cafe is unchanged, so new choices are not field verified",
+    "The source branch has cumulative QA overlays for earlier R318/R319 UI changes that must be materialized into the final release tree before publishing"
+  ],
+  "live_system_changed": false,
+  "installable": false
+}
