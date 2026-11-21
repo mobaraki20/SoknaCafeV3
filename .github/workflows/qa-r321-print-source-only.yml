@@ -27,3 +27,14 @@ jobs:
       - name: Compile Print Agent source only (no publish/no installer)
         working-directory: windows/print-agent/source
         run: dotnet build Sokna.PrintWorker.slnx -c Release
+      - name: Render actual Print Agent receipts to QA-only images
+        working-directory: windows/print-agent/source
+        env:
+          SOKNA_PRINT_QA_OUT: ${{ runner.temp }}\\sokna-r321-render-qa
+        run: dotnet run --project tests/Sokna.PrintAgent.VisualAcceptance/Sokna.PrintAgent.VisualAcceptance.csproj -c Release
+      - name: Attach renderer QA pixels only (no installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: r321-print-agent-render-qa
+          path: ${{ runner.temp }}\\sokna-r321-render-qa\\
+          retention-days: 7
