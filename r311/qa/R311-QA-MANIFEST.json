@@ -1,0 +1,118 @@
+{
+  "schema": "sokna-r311-cumulative-work-in-progress-v1",
+  "date": "2026-11-21",
+  "status": "QA_SOURCE_ONLY_NOT_INSTALLABLE",
+  "origin": "installed-local-R307_plus_uninstalled-R308/R309/R310-QA",
+  "public_component": "not_deployed_or_changed_this_iteration",
+  "source_tree": "/mnt/data/sokna-r311-work/local",
+  "migration_count_new": 0,
+  "changed_source_files": [
+    {
+      "path": "public/assets/printing-workspace.js",
+      "original_sha256": "5dfd13f8938041fee7562701227a075a305f1c9e09f609beb5bb46f6b5ad5044",
+      "r311_sha256": "481a34f18b4fdefe080a3f0d6b4ac9fca2ad31b1ecead6179b8a5397e19472ef"
+    },
+    {
+      "path": "public/assets/product-shell.js",
+      "original_sha256": "6ba7430113e3f9dafd0d0221973a7bdeb44e7faaf2e4adb291243eb8d899b167",
+      "r311_sha256": "48d7ffbcb023b2a11c0175830ebd8152f933a9963174eb157d31f7e440df3058"
+    },
+    {
+      "path": "public/assets/product-ui.css",
+      "original_sha256": "b71e130e400e2111f3405f50e1636de862dfb2a800023d7202d3a7b24f7ff4dd",
+      "r311_sha256": "6e81f1e28d8733c483a5f303a4814b7b86b1a4fcf4fb9707fdeb3fac90f72583"
+    },
+    {
+      "path": "public/assets/reports-workspace.js",
+      "original_sha256": "e6f92a8afaa016b9d4b1d9b0709b29cff2a0b4414b65ef894d2f4dcf61c931ef",
+      "r311_sha256": "9ebd77f4d2eaa3d7c3d853ab3f35ca7d4445b9f00996b4bca684a8f14725a89d"
+    },
+    {
+      "path": "public/index.php",
+      "original_sha256": "b11391291c85bc1a5179db9aff49502789822359f80554acc0498373151e5e66",
+      "r311_sha256": "1f0a589730e36e441db4ebc6a2205222bbc7145c83f71b241086fcc450b54bee"
+    },
+    {
+      "path": "public/printing/index.php",
+      "original_sha256": "078282dc37bfa44e234593e558f989ea76fd7568874036f806037e53a32d78f2",
+      "r311_sha256": "2d0bf751009ad20054f2d8e3ae752f8ae546693b06b08735ad09e52f526dd569"
+    },
+    {
+      "path": "public/reports/api.php",
+      "original_sha256": "2be976a13d67d50eb43a35c011dace18c778ab87addf7dad3662d3277ed995da",
+      "r311_sha256": "2d5421334cbd7224eba417164f3457b4ac430f87dc18f8034a7edba69f3ac607"
+    },
+    {
+      "path": "public/reports/index.php",
+      "original_sha256": "1d94ca4510075fa6d955ec4b33f2e0b734acc285b79b0448ca69b3deaac2e0ca",
+      "r311_sha256": "cedccd850c5f4301a6d76f6378500986778b2d35f7e96e9473d09fdd071bf221"
+    },
+    {
+      "path": "resources/shared-staff-ui/dashboard-workspace.php",
+      "original_sha256": "af89837285fb7ffee53fd86cf9aad9083874f4bdd4bc3b68bd4d78bc4f2a41a7",
+      "r311_sha256": "005662f893535e77b2b3cdc7c6b045c9d1f8e33214c3b11767a69091c651171d"
+    },
+    {
+      "path": "resources/shared-staff-ui/reports-workspace.php",
+      "original_sha256": "53b115605b7adee605c52486a28c0aa5c0a8e1927563d589f1799c76454dd0eb",
+      "r311_sha256": "ea438fb8254930b80b4fd9ed3c2ea777d701bdc0179c798735ba02c1a0bfd7b6"
+    },
+    {
+      "path": "src/Domain/Reporting/ReportingService.php",
+      "original_sha256": "ef9d8ee144547d4ccffe6246dcca080758b3aa6d6dac7fb1e2de7717fb5d7203",
+      "r311_sha256": "7842eb7b6627404d3e5dc2574b9ae4a57c187d1cdfb87f397bb3a6ed465b0778"
+    },
+    {
+      "path": "src/UI/ProductShell.php",
+      "original_sha256": "67b2ef69c4875edc981c391d122aea3f2175406711954e7ddce1d9882c535eca",
+      "r311_sha256": "a8c8b41770f1b4eeb28315c45829f63c9c5f1ddd8dc025fa95f7761f586d8d1b"
+    }
+  ],
+  "implemented_scope": [
+    "sales attributed to table_session business date while settlement cash dated by immutable receipt business date",
+    "independent sales and cash reconciliation in reports",
+    "group category and variant-family item sales filtering",
+    "dashboard real orders/table-session/drafts/settlements timeline",
+    "quick bell current business-day filter with historical inbox preserved",
+    "printing editor simplified via progressive disclosure and independent live typography sample; Windows actual printer not verified",
+    "read-only historical invoice UI matches native SCDS responsive styles"
+  ],
+  "tests": {
+    "php_lint": 8,
+    "js_check": 3,
+    "sqlite_portable_sales_axes": "PASS_NOT_MARIADB",
+    "js_bell_cutoff": "PASS_BROWSER_MOCK",
+    "R309_unit": "PASS_NO_DB",
+    "R310_currency": "PASS",
+    "playwright_visual": {
+      "report_items": [
+        "desktop",
+        "mobile"
+      ],
+      "print_editor": [
+        "desktop",
+        "mobile"
+      ],
+      "invoice_history": [
+        "desktop",
+        "mobile"
+      ],
+      "full_authenticated_cafe_UI": false
+    },
+    "printing_agent_hardware": false,
+    "production_qa": false
+  },
+  "outstanding": [
+    "real MariaDB schema/query and finance E2E cross-day test",
+    "Public projection schema and report parity",
+    "all reporting formulas audit with long-term events/reversals",
+    "notification bell fallback on Public staff requiring authoritative business date",
+    "actual PrintAgent printing output and custom strings/title/subtitle features",
+    "variant analytics category custom cross-category grouping",
+    "full QA for dashboard event source access and shift operation",
+    "remaining 129-issue register work",
+    "version/update/install qualification only after all issues closed"
+  ],
+  "not_approved_for_production": true,
+  "dont_install_zip": true
+}
