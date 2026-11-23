@@ -1,0 +1,32 @@
+name: Sokna Emergency protected release gate (QA only)
+on:
+  push:
+    branches:
+      - qa/sokna-emergency-gate-pass28-20261123
+    paths:
+      - 'qa/emergency_release_gate.py'
+      - 'qa/test_emergency_release_gate_ci.py'
+      - '.github/workflows/qa-emergency-gate-pass28.yml'
+  workflow_dispatch:
+jobs:
+  fail-closed-source-contract:
+    name: No-host Emergency package integrity and negative test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Static syntax and offline fail-closed package matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile qa/emergency_release_gate.py qa/test_emergency_release_gate_ci.py
+          python qa/test_emergency_release_gate_ci.py -v
+      - name: Reminder this does not approve production
+        run: |
+          echo 'QA_ONLY: This workflow neither creates an installable package nor deploys.'
+          echo 'PENDING: MariaDB/InnoDB, real host SHA readback, clean setup, HTTPS and restore acceptance.'
