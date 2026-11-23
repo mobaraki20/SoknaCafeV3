@@ -56,9 +56,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 qa/emergency_release_gate.py release \\
-            --release-archive r306-factory/public/SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip \\
-            --output "$RUNNER_TEMP/emergency-factory-veto.json"
+          python3 qa/emergency_release_gate.py release --release-archive r306-factory/public/SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip --output "$RUNNER_TEMP/emergency-factory-veto.json"
           echo 'EMERGENCY_QA_GATE_PASSED__FIELD_AUTHORIZATION_STILL_FALSE'
       - uses: actions/upload-artifact@v4
         with:
