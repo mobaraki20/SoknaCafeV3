@@ -1,7 +1,7 @@
 name: SOKNA R306 PUBLIC — isolated central factory original ZIP registration
 on:
   push:
-    branches: [qa/sokna-r306-coordinated-ui-20261120]
+    branches: [qa/sokna-emergency-gate-pass28-20261123]
     paths: ['.github/workflows/sokna-r306-factory-public-isolated.yml']
   workflow_dispatch:
 permissions:
@@ -52,6 +52,14 @@ jobs:
           (folder/'candidate-contract.json').write_text(json.dumps(contract,ensure_ascii=False,sort_keys=True,indent=2)+'\n')
           print('R306_FACTORY_ORIGINAL_SHA_VERIFIED_NO_REBUILD',component,digest)
           PYCODE
+      - name: Mandatory QA Emergency protected package gate before factory artifact registration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 qa/emergency_release_gate.py release \\
+            --release-archive r306-factory/public/SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip \\
+            --output "$RUNNER_TEMP/emergency-factory-veto.json"
+          echo 'EMERGENCY_QA_GATE_PASSED__FIELD_AUTHORIZATION_STILL_FALSE'
       - uses: actions/upload-artifact@v4
         with:
           name: SOKNA-R306-PUBLIC-ORIGINAL-ZIP-FACTORY-SOURCE
