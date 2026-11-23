@@ -1,0 +1,70 @@
+name: Sokna Public forward schema interruption and resume - real MariaDB (QA only)
+on:
+  push:
+    branches:
+      - qa/sokna-emergency-gate-pass28-20261123
+    paths:
+      - qa/prepare_schema_forward_pass28.py
+      - qa/test_public_schema_forward_mysql.php
+      - .github/workflows/qa-schema-forward-pass28.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  disposable-mariadb-forward-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-pass28-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=24
+    env:
+      PASS28_INPUT_DIR: ${{ runner.temp }}/original-r306
+      PASS28_PUBLIC_ROOT: ${{ runner.temp }}/public-r306-extracted
+      SOKNA_QA_DB_HOST: 127.0.0.1
+      SOKNA_QA_DB_PASSWORD: disposable-pass28-only
+      SOKNA_QA_SCHEMA_FORWARD_ONLY: 'yes'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/original-r306
+      - name: Verify exact R306 Public ZIP and SQL pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/prepare_schema_forward_pass28.py | tee "$RUNNER_TEMP/pass28-source-proof.json"
+      - name: Test real MariaDB DDL partial apply, incompatible table rejection and replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l qa/test_public_schema_forward_mysql.php
+          php qa/test_public_schema_forward_mysql.php "$PASS28_PUBLIC_ROOT" | tee "$RUNNER_TEMP/pass28-mariadb-evidence.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-PASS28-DISPOSABLE-MARIADB-SCHEMA-RECEIPTS
+          path: |
+            ${{ runner.temp }}/pass28-source-proof.json
+            ${{ runner.temp }}/pass28-mariadb-evidence.json
+          if-no-files-found: ignore
+      - name: Block operational authorization
+        if: always()
+        run: echo 'QA only. No Emergency HTTP/fence acceptance and no production deploy authorization.'
