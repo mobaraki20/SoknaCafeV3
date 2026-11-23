@@ -25,8 +25,8 @@ jobs:
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=5s --health-timeout=4s --health-retries=24
     env:
-      PASS28_INPUT_DIR: ${{ runner.temp }}/original-r306
-      PASS28_PUBLIC_ROOT: ${{ runner.temp }}/public-r306-extracted
+      PASS28_INPUT_DIR: ${{ github.workspace }}/pass28-original-r306
+      PASS28_PUBLIC_ROOT: ${{ github.workspace }}/pass28-public-r306
       SOKNA_QA_DB_HOST: 127.0.0.1
       SOKNA_QA_DB_PASSWORD: disposable-pass28-only
       SOKNA_QA_SCHEMA_FORWARD_ONLY: 'yes'
