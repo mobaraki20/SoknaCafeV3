@@ -998,3 +998,207 @@ final class ReportingService
                                 'provisional_recipes'=>(int)($catalog['provisional_recipes']??0),'complete_recipes'=>(int)($catalog['complete_recipes']??0),'partial_recipes'=>(int)($catalog['partial_recipes']??0),'recipes_with_estimated_components'=>(int)($catalog['recipes_with_estimated_components']??0),
                                 'empty_recipes'=>(int)($catalog['empty_recipes']??0),'coverage_percent'=>$recipeCoverage,'reviewed_coverage_percent'=>$reviewedCoverage],
             'masterdata_readiness'=>['inventory_items'=>(int)($master['active_items']??0),'items_needing_review'=>(int)($master['items_needing_review']??0),
+                                    'purchase_units'=>(int)($units['active_units']??0),'units_needing_review'=>(int)($units['units_needing_review']??0)],
+            'count_context'=>['full_counts_in_range'=>(int)($counts['full_counts_in_range']??0),'previous_full_count_at'=>$previous!==''?$previous:null,'next_full_count_at'=>$next!==''?$next:null,'two_sided_full_count_context'=>$previous!==''&&$next!==''],
+            'count_reconciliation'=>$reconciliation,
+            'purchase_price_changes'=>$priceChanges,
+            'analysis_readiness'=>[
+                'recipe_coverage_percent'=>$recipeCoverage,'reviewed_recipe_percent'=>$reviewedCoverage,'stock_known_cost_percent'=>$stockCoverage,
+                'contribution_margin_quality'=>'separate_exact_estimated_incomplete',
+                'actual_cogs_status'=>(string)($reconciliation['status']??'not_anchored'),
+                'net_profit_status'=>'not_claimed',
+                'net_profit_note'=>'خرید ثبت‌شده معادل بهای مصرف نیست؛ سود خالص فقط با موجودی ابتدا/انتها، پوشش کامل هزینه و هزینه‌های عملیاتی کامل قابل اتکا است.'
+            ],
+        ];
+    }
+
+
+    private function purchasePriceChangeReport(string $fromAt,string $toAt): array
+    {
+        $sql="SELECT pe.*,pe.item_name_snapshot item_name,pe.category_key_snapshot category_key,pe.category_name_snapshot category_name,u.display_name actor_name
+              FROM inventory_purchase_price_events pe LEFT JOIN users u ON u.id=pe.actor_user_id
+              WHERE pe.purchase_occurred_at>=? AND pe.purchase_occurred_at<? ORDER BY pe.purchase_occurred_at DESC,pe.id DESC";
+        $stmt=$this->pdo->prepare($sql);$stmt->execute([$fromAt,$toAt]);$rows=$stmt->fetchAll(PDO::FETCH_ASSOC)?:[];
+        $summary=['events'=>count($rows),'increases'=>0,'decreases'=>0,'unchanged'=>0,'baselines'=>0,'notified'=>0,'high_priority'=>0,'largest_increase_percent'=>null,'largest_decrease_percent'=>null,'total_impact_vs_last'=>0,'total_impact_vs_average'=>0];
+        $items=[];$suppliers=[];$categories=[];
+        foreach($rows as &$row){
+            $direction=(string)$row['direction'];if($direction==='increase')$summary['increases']++;elseif($direction==='decrease')$summary['decreases']++;elseif($direction==='unchanged')$summary['unchanged']++;else $summary['baselines']++;
+            if((string)$row['notification_level']!=='history_only')$summary['notified']++;if((string)$row['notification_level']==='high')$summary['high_priority']++;
+            $pct=$row['delta_last_percent']!==null?(float)$row['delta_last_percent']:($row['delta_average_percent']!==null?(float)$row['delta_average_percent']:null);
+            if($pct!==null&&$pct>0)$summary['largest_increase_percent']=$summary['largest_increase_percent']===null?$pct:max((float)$summary['largest_increase_percent'],$pct);
+            if($pct!==null&&$pct<0)$summary['largest_decrease_percent']=$summary['largest_decrease_percent']===null?$pct:min((float)$summary['largest_decrease_percent'],$pct);
+            $summary['total_impact_vs_last']+=(int)($row['impact_vs_last']??0);$summary['total_impact_vs_average']+=(int)($row['impact_vs_average']??0);
+            $categoryKey=(string)$row['category_key'];if($categoryKey!=='')$categories[$categoryKey]=(string)$row['category_name'];
+            $id=(int)$row['inventory_item_id'];if(!isset($items[$id]))$items[$id]=['inventory_item_id'=>$id,'item_name'=>(string)$row['item_name'],'category_key'=>$categoryKey,'category_name'=>(string)$row['category_name'],'events'=>0,'latest_unit_cost'=>(float)$row['normalized_unit_cost'],'latest_at'=>(string)$row['purchase_occurred_at'],'oldest_unit_cost'=>(float)$row['normalized_unit_cost'],'oldest_at'=>(string)$row['purchase_occurred_at'],'min_unit_cost'=>(float)$row['normalized_unit_cost'],'max_unit_cost'=>(float)$row['normalized_unit_cost']];
+            $items[$id]['events']++;$items[$id]['oldest_unit_cost']=(float)$row['normalized_unit_cost'];$items[$id]['oldest_at']=(string)$row['purchase_occurred_at'];$items[$id]['min_unit_cost']=min((float)$items[$id]['min_unit_cost'],(float)$row['normalized_unit_cost']);$items[$id]['max_unit_cost']=max((float)$items[$id]['max_unit_cost'],(float)$row['normalized_unit_cost']);
+            $supplier=trim((string)($row['supplier']??''));if($supplier!=='')$suppliers[$supplier]=true;
+        }unset($row);
+        foreach($items as &$item){$old=(float)$item['oldest_unit_cost'];$item['range_change_percent']=$old>0?(((float)$item['latest_unit_cost']-$old)/$old)*100:null;}unset($item);
+        usort($items,static fn(array $a,array $b):int=>$b['events']<=>$a['events']?:strcmp($a['item_name'],$b['item_name']));
+        $supplierList=array_keys($suppliers);sort($supplierList,SORT_NATURAL|SORT_FLAG_CASE);
+        $categoryList=[];foreach($categories as $key=>$name)$categoryList[]=['category_key'=>$key,'category_name'=>$name];usort($categoryList,static fn(array $a,array $b):int=>strcmp($a['category_name'],$b['category_name']));
+        return ['summary'=>$summary,'rows'=>$rows,'items'=>array_values($items),'categories'=>$categoryList,'suppliers'=>$supplierList,'axis'=>'purchase_occurred_at_local','history_model'=>'immutable_snapshot'];
+    }
+
+    /**
+     * Reconcile inventory consumption only across two finalized full physical counts.
+     * This interval may be wider than the requested report range and is reported separately.
+     * Purchases are an input to the formula, never a synonym for COGS.
+     */
+    private function countBoundedReconciliation(string $fromAt,string $toAt): array
+    {
+        $opening=$this->one("SELECT id,title,snapshot_at FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at<=? ORDER BY snapshot_at DESC,id DESC LIMIT 1",[$fromAt]);
+        $closing=$this->one("SELECT id,title,snapshot_at FROM inventory_count_sessions WHERE status='finalized' AND scope_type='full' AND NOT EXISTS (SELECT 1 FROM inventory_count_lines incomplete WHERE incomplete.session_id=inventory_count_sessions.id AND incomplete.actual_quantity IS NULL) AND session_type='periodic' AND snapshot_at>=? ORDER BY snapshot_at ASC,id ASC LIMIT 1",[$toAt]);
+        $openingId=(int)($opening['id']??0);$closingId=(int)($closing['id']??0);
+        if($openingId<1||$closingId<1||$openingId===$closingId){
+            return ['status'=>'not_anchored','opening_count'=>$openingId>0?['id'=>$openingId,'title'=>(string)($opening['title']??''),'snapshot_at'=>(string)($opening['snapshot_at']??'')]:null,
+                    'closing_count'=>$closingId>0?['id'=>$closingId,'title'=>(string)($closing['title']??''),'snapshot_at'=>(string)($closing['snapshot_at']??'')]:null,
+                    'note'=>'برای تطبیق بهای مصرف، یک شمارش کامل قبل از شروع و یک شمارش کامل بعد از پایان بازه لازم است.'];
+        }
+        $openAt=(string)$opening['snapshot_at'];$closeAt=(string)$closing['snapshot_at'];
+        if($openAt===''||$closeAt===''||$openAt>=$closeAt)return ['status'=>'not_anchored','opening_count'=>null,'closing_count'=>null,'note'=>'ترتیب زمانی شمارش‌های کامل برای تطبیق معتبر نیست.'];
+        $valuation=function(int $sessionId):array{
+            $r=$this->one("SELECT COUNT(*) item_count,
+                    SUM(actual_quantity IS NULL) uncounted_items,
+                    SUM(CASE WHEN actual_quantity IS NOT NULL AND actual_total_cost IS NOT NULL THEN 1
+                             WHEN actual_quantity IS NOT NULL AND unit_cost_snapshot IS NOT NULL AND cost_status_snapshot='known' THEN 1 ELSE 0 END) known_items,
+                    SUM(CASE WHEN actual_quantity IS NOT NULL AND actual_total_cost IS NULL AND unit_cost_snapshot IS NOT NULL
+                                  AND cost_status_snapshot IN('estimated','legacy_unclassified') THEN 1 ELSE 0 END) estimated_items,
+                    SUM(CASE WHEN actual_quantity IS NOT NULL AND actual_total_cost IS NULL
+                                  AND (unit_cost_snapshot IS NULL OR cost_status_snapshot IS NULL OR cost_status_snapshot IN('partial','unknown')) THEN 1 ELSE 0 END) unknown_items,
+                    COALESCE(SUM(CASE WHEN actual_quantity IS NOT NULL AND actual_total_cost IS NOT NULL THEN actual_total_cost
+                                      WHEN actual_quantity IS NOT NULL AND unit_cost_snapshot IS NOT NULL AND cost_status_snapshot='known' THEN ROUND(actual_quantity*unit_cost_snapshot) ELSE 0 END),0) known_value,
+                    COALESCE(SUM(CASE WHEN actual_quantity IS NOT NULL AND actual_total_cost IS NULL AND unit_cost_snapshot IS NOT NULL
+                                          AND cost_status_snapshot IN('estimated','legacy_unclassified') THEN ROUND(actual_quantity*unit_cost_snapshot) ELSE 0 END),0) estimated_value
+                FROM inventory_count_lines WHERE session_id=?",[$sessionId]);
+            $known=(int)($r['known_value']??0);$estimated=(int)($r['estimated_value']??0);$unknown=(int)($r['unknown_items']??0)+(int)($r['uncounted_items']??0);
+            return ['items'=>(int)($r['item_count']??0),'known_items'=>(int)($r['known_items']??0),'estimated_items'=>(int)($r['estimated_items']??0),'unknown_items'=>$unknown,
+                    'known_value'=>$known,'estimated_value'=>$estimated,'covered_value'=>$known+$estimated,
+                    'quality'=>$unknown>0?'incomplete':((int)($r['estimated_items']??0)>0?'estimated':'exact')];
+        };
+        $openValue=$valuation($openingId);$closeValue=$valuation($closingId);
+        $purchase=$this->one("SELECT COUNT(*) receipt_count,SUM(total_cost IS NOT NULL) costed_receipts,SUM(total_cost IS NULL) missing_cost_receipts,COALESCE(SUM(total_cost),0) recorded_spend
+                              FROM inventory_supply_receipts WHERE received_at>=? AND received_at<?",[$openAt,$closeAt]);
+        $tracked=$this->one("SELECT
+                    COALESCE(SUM(CASE WHEN movement_type IN('recipe_consumption','reversal') AND source_type IN('order_item','order_item_adjustment')
+                                          AND cost_status IN('known','estimated') AND total_cost_delta IS NOT NULL THEN -total_cost_delta ELSE 0 END),0) recipe_cost,
+                    COALESCE(SUM(CASE WHEN movement_type='waste' AND cost_status IN('known','estimated') AND total_cost_delta IS NOT NULL THEN -total_cost_delta ELSE 0 END),0) waste_cost,
+                    SUM(CASE WHEN movement_type IN('recipe_consumption','reversal','waste') AND (cost_status NOT IN('known','estimated') OR total_cost_delta IS NULL) THEN 1 ELSE 0 END) unknown_samples
+                FROM inventory_movements WHERE occurred_at>=? AND occurred_at<?",[$openAt,$closeAt]);
+        $missingPurchase=(int)($purchase['missing_cost_receipts']??0);$unknown=$openValue['unknown_items']+$closeValue['unknown_items']+$missingPurchase;
+        $estimated=$openValue['estimated_items']+$closeValue['estimated_items'];
+        $status=$unknown>0?'incomplete':($estimated>0?'estimated':'exact');
+        $coveredFormula=(int)$openValue['covered_value']+(int)($purchase['recorded_spend']??0)-(int)$closeValue['covered_value'];
+        $reconciled=$status==='incomplete'?null:$coveredFormula;
+        $trackedCovered=(int)($tracked['recipe_cost']??0)+(int)($tracked['waste_cost']??0);
+        $gap=$reconciled!==null&&(int)($tracked['unknown_samples']??0)===0?$reconciled-$trackedCovered:null;
+        return [
+            'status'=>$status,'interval_axis'=>'full_count_to_full_count','interval_from'=>$openAt,'interval_to'=>$closeAt,
+            'opening_count'=>['id'=>$openingId,'title'=>(string)($opening['title']??''),'snapshot_at'=>$openAt,'valuation'=>$openValue],
+            'closing_count'=>['id'=>$closingId,'title'=>(string)($closing['title']??''),'snapshot_at'=>$closeAt,'valuation'=>$closeValue],
+            'purchases'=>['receipts'=>(int)($purchase['receipt_count']??0),'costed_receipts'=>(int)($purchase['costed_receipts']??0),'missing_cost_receipts'=>$missingPurchase,'recorded_spend'=>(int)($purchase['recorded_spend']??0)],
+            'covered_formula_value'=>$coveredFormula,'reconciled_cogs'=>$reconciled,
+            'tracked_consumption'=>['recipe_cost'=>(int)($tracked['recipe_cost']??0),'waste_cost'=>(int)($tracked['waste_cost']??0),'covered_cost'=>$trackedCovered,'unknown_samples'=>(int)($tracked['unknown_samples']??0)],
+            'other_or_unexplained_cost_gap'=>$gap,
+            'quality_note'=>$status==='exact'?'دو شمارش کامل و همهٔ هزینه‌های خرید/ارزش‌گذاری شمارش‌ها دارای مبنای قطعی‌اند.':($status==='estimated'?'فرمول شمارش‌به‌شمارش کامل است اما بخشی از ارزش موجودی از مبنای برآوردی/قدیمی آمده است.':'به‌دلیل هزینهٔ نامعلوم در شمارش یا رسید خرید، عدد کامل COGS منتشر نمی‌شود.'),
+        ];
+    }
+
+
+    /** Bundle component usage is operational usage, not additional revenue. Parent bundle remains the only financial line. */
+    private function bundleComponentUsageReport(string $from,string $to): array
+    {
+        $rows=$this->all("SELECT c.component_item_id,MAX(c.item_name_snapshot) component_name,COALESCE(SUM(c.quantity),0) component_quantity,COUNT(DISTINCT c.order_item_id) bundle_line_count,COUNT(DISTINCT i.item_id) parent_bundle_count FROM order_item_bundle_components c JOIN order_items i ON i.id=c.order_item_id JOIN orders o ON o.id=i.order_id WHERE o.business_date BETWEEN ? AND ? AND o.status<>'cancelled' GROUP BY c.component_item_id ORDER BY component_quantity DESC,component_name",[$from,$to]);
+        return array_map(static fn(array $r):array=>['component_item_id'=>(int)($r['component_item_id']??0),'component_name'=>(string)($r['component_name']??''),'component_quantity'=>(int)($r['component_quantity']??0),'bundle_line_count'=>(int)($r['bundle_line_count']??0),'parent_bundle_count'=>(int)($r['parent_bundle_count']??0)],$rows);
+    }
+
+    /** Operational/service metrics use persisted domain timestamps; averages exclude missing/invalid timestamp pairs. */
+    private function operationsReport(string $from,string $to): array
+    {
+        $p=[$from,$to];
+        $orders=$this->one("SELECT COUNT(*) order_count,SUM(order_source='guest') guest_orders,SUM(order_source='staff') staff_orders,SUM(status='cancelled') cancelled_orders,SUM(order_source='guest' AND status<>'cancelled') guest_non_cancelled,SUM(order_source='guest' AND accepted_at IS NOT NULL AND accepted_at>=created_at) guest_accept_samples,COALESCE(AVG(CASE WHEN order_source='guest' AND accepted_at IS NOT NULL AND accepted_at>=created_at THEN TIMESTAMPDIFF(SECOND,created_at,accepted_at) END),0) avg_guest_accept_seconds FROM orders WHERE business_date BETWEEN ? AND ?",$p);
+        $orderStatuses=$this->all("SELECT status,COUNT(*) order_count FROM orders WHERE business_date BETWEEN ? AND ? GROUP BY status ORDER BY order_count DESC,status",$p);
+        $sessions=$this->one("SELECT COUNT(*) session_count,SUM(status IN('active','pending')) open_sessions,SUM(ended_at IS NOT NULL) closed_sessions,SUM(ended_at IS NOT NULL AND ended_at>=started_at) duration_samples,COALESCE(AVG(CASE WHEN ended_at IS NOT NULL AND ended_at>=started_at THEN TIMESTAMPDIFF(SECOND,started_at,ended_at) END),0) avg_session_seconds FROM table_sessions WHERE business_date BETWEEN ? AND ?",$p);
+        $waiter=$this->one("SELECT COUNT(*) waiter_calls,SUM(status='completed') completed_calls,SUM(status='cancelled') cancelled_calls,SUM(accepted_at IS NOT NULL AND accepted_at>=created_at) response_samples,COALESCE(AVG(CASE WHEN accepted_at IS NOT NULL AND accepted_at>=created_at THEN TIMESTAMPDIFF(SECOND,created_at,accepted_at) END),0) avg_response_seconds,SUM(completed_at IS NOT NULL AND completed_at>=created_at) completion_samples,COALESCE(AVG(CASE WHEN completed_at IS NOT NULL AND completed_at>=created_at THEN TIMESTAMPDIFF(SECOND,created_at,completed_at) END),0) avg_completion_seconds FROM waiter_calls WHERE business_date BETWEEN ? AND ?",$p);
+        $orderShifts=$this->all("SELECT business_date report_date,business_shift_key shift_key,business_shift_label shift_label,COUNT(*) order_count,SUM(order_source='guest') guest_orders,SUM(order_source='staff') staff_orders,SUM(status='cancelled') cancelled_orders FROM orders WHERE business_date BETWEEN ? AND ? GROUP BY business_date,business_shift_key,business_shift_label ORDER BY business_date,business_shift_key",$p);
+        $sessionShifts=$this->all("SELECT business_date report_date,business_shift_key shift_key,business_shift_label shift_label,COUNT(*) session_count,SUM(ended_at IS NOT NULL) closed_sessions FROM table_sessions WHERE business_date BETWEEN ? AND ? GROUP BY business_date,business_shift_key,business_shift_label ORDER BY business_date,business_shift_key",$p);
+        $waiterShifts=$this->all("SELECT business_date report_date,business_shift_key shift_key,business_shift_label shift_label,COUNT(*) waiter_calls,SUM(status='completed') completed_calls FROM waiter_calls WHERE business_date BETWEEN ? AND ? GROUP BY business_date,business_shift_key,business_shift_label ORDER BY business_date,business_shift_key",$p);
+        return [
+            'orders'=>[
+                'total'=>(int)($orders['order_count']??0),'guest'=>(int)($orders['guest_orders']??0),'staff'=>(int)($orders['staff_orders']??0),'cancelled'=>(int)($orders['cancelled_orders']??0),
+                'guest_non_cancelled'=>(int)($orders['guest_non_cancelled']??0),'acceptance_samples'=>(int)($orders['guest_accept_samples']??0),'avg_guest_accept_seconds'=>(int)round((float)($orders['avg_guest_accept_seconds']??0)),
+                'statuses'=>array_map(static fn(array $r):array=>['status'=>(string)$r['status'],'count'=>(int)$r['order_count']],$orderStatuses),
+            ],
+            'sessions'=>[
+                'total'=>(int)($sessions['session_count']??0),'open'=>(int)($sessions['open_sessions']??0),'closed'=>(int)($sessions['closed_sessions']??0),'duration_samples'=>(int)($sessions['duration_samples']??0),'avg_duration_seconds'=>(int)round((float)($sessions['avg_session_seconds']??0)),
+            ],
+            'waiter'=>[
+                'total'=>(int)($waiter['waiter_calls']??0),'completed'=>(int)($waiter['completed_calls']??0),'cancelled'=>(int)($waiter['cancelled_calls']??0),
+                'response_samples'=>(int)($waiter['response_samples']??0),'avg_response_seconds'=>(int)round((float)($waiter['avg_response_seconds']??0)),
+                'completion_samples'=>(int)($waiter['completion_samples']??0),'avg_completion_seconds'=>(int)round((float)($waiter['avg_completion_seconds']??0)),
+            ],
+            'shifts'=>$this->mergeOperationShifts($orderShifts,$sessionShifts,$waiterShifts),
+        ];
+    }
+
+    private function mergeOperationShifts(array ...$groups): array
+    {
+        $map=[];
+        foreach($groups as $group)foreach($group as $r){
+            $date=(string)($r['report_date']??'');$key=(string)($r['shift_key']??'');$id=$date.'|'.$key;
+            if(!isset($map[$id]))$map[$id]=['date'=>$date,'shift_key'=>$key,'shift_label'=>(string)($r['shift_label']??$key),'orders'=>0,'guest_orders'=>0,'staff_orders'=>0,'cancelled_orders'=>0,'sessions'=>0,'closed_sessions'=>0,'waiter_calls'=>0,'completed_waiter_calls'=>0];
+            foreach(['order_count'=>'orders','guest_orders'=>'guest_orders','staff_orders'=>'staff_orders','cancelled_orders'=>'cancelled_orders','session_count'=>'sessions','closed_sessions'=>'closed_sessions','waiter_calls'=>'waiter_calls','completed_calls'=>'completed_waiter_calls'] as $source=>$target)if(array_key_exists($source,$r))$map[$id][$target]=(int)$r[$source];
+        }
+        ksort($map);return array_values($map);
+    }
+
+    /** Tender reporting has two independent date axes over the same selected YYYY-MM-DD range. */
+    private function tenderReport(string $from,string $to): array
+    {
+        $p=[$from,$to];
+        $sign="CASE WHEN r.status='completed' THEN a.amount ELSE -a.amount END";
+        $businessTotals=$this->all("SELECT a.tender_type,COUNT(*) document_count,COALESCE(SUM({$sign}),0) net_amount FROM settlement_tender_allocations a JOIN settlement_records r ON r.id=a.settlement_id WHERE r.destination='direct' AND r.tender_capture_status='recorded' AND r.status IN('completed','reversal') AND r.business_date BETWEEN ? AND ? GROUP BY a.tender_type",$p);
+        $civilTotals=$this->all("SELECT a.tender_type,COUNT(*) document_count,COALESCE(SUM({$sign}),0) net_amount FROM settlement_tender_allocations a JOIN settlement_records r ON r.id=a.settlement_id WHERE r.destination='direct' AND r.tender_capture_status='recorded' AND r.status IN('completed','reversal') AND r.civil_date BETWEEN ? AND ? GROUP BY a.tender_type",$p);
+        $businessDaily=$this->all("SELECT r.business_date report_date,a.tender_type,COALESCE(SUM({$sign}),0) net_amount FROM settlement_tender_allocations a JOIN settlement_records r ON r.id=a.settlement_id WHERE r.destination='direct' AND r.tender_capture_status='recorded' AND r.status IN('completed','reversal') AND r.business_date BETWEEN ? AND ? GROUP BY r.business_date,a.tender_type ORDER BY r.business_date,a.tender_type",$p);
+        $businessShift=$this->all("SELECT r.business_date report_date,r.business_shift_key shift_key,r.business_shift_label shift_label,a.tender_type,COALESCE(SUM({$sign}),0) net_amount FROM settlement_tender_allocations a JOIN settlement_records r ON r.id=a.settlement_id WHERE r.destination='direct' AND r.tender_capture_status='recorded' AND r.status IN('completed','reversal') AND r.business_date BETWEEN ? AND ? GROUP BY r.business_date,r.business_shift_key,r.business_shift_label,a.tender_type ORDER BY r.business_date,r.business_shift_key,a.tender_type",$p);
+        $civilDaily=$this->all("SELECT r.civil_date report_date,a.tender_type,COALESCE(SUM({$sign}),0) net_amount FROM settlement_tender_allocations a JOIN settlement_records r ON r.id=a.settlement_id WHERE r.destination='direct' AND r.tender_capture_status='recorded' AND r.status IN('completed','reversal') AND r.civil_date BETWEEN ? AND ? GROUP BY r.civil_date,a.tender_type ORDER BY r.civil_date,a.tender_type",$p);
+        $crossDay=$this->all("SELECT r.business_date,r.civil_date,a.tender_type,COUNT(*) document_count,COALESCE(SUM({$sign}),0) net_amount FROM settlement_tender_allocations a JOIN settlement_records r ON r.id=a.settlement_id WHERE r.destination='direct' AND r.tender_capture_status='recorded' AND r.status IN('completed','reversal') AND r.business_date BETWEEN ? AND ? AND r.civil_date IS NOT NULL AND r.business_date<>r.civil_date GROUP BY r.business_date,r.civil_date,a.tender_type ORDER BY r.business_date,r.civil_date,a.tender_type",$p);
+        $legacy=$this->one("SELECT COUNT(*) document_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_amount FROM settlement_records WHERE destination='direct' AND tender_capture_status='legacy_missing' AND status IN('completed','reversal') AND business_date BETWEEN ? AND ?",$p);
+        $missingCivil=$this->one("SELECT COUNT(*) document_count,COALESCE(SUM(CASE WHEN status='completed' THEN total ELSE -total END),0) net_amount FROM settlement_records WHERE destination='direct' AND tender_capture_status='recorded' AND status IN('completed','reversal') AND civil_date IS NULL AND business_date BETWEEN ? AND ?",$p);
+        return [
+            'types'=>[
+                ['type'=>'cash','label'=>'نقدی'],['type'=>'pos','label'=>'کارتخوان'],['type'=>'bank_transfer','label'=>'کارت‌به‌کارت'],
+            ],
+            'business'=>['totals'=>$this->normalizeTenderTotals($businessTotals),'daily'=>$this->normalizeTenderDaily($businessDaily),'shifts'=>$this->normalizeTenderShifts($businessShift)],
+            'civil'=>['totals'=>$this->normalizeTenderTotals($civilTotals),'daily'=>$this->normalizeTenderDaily($civilDaily)],
+            'cross_day'=>array_map(static fn(array $r):array=>[
+                'business_date'=>(string)$r['business_date'],'civil_date'=>(string)$r['civil_date'],'type'=>(string)$r['tender_type'],
+                'document_count'=>(int)$r['document_count'],'net_amount'=>(int)$r['net_amount'],
+            ],$crossDay),
+            'coverage'=>[
+                'legacy_missing'=>['document_count'=>(int)($legacy['document_count']??0),'net_amount'=>(int)($legacy['net_amount']??0)],
+                'recorded_missing_civil'=>['document_count'=>(int)($missingCivil['document_count']??0),'net_amount'=>(int)($missingCivil['net_amount']??0)],
+            ],
+        ];
+    }
+
+    private function normalizeTenderTotals(array $rows): array
+    {
+        $map=[];foreach($rows as $r)$map[(string)$r['tender_type']]=['type'=>(string)$r['tender_type'],'document_count'=>(int)$r['document_count'],'net_amount'=>(int)$r['net_amount']];
+        return array_map(static fn(string $type):array=>$map[$type]??['type'=>$type,'document_count'=>0,'net_amount'=>0],['cash','pos','bank_transfer']);
+    }
+
+    private function normalizeTenderDaily(array $rows): array
+    {
+        return array_map(static fn(array $r):array=>['date'=>(string)$r['report_date'],'type'=>(string)$r['tender_type'],'net_amount'=>(int)$r['net_amount']],$rows);
+    }
+
+    private function normalizeTenderShifts(array $rows): array
+    {
+        return array_map(static fn(array $r):array=>['date'=>(string)$r['report_date'],'shift_key'=>(string)$r['shift_key'],'shift_label'=>(string)$r['shift_label'],'type'=>(string)$r['tender_type'],'net_amount'=>(int)$r['net_amount']],$rows);
+    }
+    private function range(?string $from,?string $to): array{$to=$this->date($to?:$this->time->civilDate());$from=$this->date($from?:$to);$a=new DateTimeImmutable($from);$b=new DateTimeImmutable($to);if($a>$b)throw new ReportingException('invalid_range','بازه گزارش معتبر نیست.');if($a->diff($b)->days>365)throw new ReportingException('range_too_large','حداکثر بازه گزارش ۳۶۶ روز است.');return [$from,$to];}
+    private function date(string $v): string{$d=DateTimeImmutable::createFromFormat('!Y-m-d',trim($v));if(!$d||$d->format('Y-m-d')!==trim($v))throw new ReportingException('invalid_date','تاریخ گزارش معتبر نیست.');return $d->format('Y-m-d');}
+    private function one(string $sql,array $p): array{$q=$this->pdo->prepare($sql);$q->execute($p);$r=$q->fetch(PDO::FETCH_ASSOC);return is_array($r)?$r:[];}
+    private function all(string $sql,array $p): array{$q=$this->pdo->prepare($sql);$q->execute($p);return $q->fetchAll(PDO::FETCH_ASSOC)?:[];}
+}
