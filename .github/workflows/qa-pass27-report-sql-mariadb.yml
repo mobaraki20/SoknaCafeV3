@@ -1,0 +1,47 @@
+name: SOKNA PASS27 report SQL actual MariaDB QA only
+on:
+  push:
+    branches: [qa/sokna-pass27-batch-l-finance-20261123]
+    paths:
+      - 'qa/pass27-batch-l/**'
+      - '.github/workflows/qa-pass27-report-sql-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pass27-source-pinned-sql-mariadb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: qa-only-pass27
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    env:
+      QA_DB_HOST: 127.0.0.1
+      QA_DB_PASSWORD: qa-only-pass27
+      QA_DB_DISPOSABLE: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - name: Check pinned PASS27 source and real financial SQL on disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l qa/pass27-batch-l/test_pass27_finance_mariadb.php
+          php qa/pass27-batch-l/test_pass27_finance_mariadb.php | tee "$RUNNER_TEMP/pass27-mariadb-qa.log"
+          grep -q PASS27_REAL_MARIADB_REPORT_SQL_PASS_21_CHECKS_QA_ONLY "$RUNNER_TEMP/pass27-mariadb-qa.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-PASS27-BATCH-L-FINANCE-MARIADB-RECEIPT
+          path: ${{ runner.temp }}/pass27-mariadb-qa.log
+          if-no-files-found: ignore
