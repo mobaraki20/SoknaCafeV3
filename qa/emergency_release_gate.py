@@ -18,6 +18,13 @@ PROTECTED=('emergency.php','src/Emergency/','resources/update-trust-v1.json',
 PUBLIC_OWNER='src/Update/emergency-owner-v1.json'
 PUBLIC_CANDIDATE='src/Update/EmergencyOwnerCandidate.php'
 PUBLIC_VERSION='VERSION.txt'
+# Stable Recovery is managed by the full-snapshot format but must keep its exact
+# byte pins unless a separately qualified protected-recovery transition is approved.
+RECOVERY_PINS={
+ 'recovery.php':'84093636728846bcd5f2480b2f8b90592518befdb1cba55a805d6472dda8381a',
+ 'src/Recovery/StableRecoveryService.php':'872c872d90a3146d5bc4286803a11410a57fd4ebfe6a9a80f919cffc8df72bed',
+}
+
 
 def digest(b):return hashlib.sha256(b).hexdigest()
 def nozip_error(e):return f'{type(e).__name__}:{e}'
@@ -74,6 +81,8 @@ def validate_source(source,canonical,register):
         g.check(len([n for n in asets if n.startswith('source-working/')])==875,'source_875_product_files')
         g.check(not any(n=='emergency.php' or n.startswith('src/Emergency/') for n in data),'source_no_protected_leaks')
         g.check('bootstrap.php' in data and 'emergency-next.php' in data,'source_bootstrap_presence')
+        for p,pin in RECOVERY_PINS.items():
+            g.check(prefix+p in asets and digest(a.read(prefix+p))==pin,'source_recovery_pin_'+p)
         try:
             pin=reg['file_inventory'];g.check(len(pin)==12,'canonical_12_components')
             for f in pin:
@@ -120,6 +129,8 @@ def validate_release(release,expected_source=None):
         bad=[p for p in mapping if any(p==s or p.startswith(s) for s in PROTECTED)]
         g.check(not bad,'package_no_protected_paths',bad[:4])
         g.check(len(mapping)>=3,'package_required_files')
+        for p,pin in RECOVERY_PINS.items():
+            if p in mapping:g.check(mapping[p]==pin,'package_recovery_pin_'+p)
         for p in [PUBLIC_OWNER,PUBLIC_CANDIDATE,PUBLIC_VERSION,'.htaccess','emergency-next.php','bootstrap.php']:
             g.check(p in mapping,'package_contains_'+p)
         tree=hashlib.sha256()
