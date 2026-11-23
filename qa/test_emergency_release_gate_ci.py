@@ -55,6 +55,8 @@ class StrictReleaseGateCI(unittest.TestCase):
     self.assertEqual(self.run_gate(extra=[('payload/../config.php',b'x')])['result'],'FAIL_CLOSED')
   def test_duplicate_member_rejected(self):
     self.assertEqual(self.run_gate(extra=[('payload/VERSION.txt',b'x')])['result'],'FAIL_CLOSED')
+  def test_recovery_owner_mutation_rejected(self):
+    src=self.src.copy();src['recovery.php']=b'<?php injected';self.assertEqual(self.run_gate(source=src)['result'],'FAIL_CLOSED')
   def test_downgrade_rejected(self):
     m=copy.deepcopy(self.m);m['compatibility']['supported_baselines'][0]['version']=m['version'];self.assertEqual(self.run_gate(m=m)['result'],'FAIL_CLOSED')
   def test_tree_hash_rejected(self):
