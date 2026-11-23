@@ -1,0 +1,81 @@
+name: Sokna R306 historical MariaDB finance recheck (QA only)
+on:
+  push:
+    branches:
+      - qa/sokna-emergency-gate-pass28-20261123
+    paths:
+      - '.github/workflows/qa-mariadb-r306-pass28.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  historical-mariadb-fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-r306-qa-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=4s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip
+          coverage: none
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-original
+      - name: Verify immutable Local R306 package and extract exact embedded source
+        shell: bash
+        env:
+          SOURCE_ROOT: ${{ runner.temp }}/r306-local-web
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,zipfile,io,hashlib,os
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          candidates=list((r/'r306-original').rglob('SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip'))
+          assert len(candidates)==1, 'exact original R306 zip unavailable'
+          assert hashlib.sha256(candidates[0].read_bytes()).hexdigest()=='1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209', 'exact R306 SHA mismatch'
+          dst=pathlib.Path(os.environ['SOURCE_ROOT']);dst.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(candidates[0]) as z:
+              with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as inner:
+                  for n in inner.namelist():
+                      if n.endswith('/'):continue
+                      name=pathlib.PurePosixPath(n)
+                      assert not name.is_absolute() and '..' not in name.parts
+                      to=dst/n;to.parent.mkdir(parents=True,exist_ok=True);to.write_bytes(inner.read(n))
+          print('PASS_ORIGINAL_R306_SHA256')
+          PY
+      - name: Run MariaDB 11.4 historical invoice and selected-item grouping test
+        shell: bash
+        env:
+          R303_DB_DISPOSABLE: 'yes'
+          R303_DB_HOST: '127.0.0.1'
+          R303_DB_PASSWORD: 'disposable-r306-qa-only'
+          R303_LOCAL_SOURCE: ${{ runner.temp }}/r306-local-web
+        run: |
+          set -euo pipefail
+          php -m | grep -q pdo_mysql
+          php r303/tests/finance_mariadb.php | tee "$RUNNER_TEMP/r306-mariadb-historical.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-PASS28-HISTORICAL-R306-MARIADB-READONLY-RECEIPT
+          path: ${{ runner.temp }}/r306-mariadb-historical.log
+          if-no-files-found: ignore
+          retention-days: 15
+      - name: No production release authorization
+        if: always()
+        run: |
+          echo 'QA HISTORICAL R306 ONLY. This does NOT validate PASS27, Emergency DB-forward, live café or production.'
