@@ -16,7 +16,7 @@ $pdo->exec("CREATE TABLE settlement_records(id INT PRIMARY KEY,session_id INT NO
 $pdo->exec("CREATE TABLE settlement_tender_allocations(id INT PRIMARY KEY AUTO_INCREMENT,settlement_id INT NOT NULL,tender_type VARCHAR(24) NOT NULL,amount BIGINT NOT NULL,FOREIGN KEY(settlement_id) REFERENCES settlement_records(id)) ENGINE=InnoDB");
 $pdo->exec("INSERT INTO table_sessions VALUES(10,'2026-11-22','closed'),(11,'2026-11-23','open')");
 $pdo->exec("INSERT INTO settlement_records VALUES
-(1,10,'completed',470,500,50,20,'2026-11-23','2026-11-23','direct','recorded',1,'night','شب'),
+(1,10,'completed',470,500,50,20,'2026-11-23','2026-11-24','direct','recorded',1,'night','شب'),
 (2,10,'reversal',100,110,10,0,'2026-11-24','2026-11-24','direct','recorded',0,'night','شب'),
 (3,11,'completed',200,200,0,0,'2026-11-23','2026-11-23','direct','recorded',0,'night','شب')");
 $pdo->exec("INSERT INTO settlement_tender_allocations(settlement_id,tender_type,amount) VALUES(1,'cash',300),(1,'pos',170),(2,'pos',100),(3,'bank_transfer',200)");
@@ -49,9 +49,9 @@ checkL(($sum['cash']??0)===300&&($sum['pos']??0)===70&&($sum['bank_transfer']??0
 $bd=runL($pdo,$q['businessDaily'],'2026-11-23','2026-11-24');
 checkL(count($bd)===4,'payment daily tender breakdown includes reversal date');
 $cd=runL($pdo,$q['civilDaily'],'2026-11-23','2026-11-24');
-checkL(count($cd)===4,'civil-day tender view preserves separate date axis');
+checkL(count($cd)===3,'civil-day tender view groups records by their own civil date');
 $cross=runL($pdo,$q['crossDay'],'2026-11-23','2026-11-24');
-checkL(count($cross)===4,'cross-day receipt attribution is not silently merged');
+checkL(count($cross)===2 && array_sum(array_map(static fn($r)=>(int)$r['net_amount'],$cross))===470,'cross-day receipts exposed when civil and business dates differ');
 // A repeated run must not change any accounting data (all tested queries are read-only).
 checkL((int)$pdo->query('SELECT COUNT(*) FROM settlement_records')->fetchColumn()===3,'read-only report did not mutate receipts');
 $neg=runL($pdo,$q['summary'],'2026-11-26','2026-11-27')[0];
