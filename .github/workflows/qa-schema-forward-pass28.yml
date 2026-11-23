@@ -45,7 +45,7 @@ jobs:
           name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
           run-id: 44723958829
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/original-r306
+          path: ${{ github.workspace }}/pass28-original-r306
       - name: Verify exact R306 Public ZIP and SQL pins
         shell: bash
         run: |
