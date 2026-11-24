@@ -39,7 +39,7 @@ with sync_playwright() as p:
             go(page,host,'/operator/' if host=='local' else '/staff/operator/')
             page.locator(f'[data-open-tables] [data-table-id="{f["table_id"]}"]').click()
             expect(page.locator('[data-account-settle]')).to_be_enabled(timeout=25000)
-            check_money(page.locator('.sc-hall-payable-rial'),f['initial_total']*10,'ریال')
+            check_money(page.locator('.sc-hall-payable-rial' if host=='local' else '.sc-hall-summary-row.is-payable strong'),f['initial_total']*10,'ریال')
             assert page.locator('[data-account-line]').count()>0
             save(page,host+'-hall-rial')
             page.locator('[data-account-settle]').click()

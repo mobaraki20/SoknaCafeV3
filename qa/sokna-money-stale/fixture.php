@@ -73,6 +73,18 @@ try{
  [$sc,$cookie]=$login($loginName,$pw);$a($sc===303,'admin Public auth');
  foreach($keys as $key){if($key==='guest_operational')continue;$r=$http('/api/staff/read?model='.$key,null,$cookie);$a($r[0]===200&&is_array($r[1]['payload']??null),'read '.$key.' '.json_encode(array_slice($r,0,2)));}
  echo "PASS all staff models over authenticated HTTP\n";
+ // Drain the independent projection lane and publish its actual ACK cursors in heartbeat.
+ // Fast command relay alone intentionally does not deliver every reporting model.
+ for($attempt=0;$attempt<8;$attempt++){
+   $drain=$publisher->syncProjectionModelsV2(1000,12,8);
+   $a($drain['success']===true,'periodic projection lane');
+   $a($publisher->syncHeartbeat(8)['success']===true,'heartbeat ACK cursor');
+   $diag=$http('/api/staff/read?model=reports',null,$cookie)[1];
+   $ops=$http('/api/staff/read?model=operations',null,$cookie)[1];
+   if(($diag['stale']??true)===false&&($ops['stale']??true)===false)break;
+ }
+ $a(($diag['stale']??true)===false&&($ops['stale']??true)===false,'fresh real reporting and operations after bounded sync');
+ echo "PASS normal projection lane converges with authenticated heartbeat\n";
  $diag=$http('/api/staff/read?model=reports',null,$cookie)[1];
  $report=$diag['payload'];
  require_once $tmp.'/public/src/Remote/PublicDashboardFinance.php';
