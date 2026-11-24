@@ -4,6 +4,8 @@ on:
     branches: [qa/sokna-central-factory-intake-20261124]
     paths:
       - '.github/workflows/sokna-consolidated-central-intake-20261124.yml'
+      - '.github/workflows/sokna-release-factory.yml'
+      - '.github/workflows/sokna-release-candidate-gate.yml'
   workflow_dispatch:
 permissions:
   contents: read
