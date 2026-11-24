@@ -51,6 +51,7 @@ def zread(blob):
         assert all(not n.startswith('/') and '..' not in n.split('/') and '\\' not in n for n in ns)
         return {n:z.read(n) for n in ns if not n.endswith('/')}
 
+print('FACTORY_ACTUAL_REBUILT_SOURCE_ZIP_SHA256', H(SRC_ZIP.read_bytes()))
 for p,want in PIN.items():
     assert H(pathlib.Path(p).read_bytes())==want, 'PIN_DRIFT_'+p
     assert zipfile.ZipFile(p).testzip() is None
