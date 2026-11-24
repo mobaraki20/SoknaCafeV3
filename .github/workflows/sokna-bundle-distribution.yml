@@ -52,9 +52,17 @@ jobs:
               for a,c,s in reversed(v['edits']):lines[a:c]=[s]
               b=''.join(lines).encode();assert h(b)==v['after'],name
               f.write_bytes(b)
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-distribution/candidate-v2.b64').read_bytes(),validate=True))
+          assert h(raw)=='f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name
+              f.write_bytes(b)
           PY
           php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
           awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/bundle.php"
-          printf '%s\n' '$p->exec("ALTER TABLE order_items ADD COLUMN bundle_distribution_origin_id BIGINT UNSIGNED NULL, ADD INDEX idx_qa_bundle_origin(bundle_distribution_origin_id)");' >> "$RUNNER_TEMP/bundle.php"
+          printf '%s\n' '$p->exec("ALTER TABLE order_items ADD COLUMN bundle_distribution_origin_id BIGINT UNSIGNED NULL, ADD INDEX idx_qa_bundle_origin(bundle_distribution_origin_id)");$p->exec("ALTER TABLE order_item_adjustments ADD COLUMN parent_adjustment_id BIGINT UNSIGNED NULL, ADD INDEX idx_qa_adjustment_parent(parent_adjustment_id)");' >> "$RUNNER_TEMP/bundle.php"
           cat qa/sokna-bundle-distribution/scenario.php >> "$RUNNER_TEMP/bundle.php"
           php "$RUNNER_TEMP/bundle.php"
