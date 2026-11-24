@@ -206,7 +206,7 @@ jobs:
         if: ${{ needs.registered-candidate-gate.result == 'success' }}
         uses: actions/download-artifact@v4
         with:
-          name: SOKNA-FACTORY-SHARED-CANDIDATE-RECEIPT-ONLY
+          name: SOKNA-FACTORY-SHARED-CANDIDATE-RECEIPT-${{ inputs.candidate_artifact }}
           path: candidate-proof
       - name: Validate exact gate-run receipt, producer identity and keep operator BLOCKED
         if: ${{ needs.registered-candidate-gate.result == 'success' }}
@@ -260,7 +260,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SOKNA-UNIFIED-FACTORY-CANDIDATE-DECISION-ONLY
+          name: SOKNA-UNIFIED-FACTORY-CANDIDATE-DECISION-${{ inputs.candidate_artifact }}
           path: final-proof/release-decision.json
           if-no-files-found: ignore
           retention-days: 90
