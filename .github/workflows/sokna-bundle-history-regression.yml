@@ -1,0 +1,63 @@
+name: SOKNA historical report correction current split read regression
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-bundle-history-regression.yml','qa/sokna-bundle-history-regression/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  migration:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [clean]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45501285541
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Exact bundle lifecycle
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_MIGRATION_MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib,base64,zlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP']); h=lambda b:hashlib.sha256(b).hexdigest()
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-history/delta.b64').read_bytes(),validate=True))
+          assert h(raw)=='c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name;f.write_bytes(b)
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0093_bundle_distribution_provenance
+          awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/bundle.php"
+          cat qa/sokna-bundle-split-read/scenario.php >> "$RUNNER_TEMP/bundle.php"
+          php "$RUNNER_TEMP/bundle.php"
