@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: a35090082b01d47de95b07fcbd6f7d0517f426e3
+          ref: b5bbf27b4964a2cc0851c09a2d224fcbaff3da1c
           path: checked-source
           persist-credentials: false
       - uses: actions/download-artifact@v4
@@ -55,7 +55,8 @@ jobs:
           python3 - <<'PY'
           import json,hashlib,os,pathlib,shutil,zipfile,io
           r=pathlib.Path(os.environ['RUNNER_TEMP']);pre=r/'build'/'preflight'
-          source='b3aad22db33a6217383f43ab7cd1a0aa24ba710650955a37142231988a1f9d84'
+          source='823180ddf7525d70af964b6348155a342ac72b282fdb58e3c9272f1c1bb5c878'
+          assert hashlib.sha256((pre/'SOKNA-CONSOLIDATED-R3-SOURCE-QA-NOT-INSTALL.zip').read_bytes()).hexdigest()==source
           selections=[
               ('local','SOKNA-CURRENT-LOCAL-FACTORY-INTAKE-QA-ONLY','SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip','local-update'),
               ('public','SOKNA-CURRENT-PUBLIC-FACTORY-INTAKE-QA-ONLY','SOKNA-PUBLIC-CONSOLIDATED-ROUTINE-EMERGENCY-PREFLIGHT-DO-NOT-INSTALL.zip','public-update'),
@@ -63,6 +64,7 @@ jobs:
           for comp,artifact,name,kind in selections:
               out=r/(comp+'-candidate');out.mkdir()
               b=(pre/name).read_bytes(); (out/name).write_bytes(b)
+              assert hashlib.sha256(b).hexdigest()=={'local':'61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e','public':'65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073'}[comp]
               with zipfile.ZipFile(io.BytesIO(b)) as z:
                   if comp=='local':version=json.loads(z.read('release-set.json'))['targets']['local']['version']
                   else:version=json.loads(z.read('manifest.json'))['version']
