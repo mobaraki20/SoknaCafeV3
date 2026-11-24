@@ -63,6 +63,13 @@ jobs:
           assert s.count(a)==1
           p.write_text(s.replace(a,"'0090_recipe_based_item_descriptions','0091_verified_purchase_unit_reconciliation'], true)"))
           PY
+          python3 - <<'PY'
+          import pathlib,os
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'local/bootstrap.php'
+          s=p.read_text();a="require_once __DIR__ . '/src/Domain/Reporting/ReportingService.php';"
+          assert s.count(a)==1
+          p.write_text(s.replace(a,"require_once __DIR__ . '/src/Domain/Reporting/PersianReportExport.php';\n"+a))
+          PY
           php qa/sokna-request-b/test_migration_report.php
           python3 - <<'PY'
           import pathlib,os,zipfile,xml.etree.ElementTree as E

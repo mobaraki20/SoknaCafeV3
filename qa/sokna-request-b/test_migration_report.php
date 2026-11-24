@@ -21,6 +21,8 @@ $s=$p->prepare("SELECT COUNT(*) FROM inventory_purchase_units u JOIN inventory_i
 $a($core->migrations()->migrate()===[],'migration replay');
 $r=$core->reporting()->report('2026-11-24','2026-11-24');
 foreach(['summary','daily','destinations','top_items','tenders','operations','inventory','margin'] as $k)$a(array_key_exists($k,$r),'report missing '.$k);
+$current=$core->reporting()->currentViewWorkbook('2026-11-24','2026-11-24');
+$a(str_starts_with($current,"PK"),'current workbook invalid');
 $x=$core->reporting()->analyticalWorkbook('2026-11-24','2026-11-24');
 file_put_contents(getenv('RUNNER_TEMP').'/analytical.xlsx',$x);
 $guest=$core->publicProjectionBuilder()->guestPublish();$json=json_encode($guest,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);$a(str_contains($json,'بلک موهیتو'),'black mojito missing from projection');
