@@ -28,4 +28,42 @@ $case('itemized payment full reversal then cancel all',function()use($core,$run,
  $r=$pay($s,'ci-reverse-partial-pay-0001','itemized',[['order_item_id'=>$line,'quantity'=>1]]);$a(!$r['closes_session'],'itemized open');$svc->reverse((int)$r['settlement_id'],'QA itemized refund','ci-reverse-partial-refund-0001',$user);
  $a($cancel($s,[$oid],'ci-reverse-partial-cancel-0001')['success'],'cancel after itemized reversal');$core->inventoryOrders()->processPending();$a($balances()===$before,'stock restored');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='closed','closed');$a((int)$one('SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$s])===2,'no extra receipt');
 });
+
+$newSession=function($key,$n,$status='active')use($run,$admin,$day){
+ $t=$run("INSERT INTO cafe_tables(name,table_number,code,access_token) VALUES(?,?,?,?)",['QA '.$key,$n,'ci-fin-'.$key.'-table','ci-fin-'.$key.'-token']);
+ $s=$run("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,opened_by_user_id,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,?,?,?,?,?)",['ci-fin-'.$key.'-session',$t,$status,$t,$admin,$day,'day','روز','00:00']);return [$t,$s];
+};
+$put=function($t,$s,$token,$q=3,$source='staff')use($core,$item,$admin){return $core->orders()->commit(['source'=>$source,'table_id'=>$t,'session_id'=>$s,'client_token'=>$token,'actor_user_id'=>$admin,'items'=>[['id'=>$item['id'],'quantity'=>$q]]]);};
+$case('legacy unknown tender remains unknown after exact full reversal',function()use($newSession,$put,$svc,$user,$a,$one,$rows,$cancel,$core,$balances){
+ [$t,$s]=$newSession('legacy',64997);$before=$balances();$o=$put($t,$s,'ci-fin-legacy-order-0001');$oid=(int)$o['order_id'];$core->inventoryOrders()->processPending();
+ $ac=$svc->account($s);$paid=$svc->settle(['session_id'=>$s,'expected_session_id'=>$s,'expected_remaining_total'=>$ac['remaining_total'],'expected_signature'=>$ac['signature'],'mode'=>'full','destination'=>'direct','request_id'=>'ci-fin-legacy-pay-0001','print_receipt'=>false],$user,true);
+ $a($paid['tender_capture_status']==='legacy_missing'&&$paid['tenders']===[],'fixture legacy no tender');
+ $rev=$svc->reverse((int)$paid['settlement_id'],'QA legacy exact reversal','ci-fin-legacy-reverse-0001',$user);$a($rev['tender_capture_status']==='legacy_missing'&&$rev['tenders']===[],'legacy not invented');
+ $a($cancel($s,[$oid],'ci-fin-legacy-cancel-0001')['success'],'cancel');$core->inventoryOrders()->processPending();$a($balances()===$before,'stock restored');
+ $a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='closed','closed');$a((int)$one('SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$s])===2,'two immutable receipts only');
+ $a((int)$one('SELECT COUNT(*) FROM settlement_tender_allocations t JOIN settlement_records r ON r.id=t.settlement_id WHERE r.session_id=?',[$s])===0,'no fabricated tender');
+});
+$case('mismatched reversal fails closed atomically',function()use($newSession,$put,$svc,$user,$a,$one,$p,$cancel,$core,$balances,$pay){
+ [$t,$s]=$newSession('mismatch',64996);$o=$put($t,$s,'ci-fin-mismatch-order-0001');$oid=(int)$o['order_id'];$core->inventoryOrders()->processPending();
+ $paid=$pay($s,'ci-fin-mismatch-pay-0001');$rev=$svc->reverse((int)$paid['settlement_id'],'QA mismatch reversal','ci-fin-mismatch-reverse-0001',$user);
+ // Disposable corruption fixture: existing full refund method amount altered, original immutable.
+ $p->prepare('UPDATE settlement_tender_allocations SET amount=amount-1 WHERE settlement_id=?')->execute([(int)$rev['settlement_id']]);$before=$balances();
+ try{$cancel($s,[$oid],'ci-fin-mismatch-cancel-0001');throw new RuntimeException('mismatched tender allowed');}catch(\Sokna\Local\Domain\Orders\OrderStaffActionException $e){$a($e->errorCode==='reversed_history_mismatch','unexpected conflict '.$e->errorCode);}
+ $core->inventoryOrders()->processPending();$a($balances()===$before,'stock rollback');$a($one('SELECT status FROM orders WHERE id=?',[$oid])==='accounted','order rollback');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='active','session remains open');$a((int)$one('SELECT COUNT(*) FROM whole_order_cancellations WHERE order_id=?',[$oid])===0,'no cancellation ledger');
+});
+$case('ordinary active payment still uses existing credit and zero closure',function()use($newSession,$put,$svc,$a,$one,$core,$balances,$pay,$cancel){
+ [$t,$s]=$newSession('activepay',64995);$before=$balances();$o=$put($t,$s,'ci-fin-activepay-order-0001');$oid=(int)$o['order_id'];$line=(int)$o['lines'][0]['order_item_id'];$core->inventoryOrders()->processPending();$pay($s,'ci-fin-activepay-pay-0001','itemized',[['order_item_id'=>$line,'quantity'=>1]]);
+ $a($cancel($s,[$oid],'ci-fin-activepay-cancel-0001')['success'],'cancel active paid');$core->inventoryOrders()->processPending();$a($balances()===$before,'stock restored');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='closed','closed');
+ $a((int)$one("SELECT COUNT(*) FROM settlement_records WHERE session_id=? AND partial_reversal_source_id IS NOT NULL",[$s])===1,'one exact credit');
+ $a((int)$one('SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$s])===3,'original credit and zero closure');
+});
+$case('mixed accounted and pending guest cancellation',function()use($newSession,$put,$a,$one,$core,$balances,$cancel){
+ [$t,$s]=$newSession('mixedpending',64994);$before=$balances();$a1=$put($t,$s,'ci-fin-mixed-accounted-0001');$g=$put($t,$s,'ci-fin-mixed-guest-0001',1,'guest');$oid=(int)$a1['order_id'];$gid=(int)$g['order_id'];$core->inventoryOrders()->processPending();$a(in_array($one('SELECT status FROM orders WHERE id=?',[$gid]),['new','pending_approval'],true),'pending fixture');
+ $a($cancel($s,[$oid,$gid],'ci-fin-mixed-cancel-0001')['success'],'cancel mixed');$core->inventoryOrders()->processPending();$a($balances()===$before,'only actual booked stock returned');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='closed','closed');$a((int)$one("SELECT COUNT(*) FROM orders WHERE session_id=? AND status='cancelled'",[$s])===2,'both cancelled');$a((int)$one('SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$s])===0,'no receipts');
+});
+$case('active draft preserves table occupancy during unpaid cancellation',function()use($newSession,$put,$core,$a,$one,$cancel,$item,$user,$balances){
+ [$t,$s]=$newSession('draft',64993);$before=$balances();$o=$put($t,$s,'ci-fin-draft-order-0001');$oid=(int)$o['order_id'];$core->inventoryOrders()->processPending();
+ $draft=$core->tableDrafts()->save(['table_id'=>$t,'expected_session_id'=>$s,'expected_version'=>0,'items'=>[['id'=>$item['id'],'quantity'=>1]]],$user);$a($draft['success'],'real draft');
+ $a($cancel($s,[$oid],'ci-fin-draft-cancel-0001')['success'],'cancel order');$core->inventoryOrders()->processPending();$a($balances()===$before,'stock restored');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='active','draft retains session');$a((int)$one("SELECT COUNT(*) FROM table_drafts WHERE table_id=? AND state='active'",[$t])===1,'draft unchanged');
+});
 $a(!$fail,'finance regression failures: '.implode('; ',$fail));
