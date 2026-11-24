@@ -67,7 +67,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public"
           unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
           unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
-          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0093_bundle_distribution_provenance
           python3 - <<'PY'
           import os,pathlib,base64,zlib,hashlib
           t=pathlib.Path(os.environ['RUNNER_TEMP'])
@@ -230,12 +230,12 @@ jobs:
           assert j['success'] and j['preflight']['ok'] and j['setup']['state']=='new',j
           body={'csrf':j['csrf'],'data_dir':'/var/www/sokna-local-ci/PrivateData','db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_clean_browser','user':'root','pass':'disposable-local-clean-ci'},'create_database':True,'admin_user':'ci-admin','admin_password':'disposable-admin-only-20261124','cafe_name':'DISPOSABLE CI','table_count':5}
           ins=post('install_new',body)
-          assert ins['success'] and ins['state']=='installed' and ins['health']['migrations_applied']==92 and ins['health']['migration_files']==92,ins
+          assert ins['success'] and ins['state']=='installed' and ins['health']['migrations_applied']==93 and ins['health']['migration_files']==93,ins
           _,raw=get('/setup/api.php?action=status');s=json.loads(raw)
           assert s['setup']['installed'] and s['setup']['binding_current'],s
           assert post('install_new',body,423)['code']=='setup_locked'
           code,body=get('/login.php');assert code==200 and len(body)>0
-          print('PASS actual Local Browser Setup, 92 migrations, installation binding, duplicate-install denial, login page')
+          print('PASS actual Local Browser Setup, 93 migrations, installation binding, duplicate-install denial, login page')
           PY
           sudo -u www-data php -r '
             $cfg=require "/var/www/sokna-local-ci/config.php";
@@ -247,7 +247,7 @@ jobs:
             if($n!==1)throw new RuntimeException("Black Mojito count ".$n);
             echo "PASS clean catalog data readback: 19 approved recipes, one Black Mojito\n";
           '
-          printf '{"browser_setup":"PASS","migrations":92,"recipe_count":19,"black_mojito":1,"duplicate_install_denial":"PASS","disposable_only":true,"operator_authorized":false}\n' > "$RUNNER_TEMP/clean/browser-setup-receipt.json"
+          printf '{"browser_setup":"PASS","migrations":93,"recipe_count":19,"black_mojito":1,"duplicate_install_denial":"PASS","disposable_only":true,"operator_authorized":false}\n' > "$RUNNER_TEMP/clean/browser-setup-receipt.json"
       - name: Diagnostics
         if: failure()
         run: sudo tail -n 100 /var/log/apache2/error.log || true
