@@ -93,7 +93,7 @@ jobs:
           php -r '
             require getenv("RUNNER_TEMP")."/local/src/Core/Migrations.php";
             $pdo=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_consolidated_test;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
-            $m=new \\Sokna\\Local\\Core\\Migrations($pdo,getenv("RUNNER_TEMP")."/local/database/migrations");
+            $m=new \Sokna\Local\Core\Migrations($pdo,getenv("RUNNER_TEMP")."/local/database/migrations");
             $applied=$m->migrate();
             $rows=$pdo->query("SELECT version FROM schema_migrations ORDER BY version")->fetchAll(PDO::FETCH_COLUMN);
             foreach(["0084_remaining_account_discount_revisions","0085_whole_order_cancellations","0086_order_cancellation_batches","0087_partial_order_payment_reversals","0088_historical_variant_order_snapshots"] as $v){if(!in_array($v,$rows,true))throw new RuntimeException("MISSING_MIGRATION_".$v);}
