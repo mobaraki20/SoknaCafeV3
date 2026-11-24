@@ -107,7 +107,7 @@ for path,v in json.loads(bundle_raw).items():
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+H(bundle_raw)).encode())
 # Current guest/order report quantities and stable hall card width.
-for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'),('sokna-bundle-distribution/candidate.b64','02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'),('sokna-bundle-distribution/candidate-v2.b64','f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'),('sokna-bundle-history/delta.b64','c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4')]:
+for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'),('sokna-bundle-distribution/candidate.b64','02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'),('sokna-bundle-distribution/candidate-v2.b64','f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'),('sokna-bundle-history/delta.b64','c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4'),('sokna-fin-reversal/delta.b64','73d4741e210bff9b1022a56780f7f7ffe7d95ddf31b9e00a646bf61f08629450')]:
  raw=zlib.decompress(base64.b64decode((pathlib.Path(__file__).parent.parent/filename).read_bytes(),validate=True))
  assert H(raw)==sha
  for path,v in json.loads(raw).items():

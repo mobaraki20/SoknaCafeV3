@@ -29,12 +29,13 @@ with sync_playwright() as p:
         ctx=b.new_context(viewport={'width':390,'height':844})
         page=ctx.new_page();page.set_default_timeout(15000)
         login(ctx,host)
-        def currency():
+        def dashboard():
             go(page,host,'/' if host=='local' else '/staff/')
             card=page.locator('[data-open-accounts-kpi]' if host=='local' else '[data-public-open-accounts-kpi]')
             check_money(card.locator('strong'),f['initial_total'],'تومان')
             check_money(page.locator('.sc-dashboard-kpi').filter(has_text='فروش خالص امروز').locator('strong'),0,'تومان')
             save(page,host+'-dashboard-toman')
+        def hall():
             go(page,host,'/operator/' if host=='local' else '/staff/operator/')
             page.locator(f'[data-open-tables] [data-table-id="{f["table_id"]}"]').click()
             expect(page.locator('[data-account-settle]')).to_be_enabled(timeout=25000)
@@ -47,7 +48,8 @@ with sync_playwright() as p:
             check_money(dialog.locator('.sui-settlement-account__main .amount strong'),f['initial_total']*10,'ریال')
             assert 'تومان' not in dialog.locator('[data-tender-box]').inner_text()
             save(page,host+'-settlement-rial')
-        check(host+'-policy',currency,page)
+        check(host+'-dashboard-policy',dashboard,page)
+        check(host+'-hall-policy',hall,page)
         ctx.close()
     # Explicitly stale the disposable Public heartbeat/model; do not replace app responses.
     ctx=b.new_context(viewport={'width':390,'height':844});page=ctx.new_page();page.set_default_timeout(15000);login(ctx,'public')

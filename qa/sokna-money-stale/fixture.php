@@ -73,6 +73,13 @@ try{
  [$sc,$cookie]=$login($loginName,$pw);$a($sc===303,'admin Public auth');
  foreach($keys as $key){if($key==='guest_operational')continue;$r=$http('/api/staff/read?model='.$key,null,$cookie);$a($r[0]===200&&is_array($r[1]['payload']??null),'read '.$key.' '.json_encode(array_slice($r,0,2)));}
  echo "PASS all staff models over authenticated HTTP\n";
+ $diag=$http('/api/staff/read?model=reports',null,$cookie)[1];
+ $report=$diag['payload'];
+ require_once $tmp.'/public/src/Remote/PublicDashboardFinance.php';
+ $business=\Sokna\PublicEdge\Remote\PublicDashboardFinance::businessDate($report);
+ $view=$business===null?[]:\Sokna\PublicEdge\Remote\PublicDashboardFinance::reconcile($report,$business);
+ echo "QA REPORT_DIAG ".json_encode(['meta'=>array_diff_key($diag,['payload'=>true]),'clock'=>$report['business_clock']??null,'current_business'=>$business,'range'=>$report['dashboard']['range']??null,'today'=>$report['dashboard']['today_summary']??null,'archive_today'=>array_values(array_filter($report['archive']['summary']??[],fn($x)=>($x['date']??null)===$business)),'view'=>array_intersect_key($view,array_flip(['today','today_available','daily_conflicts','daily_coverage']))],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
+
  $path=$tmp.'/multi-browser-fixture.json';file_put_contents($path,json_encode(['public'=>$pair['base'],'local'=>'http://127.0.0.1:18083','installation_id'=>$pair['id'],'username'=>$loginName,'password'=>$pw,'new_password'=>$newPw,'limited_name'=>$limitedName,'limited_password'=>$limitedPw,'table_id'=>$table,'session_id'=>$session,'pending_order'=>(int)$o1['order_id'],'received_order'=>(int)$o2['order_id'],'product'=>$chosen['name'],'initial_total'=>$before['remaining_total']],JSON_THROW_ON_ERROR),LOCK_EX);chmod($path,0600);
  $browser=proc_open(['python3',getenv('SOKNA_MULTI_BROWSER_SCRIPT'),$path,$tmp.'/browser-evidence'],[0=>['file','/dev/null','r'],1=>STDOUT,2=>STDERR],$pipes);
  $a(is_resource($browser),'browser launch');$deadline=microtime(true)+600;
