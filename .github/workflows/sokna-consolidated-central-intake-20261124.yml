@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: 96cae02ae48e063b634a63942e9219763f85517e
+          ref: a35090082b01d47de95b07fcbd6f7d0517f426e3
           path: checked-source
           persist-credentials: false
       - uses: actions/download-artifact@v4
