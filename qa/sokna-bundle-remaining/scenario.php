@@ -1,0 +1,30 @@
+
+$clock=$core->businessClock()->assignment();$day=$clock['business_date'];
+$p->prepare('UPDATE table_sessions SET business_date=?,business_shift_key=?,business_shift_label=?,business_cutoff_snapshot=? WHERE id=?')->execute([$day,$clock['shift_key'],$clock['shift_label'],$clock['cutoff'],$session]);
+$eligible=array_values(array_filter($catalog,fn($c)=>!$c['is_bundle']&&$c['id']!==$item['id']&&$c['price']>0&&$c['takeaway_allowed']));
+$a(count($eligible)>=2,'fixture');[$parent,$choice]=$eligible;$bid=(int)$parent['id'];$cid=(int)$item['id'];$ca=(int)$choice['id'];
+$p->prepare('INSERT INTO item_bundles(bundle_item_id,choice_label,choice_min,choice_max) VALUES(?,?,?,?)')->execute([$bid,'QA partial',1,1]);
+$p->prepare("INSERT INTO item_bundle_components(bundle_item_id,component_item_id,mode,quantity,price_delta,sort_order) VALUES(?,?,'fixed',2,0,1),(?,?,'choice',1,0,2)")->execute([$bid,$cid,$bid,$ca]);
+$p->prepare("UPDATE items SET preparation_station='hot_bar' WHERE id=?")->execute([$cid]);
+$p->prepare("UPDATE items SET preparation_station='kitchen' WHERE id=?")->execute([$ca]);
+$commit=fn($token)=>$core->orders()->commit(['source'=>'staff','table_id'=>$table,'session_id'=>$session,'client_token'=>$token,'actor_user_id'=>$admin,'items'=>[['id'=>$bid,'quantity'=>3,'bundle_choice_item_id'=>$ca]]]);
+$prepId=(int)$core->adminControls()->saveUser(['username'=>'qa-partial-prep','display_name'=>'QA prep','password'=>bin2hex(random_bytes(16)),'active'=>true,'capabilities'=>['preparation'],'preparation_areas'=>['bar','kitchen']],$user)['id'];
+$adjust=fn($id,$d,$t,$rid)=>$core->orderStaffActions()->adjustItemQuantity(['order_item_id'=>$id,'quantity'=>$d+$t,'fulfillment_quantities'=>['dine_in'=>$d,'takeaway'=>$t],'reason'=>'QA partial claim','request_id'=>$rid],$user);
+$balances=fn()=>array_map('intval',array_column($rows("SELECT inventory_item_id,quantity_base FROM inventory_balances ORDER BY inventory_item_id"),'quantity_base','inventory_item_id'));
+$before=$balances();$o=$commit('ci-partial-claim-0001');$oid=(int)$o['order_id'];$id=(int)$o['lines'][0]['order_item_id'];$core->inventoryOrders()->processPending();$consumed=$balances();
+$a($consumed!==$before,'real stock consumption');$a($core->preparation()->claim(['order_id'=>$oid,'area'=>'bar'],['id'=>$prepId])['success'],'only bar claims');
+$a($adjust($id,1,1,'ci-partial-claim-adjust-0001')['success'],'reduce after one claim');$core->inventoryOrders()->processPending();
+$a($balances()===$consumed,'conservative existing consumed bundle ledger preserved after claim');
+$pending=$rows("SELECT id,area_key FROM order_item_adjustments WHERE order_id=? AND preparation_ack_status='pending'",[$oid]);$a(count($pending)===1&&$pending[0]['area_key']==='bar','only claimed area ACK');$a($core->preparation()->acknowledgeAdjustment(['adjustment_id'=>(int)$pending[0]['id']],['id'=>$prepId])['success'],'bar ACK');
+$a($core->preparation()->claim(['order_id'=>$oid,'area'=>'kitchen'],['id'=>$prepId])['success'],'kitchen claims updated order');
+$a($adjust($id,2,1,'ci-partial-claim-adjust-0002')['success'],'restore consumed unit');$core->inventoryOrders()->processPending();$a($balances()===$consumed,'no double consumption');
+$a($core->orderStaffActions()->cancelWholeOrder(['order_id'=>$oid,'reason'=>'QA cancellation','request_id'=>'ci-partial-claim-cancel-0001'],$user)['success'],'cancel');$core->inventoryOrders()->processPending();$a($balances()===$before,'whole cancel restores all ingredients');
+echo "PASS partial claim, only claimed area ACK, late kitchen claim, no duplicate consumption, cancellation\n";
+$o=$commit('ci-historical-orphan-0001');$oid=(int)$o['order_id'];$id=(int)$o['lines'][0]['order_item_id'];$a($adjust($id,2,1,'ci-historical-orphan-split-0001')['success'],'split');$orphan=(int)$one('SELECT id FROM order_items WHERE bundle_distribution_origin_id=?',[$id]);$a($orphan>0,'derived exists');
+// Reproduce the historical orphan shape on disposable data, retaining original snapshot.
+$p->prepare('DELETE FROM order_item_bundle_components WHERE order_item_id=?')->execute([$orphan]);
+$p->prepare('UPDATE order_items SET bundle_distribution_origin_id=NULL WHERE id=?')->execute([$orphan]);
+$m=new ReflectionMethod($core->reporting(),'bundleComponentUsageReport');$u=array_column($m->invoke($core->reporting(),$day,$day),null,'component_item_id');
+echo 'HISTORICAL '.json_encode([$u[$cid]??null,$u[$ca]??null],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
+foreach([$cid,$ca] as $key)$a($u[$key]['quantity_quality']==='unknown'&&$u[$key]['component_quantity']===null&&$u[$key]['unknown_snapshot_count']>=1,'missing provenance must not silently undercount component '.$key);
+echo "PASS ambiguous historical orphan visibly marked unknown\n";
