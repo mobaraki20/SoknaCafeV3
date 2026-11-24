@@ -39,8 +39,8 @@ subs={
 '3.0.0-g6.2-workspace.231fs-r301-public-move-controlled-install':current['version'],
 '04e4bf1cc5c9c860835f4081a9f7f847f5fd9d9979f3d8558c5fcd3cee79517f':btree,
 '159b20c33d9b8d92a0a53f5ab1a91bcf8ca60e6a446b836636d66dbd4213193a':current['managed_tree_sha256'],
-"$targetInfo.migration_head -ceq '0083_remaining_account_discount'":"$targetInfo.migration_head -ceq '0092_public_auth_snapshot_clock'",
-"\"R301_DB_MIGRATION_0083_NOT_APPLIED\"":"\"FINAL_DB_MIGRATION_0092_NOT_APPLIED\"",
+"$targetInfo.migration_head -ceq '0083_remaining_account_discount'":f"$targetInfo.migration_head -ceq '{current['migration_head']}'",
+"\"R301_DB_MIGRATION_0083_NOT_APPLIED\"":"\"FINAL_DB_MIGRATION_0093_NOT_APPLIED\"",
 }
 s=re.sub('|'.join(re.escape(k) for k in sorted(subs,key=len,reverse=True)),lambda match:subs[match.group(0)],s)
 assert bsha in s and btree in s and sha in s and current['managed_tree_sha256'] in s
@@ -75,7 +75,7 @@ s=s[:a]+r"""
  }
  $forward=$fault-in@('none','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')
  $wantVersion=if($forward){[string]$targetInfo.version}else{$oldVersion}
- $wantLedger=if($forward){'92'}else{$env:SOKNA_BASE_LEDGER}
+ $wantLedger=if($forward){'93'}else{$env:SOKNA_BASE_LEDGER}
  $routine=Get-Content (Join-Path $root 'Maintenance/local-slots/routine-state.json') -Raw|ConvertFrom-Json
  Need ($routine.phase-eq$(if($forward){'COMMITTED'}else{'RECOVERED_TO_PREVIOUS_SLOT'})) 'WRONG_TERMINAL_PHASE'
  Need ($routine.database_mutation_performed-eq$forward -and -not $routine.recovery_required) 'UNRESOLVED_RECOVERY'
