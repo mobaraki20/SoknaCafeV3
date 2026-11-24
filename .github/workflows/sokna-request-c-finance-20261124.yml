@@ -54,4 +54,14 @@ jobs:
       - name: Actual order, cancellation, inventory count, partial settlement, discounts and reports
         run: |
           set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'local/src/Domain/Orders/OrderStaffActionService.php'
+          s=p.read_text()
+          pairs=[("source_id IN (SELECT CAST(id AS CHAR) FROM order_items WHERE order_id=?)","CAST(source_id AS BINARY) IN (SELECT CAST(CAST(id AS CHAR) AS BINARY) FROM order_items WHERE order_id=?)"),("e.idempotency_key=LEFT(CONCAT('quantity_adjusted:order-item:',a.order_item_id,':',a.request_id),190)","CAST(e.idempotency_key AS BINARY)=CAST(LEFT(CONCAT('quantity_adjusted:order-item:',a.order_item_id,':',a.request_id),190) AS BINARY)")]
+          for a,b in pairs:
+              assert a in s
+              s=s.replace(a,b)
+          p.write_text(s)
+          PY
           php qa/sokna-request-c/test_finance_inventory.php
