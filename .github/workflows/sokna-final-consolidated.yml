@@ -1,4 +1,4 @@
-name: SOKNA consolidated 231gd 35ir exact acceptance
+name: SOKNA consolidated 231ge 35is exact acceptance
 on:
   push:
     branches: [qa/sokna-consolidated-release-factory-20261124]
@@ -194,7 +194,7 @@ jobs:
           path: ${{ runner.temp }}/target
       - name: Exact Local clean payload
         run: |
-          mkdir -p "$RUNNER_TEMP/package/Web"
+          mkdir -p "$RUNNER_TEMP/package/Web" "$RUNNER_TEMP/clean"
           unzip -q "$RUNNER_TEMP/target/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/package/Web"
           python3 -c "import hashlib,pathlib,json,os; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'target'; assert hashlib.sha256((p/'LOCAL-FINAL-WEB.zip').read_bytes()).hexdigest()==json.loads((p/'freeze-receipt.json').read_text())['files']['LOCAL-FINAL-WEB.zip']"
       - name: Real disposable Apache and PHP on loopback
@@ -254,7 +254,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: SOKNA-LOCAL-231GD-EXACT-CLEAN-QA-NOT-INSTALL
+          name: SOKNA-LOCAL-231GE-EXACT-CLEAN-QA-NOT-INSTALL
           path: ${{ runner.temp }}/clean/*
           retention-days: 30
   public-host-gate:

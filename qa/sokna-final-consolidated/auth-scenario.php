@@ -78,5 +78,36 @@ try{
  $a($login($otherDef['username'],$otherDef['password'])[0]===401,'old password remains rejected');
  $oldAccepted=false;
  $core->inventoryOrders()->processPending();foreach($ingredients as $i)$a($balance($i['inventory_item_id'])===$initial[$i['inventory_item_id']]-(int)$i['quantity_base'],'exact remaining inventory');
+
+ // Owner acceptance: authenticated cashier, real Public -> Local relay, zero money without phantom tender.
+ $cash=['username'=>'qa-owner-cashier','display_name'=>'QA cashier','active'=>true,'capabilities'=>['cashier_accounts','remote_access'],'password'=>'QA-Owner-Cashier-2026'];
+ $cashId=(int)$core->adminControls()->saveUser($cash,$user)['id'];$a($sync($snapshot())['status']===200,'cashier projection');
+ [$cs,$cc]=$login($cash['username'],$cash['password']);$a($cs===303&&$cc!=='','cashier login');
+ [$fs,$fc]=$login($otherDef['username'],$new);$a($fs===303&&$fc!=='','floor login');
+ $svc=$core->settlements();$initialAccount=$svc->account($session);$a($initialAccount['remaining_total']>0,'owner test starts with real open account');
+ $kpi=function(int $want,int $count)use($remote,$core,$a,$session,$http,$cc,$fc){
+   $db=$core->database();$db->beginTransaction();try{$local=$core->settlements()->dashboardOpenAccountsTx();}finally{$db->rollBack();}
+   $a($local['amount_toman']===$want&&$local['account_count']===$count,'canonical Local open account '.json_encode($local));
+   $p=$remote->publicEdgePublisher()->syncProjectionModelsV2(250,4,5,null,['operations']);$a($p['success']===true,'operations projection '.json_encode($p));
+   $r=$http('/api/staff/read?model=operations',null,$cc);$v=$r[1]['payload']['open_accounts']??[];$a($r[0]===200&&($v['status']??'')==='ready'&&($v['amount_toman']??-1)===$want&&($v['account_count']??-1)===$count,'Public amount parity '.json_encode($v));
+   $r=$http('/api/staff/read?model=operations',null,$fc);$a($r[0]===200&&!array_key_exists('open_accounts',$r[1]['payload']??[]),'floor cannot read financial KPI');
+   $page=$http('/staff/',null,$cc);$a($page[0]===200&&str_contains($page[3],'data-public-open-accounts-kpi'),'Public dashboard card rendered');
+ };
+ $kpi($initialAccount['remaining_total'],1);
+ $cmd=function($id,$kind,$payload)use($send,$envelope,$ex,$result,$cc,$a){$r=$send($envelope($id,$kind,$payload),$cc);$a($r[0]===202,'accepted '.$kind.' '.json_encode($r[1]));$ex();$r=$result($id,$cc);$a($r[0]===200&&($r[1]['state']??'')==='committed','committed '.$kind.' '.json_encode($r[1]));return $r[1]['result'];};
+ $d=['session_id'=>$session,'discount_type'=>'percent','discount_value'=>100];
+ $pv=$cmd('ci-owner-full-discount-preview','settlement.discount_preview',$d);
+ $lp=$svc->previewDiscount($session,'percent',100,$user);foreach(['subtotal','discount_amount','net','tax','total'] as $key)$a($pv[$key]===$lp[$key],'exact preview '.$key);
+ $a($pv['total']===0&&$pv['discount_amount']===$pv['subtotal'],'full discount zero');
+ $ap=$cmd('ci-owner-full-discount-apply','settlement.discount',$d);$a($ap['discount_value']===100&&$ap['complimentary']===true,'actual 100 percent applied');
+ $ac=$svc->account($session);$a($ac['remaining_total']===0,'zero Local balance after Public discount');
+ $kpi(0,0);
+ $settle=['session_id'=>$session,'expected_session_id'=>$session,'expected_remaining_total'=>0,'expected_signature'=>$ac['signature'],'mode'=>'full','destination'=>'direct','selection'=>[],'tenders'=>[],'print_receipt'=>false];
+ $receipt=$cmd('ci-owner-zero-settlement','settlement.commit',$settle);
+ $a((int)$one('SELECT total FROM settlement_records WHERE id=?',[(int)$receipt['settlement_id']])===0,'zero complimentary receipt');
+ $a((int)$one('SELECT COUNT(*) FROM settlement_tender_allocations WHERE settlement_id=?',[(int)$receipt['settlement_id']])===0,'no phantom tender');
+ $a((string)$one('SELECT status FROM table_sessions WHERE id=?',[$session])==='closed','table actually closed');
+ echo "PASS owner Public cashier full discount, zero receipt, Local/Public open account parity and role isolation\n";
+
  echo json_encode(['status'=>'PASS','mode'=>$mode,'real_http'=>true,'two_databases'=>true,'signed_replay_denied'=>true,'collision_rollback'=>true,'durable_ack_recovery'=>true,'local_role_preserved'=>true,'remote_revocation_guard'=>$mode!=='baseline','baseline_defect_reproduced'=>$mode==='baseline','stale_snapshot_reaccepted'=>$oldAccepted,'password_changed'=>true,'inventory_exact'=>true],JSON_THROW_ON_ERROR)."\n";
 }finally{$stop();}
