@@ -32,6 +32,9 @@ def structural_local(blob,require_installable=False):
  assert H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(files.items())).encode())==m['targets']['local']['managed_tree_sha256']
  assert set(json.loads(files['resources/local-managed-files-v1.json'])['files'])==set(files)
  assert len([n for n in files if re.match(r'database/migrations/\d{4}_.*\.sql$',n)])==88
+ migrations=sorted(n for n in files if re.match(r'database/migrations/\d{4}_.*\.sql$',n))
+ material=''.join(n.split('/')[-1].removesuffix('.sql')+'\0'+H(files[n])+'\n' for n in migrations)
+ assert m['targets']['local']['schema_fingerprint']=='migration-ledger-sha256-v1:'+H(material.encode()),'SCHEMA_FINGERPRINT_MISMATCH'
  assert m['database']['local']['migration_dag'][-5:]==[
   '0084_remaining_account_discount_revisions','0085_whole_order_cancellations',
   '0086_order_cancellation_batches','0087_partial_order_payment_reversals',
