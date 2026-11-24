@@ -24,7 +24,7 @@ $balance=function($id)use($one){return (int)$one("SELECT quantity_base FROM inve
 $initial=[];foreach($ingredients as $i)$initial[$i['inventory_item_id']]=$balance($i['inventory_item_id']);
 $order=function($token,$q)use($core,$item,$table,$session,$admin){return $core->orders()->commit(['source'=>'staff','table_id'=>$table,'session_id'=>$session,'client_token'=>$token,'actor_user_id'=>$admin,'items'=>[['id'=>$item['id'],'quantity'=>$q]]]);};
 
-$o=$order('ci-d-ten-items',10);$core->inventoryOrders()->processPending();
+$o=$order('ci-d-ten-items-0001',10);$core->inventoryOrders()->processPending();
 $svc=$core->settlements();$line=$o['lines'][0]['order_item_id'];$price=(int)$item['price'];
 $acc=$svc->account($session);
 $req=['session_id'=>$session,'expected_session_id'=>$session,'expected_remaining_total'=>$acc['remaining_total'],'expected_signature'=>$acc['signature'],'mode'=>'itemized','destination'=>'direct','request_id'=>'ci-d-partial-001','selection'=>[['order_item_id'=>$line,'quantity'=>2]],'print_receipt'=>false];
