@@ -27,7 +27,7 @@ jobs:
           run-id: 44730988488
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/r307
-      - name: Rebuild SHA-pinned 619 Local + 251 Public files and deterministic package formats
+      - name: Rebuild SHA-pinned 621 Local + 251 Public files and deterministic package formats
         shell: bash
         run: |
           set -euo pipefail
@@ -47,8 +47,13 @@ jobs:
           python3 qa/sokna-final-20261124/factory_build_packages.py
           python3 qa/sokna-final-20261124/test_preflight_packages.py
           # Clean installation requires six protected Emergency files not present in managed updates.\n          # That independent clean composition is tested separately against the immutable Library reference.\n          echo 'CLEAN_INSTALL_EXCLUDED_FROM_MANAGED_ONLY_SOURCE_SMOKE'
-          php -l "$RUNNER_TEMP/rebuilt/working/local/src/Core/Migrations.php"
-          php -l "$RUNNER_TEMP/rebuilt/working/local/src/Domain/Reporting/ReportingService.php"
+          python3 - <<'PY'
+          import pathlib,os,zipfile,subprocess
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with zipfile.ZipFile(r/'build/preflight/SOKNA-CONSOLIDATED-R3-SOURCE-QA-NOT-INSTALL.zip') as z:
+              for name in ['src/Core/Migrations.php','src/Domain/Reporting/ReportingService.php']:
+                  p=r/pathlib.Path(name).name;p.write_bytes(z.read('source-working/local/'+name));subprocess.run(['php','-l',str(p)],check=True)
+          PY
           echo 'PASS_EXACT_SOURCE_AND_OFFLINE_PACKAGE_STRUCTURE__NOT_INSTALLABLE'
       - uses: actions/upload-artifact@v4
         with:
@@ -103,7 +108,7 @@ jobs:
           target=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
           assert len(original)==len(target)==1
           assert hashlib.sha256(original[0].read_bytes()).hexdigest()=='1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209'
-          for archive,dest,want in [(target[0],r/'local',619),(original[0],r/'r306-local',608)]:
+          for archive,dest,want in [(target[0],r/'local',621),(original[0],r/'r306-local',608)]:
             with zipfile.ZipFile(archive) as z:
               with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
                 assert len(w.namelist())==want and w.testzip() is None
@@ -116,9 +121,9 @@ jobs:
           $p->exec("CREATE DATABASE IF NOT EXISTS sokna_ci_clean CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
           $p->exec("CREATE DATABASE IF NOT EXISTS sokna_ci_upgrade CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
           '
-          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_clean setup 0088_historical_variant_order_snapshots | tee "$RUNNER_TEMP/clean-mariadb-receipt.json"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_clean setup 0090_recipe_based_item_descriptions | tee "$RUNNER_TEMP/clean-mariadb-receipt.json"
           php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/r306-local" sokna_ci_upgrade setup 0083_remaining_account_discount | tee "$RUNNER_TEMP/r306-mariadb-receipt.json"
-          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_upgrade upgrade 0088_historical_variant_order_snapshots | tee "$RUNNER_TEMP/upgrade-mariadb-receipt.json"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_upgrade upgrade 0090_recipe_based_item_descriptions | tee "$RUNNER_TEMP/upgrade-mariadb-receipt.json"
           echo 'PASS_REAL_MARIADB_CLEAN_AND_R306_UPGRADE__DISPOSABLE_ONLY'
       - uses: actions/upload-artifact@v4
         if: always()
@@ -237,7 +242,7 @@ jobs:
         with:
           name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
           path: ${{ runner.temp }}/current-qa
-      - name: Native Windows R307 to 231ga exact-source stage and HTTP readback (DISPOSABLE ONLY)
+      - name: Native Windows R307 to 231gb exact-source stage and HTTP readback (DISPOSABLE ONLY)
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -263,7 +268,7 @@ jobs:
             & (Join-Path $env:RUNNER_TEMP 'sokna-current-r307-to-r2-native.ps1')
             if($LASTEXITCODE -ne 0){throw 'SOKNA_NATIVE_WINDOWS_REAL_LIFECYCLE_FAILED'}
           } finally {Pop-Location}
-          'PASS_EXACT_R307_TO_231GA_NATIVE_STAGE_ACTIVATE_HTTP_DB88_DISPOSABLE_ONLY' | Out-File (Join-Path $env:RUNNER_TEMP 'sokna-current-native-lifecycle-receipt.txt')
+          'PASS_EXACT_R307_TO_231GB_NATIVE_STAGE_ACTIVATE_HTTP_DB90_DISPOSABLE_ONLY' | Out-File (Join-Path $env:RUNNER_TEMP 'sokna-current-native-lifecycle-receipt.txt')
       - uses: actions/upload-artifact@v4
         if: always()
         with:

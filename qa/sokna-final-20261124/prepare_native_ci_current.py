@@ -21,8 +21,8 @@ with zipfile.ZipFile(TARGET) as z:
  m=json.loads(z.read('release-set.json'));web=z.read('artifacts/local/web.zip')
 assert m['for_install'] is False and m['production_pass'] is False
 assert len(m['supported_baselines'])==4 and any(x['local']['version']==parent['targets']['local']['version'] and x['local']['managed_tree_sha256']==parent['targets']['local']['managed_tree_sha256'] for x in m['supported_baselines'])
-assert m['targets']['local']['version']=='3.0.0-g6.2-workspace.231ga-consolidated-20261124-preflight'
-assert m['targets']['local']['managed_files']==619
+assert m['targets']['local']['version']=='3.0.0-g6.2-workspace.231gb-consolidated-20261124-preflight'
+assert m['targets']['local']['managed_files']==621
 TARGET_TREE=m['targets']['local']['managed_tree_sha256']
 # Keep the new target bytes AND release schema lineage entirely unchanged. The
 # runner ONLY borrows previously qualified R307 QA flags for a disposable test;
@@ -50,7 +50,7 @@ subs={
  '$pack=$env:SOKNA_R307_CANDIDATE_ZIP':'$pack=$env:SOKNA_CURRENT_CI_STAGE_ZIP',
  '$parent=$env:SOKNA_R306_ORIGINAL_ZIP':'$parent=$env:SOKNA_R307_ORIGINAL_ZIP',
  'Web.release.r306':'Web.release.r307',
- 'R307_NATIVE_WINDOWS_REAL_MAINTENANCE_R306_TO_R307_STAGE_ACTIVATE_HTTP_DB83_PERSISTENT_PASS':'SOKNA_NATIVE_R307_TO_231GA_STAGE_ACTIVATE_HTTP_DB88_PERSISTENT_PASS',
+ 'R307_NATIVE_WINDOWS_REAL_MAINTENANCE_R306_TO_R307_STAGE_ACTIVATE_HTTP_DB83_PERSISTENT_PASS':'SOKNA_NATIVE_R307_TO_231GB_STAGE_ACTIVATE_HTTP_DB90_PERSISTENT_PASS',
 }
 for before,after in subs.items():
  assert before in s,('NATIVE_ADAPTER_MISSING',before)
@@ -74,12 +74,12 @@ assert oldtree in s and newtree in s
 s=s.replace(oldtree,'__BASE_TREE__').replace(newtree,'__TARGET_TREE__')
 s=s.replace('__BASE_TREE__',newtree).replace('__TARGET_TREE__',TARGET_TREE)
 # Only the target head/after-ledger expectation changes; initial R307 has 83.
-s=s.replace("$targetInfo.migration_head -ceq '0083_remaining_account_discount'", "$targetInfo.migration_head -ceq '0088_historical_variant_order_snapshots'")
+s=s.replace("$targetInfo.migration_head -ceq '0083_remaining_account_discount'", "$targetInfo.migration_head -ceq '0090_recipe_based_item_descriptions'")
 # Legacy native target validation may use a literal head rather than targetInfo
 # member; keep any other 0083 baseline tests intact.
 needle="-eq '83') 'R301_DB_MIGRATION_0083_NOT_APPLIED'"
 assert needle in s, 'AFTER_LEDGER_EXPECTATION_MISSING'
-s=s.replace(needle,"-eq '88') 'R2_DB_MIGRATION_0088_NOT_APPLIED'")
+s=s.replace(needle,"-eq '90') 'R2_DB_MIGRATION_0090_NOT_APPLIED'")
 assert '127.0.0.1:39841' in s and 'SOKNA_R186_CI_ONLY' in s
 assert CUR_VER in s and R307_VER in s and QSHA in s and TARGET_TREE in s
 P=TMP/'sokna-current-r307-to-r2-native.ps1';P.write_text(s,encoding='utf8')

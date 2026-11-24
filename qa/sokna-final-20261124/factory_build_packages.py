@@ -6,6 +6,7 @@ Windows Maintenance, Public HTTP, baseline coverage and backup/recovery gates pa
 No application, update engine, emergency engine, host, or database is mutated.
 """
 import collections, copy, hashlib, io, json, os, pathlib, zipfile
+from apply_recipe_catalog_overlay import apply as apply_recipe_catalog_overlay
 
 BASE = pathlib.Path(os.environ.get('SOKNA_RELEASE_BUILD_DIR', '/mnt/data/sokna_release_build'))
 SRC_ZIP = pathlib.Path(os.environ.get('SOKNA_SOURCE_ARCHIVE', '/mnt/data/SOKNA-CONSOLIDATED-SOURCE-20261124-QA-NOT-INSTALL.zip'))
@@ -20,9 +21,10 @@ PIN = {
   str(P306): 'e2d78030a7246103a1b4ae2b28409093ebf8e61d44abc3739d73d0ac10b9fe51',
   str(L307): '069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa'
 }
-LVER = '3.0.0-g6.2-workspace.231ga-consolidated-20261124-preflight'
+LVER = '3.0.0-g6.2-workspace.231gb-consolidated-20261124-preflight'
 PVER = '3.0.0-g3.6-workspace.35io-consolidated-20261124-preflight'
 REL = 'sokna-consolidated-release-preflight-20261124-r2'
+LREL = 'sokna-consolidated-release-preflight-20261124-r3'
 H = lambda b: hashlib.sha256(b).hexdigest()
 J = lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
 
@@ -60,6 +62,14 @@ orig=zread(SRC_ZIP.read_bytes())
 local={n.removeprefix('source-working/local/'):v for n,v in orig.items() if n.startswith('source-working/local/')}
 public={n.removeprefix('source-working/public/'):v for n,v in orig.items() if n.startswith('source-working/public/')}
 assert len(local)==619 and len(public)==251,(len(local),len(public))
+local=apply_recipe_catalog_overlay(local)
+assert len(local)==621
+# Deterministic full amended source archive; immutable base was verified above.
+source_blob=zbytes({**{'source-working/local/'+n:b for n,b in local.items()},**{'source-working/public/'+n:b for n,b in public.items()}})
+source_path=OUT/'SOKNA-CONSOLIDATED-R3-SOURCE-QA-NOT-INSTALL.zip'
+source_path.write_bytes(source_blob)
+LOCAL_SOURCE_SHA=H(source_blob)
+print('R3_FULL_SOURCE_SHA256',LOCAL_SOURCE_SHA)
 assert local['VERSION.txt'].decode().strip()=='3.0.0-g6.2-workspace.231fv-r306-local-public-ui-parity'
 assert public['VERSION.txt'].decode().strip()=='3.0.0-g3.6-workspace.35in-r306-local-public-ui-parity'
 
@@ -92,17 +102,17 @@ mi['files']=sorted(L)
 L['resources/local-managed-files-v1.json']=J(mi)
 ident=json.loads(L['resources/release-identity-v1.json'])
 assert ident['format']=='sokna-release-component-identity-v1'
-ident.update(version=LVER,release_set_id=REL)
+ident.update(version=LVER,release_set_id=LREL)
 ident['baseline']['source_versions']=list(dict.fromkeys(ident['baseline']['source_versions']+[oldlocal['VERSION.txt'].decode().strip(),r307_target['version']]))
-ident['source'].update(managed_file_count=len(L),canonical_file_count=len(L)-2,canonical_tree_sha256=canonical(L),source_ref='Immutable consolidated source b3aad22d + exact R306 production-format package 1050c045; qualification pending')
-ident['qualification']={'tier':'CONSOLIDATED_PACKAGE_PREFLIGHT_NOT_INSTALLABLE','claim_rule':'No install before exact MariaDB 0088, native Windows and Public root/subdir activation, and compatible installed baseline.'}
+ident['source'].update(managed_file_count=len(L),canonical_file_count=len(L)-2,canonical_tree_sha256=canonical(L),source_ref='SHA256:'+LOCAL_SOURCE_SHA+'; exact R306 source plus tested recipe/catalog overlay; qualification pending')
+ident['qualification']={'tier':'CONSOLIDATED_PACKAGE_PREFLIGHT_NOT_INSTALLABLE','claim_rule':'No install before exact MariaDB 0090, native Windows and Public root/subdir activation, and compatible installed baseline.'}
 L['resources/release-identity-v1.json']=J(ident)
 prov=json.loads(L['resources/build-provenance.json'])
-prov.update(version=LVER,release_set_id=REL,created_at='2026-11-24T00:00:00Z',classification='PREFLIGHT_NOT_INSTALLABLE',source='sha256:'+PIN[str(SRC_ZIP)],workspace_source_only=False,full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,installed_cafe_baseline='R307_231fw_support_20261120',consolidated_source_sha256=PIN[str(SRC_ZIP)],r306_base_zip_sha256=PIN[str(L306)])
+prov.update(version=LVER,release_set_id=LREL,created_at='2026-11-24T00:00:00Z',classification='PREFLIGHT_NOT_INSTALLABLE',source='sha256:'+LOCAL_SOURCE_SHA,workspace_source_only=False,full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,installed_cafe_baseline='R307_231fw_support_20261120',consolidated_source_sha256=LOCAL_SOURCE_SHA,r306_base_zip_sha256=PIN[str(L306)])
 L['resources/build-provenance.json']=J(prov)
 assert sorted(json.loads(L['resources/local-managed-files-v1.json'])['files'])==sorted(L)
 assert json.loads(L['resources/release-identity-v1.json'])['source']['canonical_tree_sha256']==canonical(L)
-assert len(L)==619
+assert len(L)==621
 lmetadata=['VERSION.txt','resources/local-managed-files-v1.json','resources/release-identity-v1.json','resources/build-provenance.json']
 assert all(L[n]==local[n] for n in local if n not in lmetadata)
 
@@ -115,26 +125,27 @@ assert len(existing)==2 and all(x.get('local') for x in existing)
 lmanifest['supported_baselines'] = existing+[{'local':base_target},{'local':r307_target}]
 assert len({(x['local']['version'],x['local']['managed_tree_sha256']) for x in lmanifest['supported_baselines']})==4
 assert all(x['local']['version']!=LVER for x in lmanifest['supported_baselines'])
-lmanifest.update(release_set_id=REL,status='PREFLIGHT_NOT_INSTALLABLE_PENDING_NATIVE_GATES',created_at='2026-11-24T00:00:00Z',sequence=202611240002,for_install=False,production_pass=False)
+lmanifest.update(release_set_id=LREL,status='PREFLIGHT_NOT_INSTALLABLE_PENDING_NATIVE_GATES',created_at='2026-11-24T00:00:00Z',sequence=202611240003,for_install=False,production_pass=False)
 for k in lmanifest['qualification']:
     if isinstance(lmanifest['qualification'][k],bool):lmanifest['qualification'][k]=False
-newhead='0088_historical_variant_order_snapshots'
-newmigrations=[f'{i:04d}_'+next(n for n in L if n.startswith(f'database/migrations/{i:04d}_')).split(f'/{i:04d}_',1)[1].removesuffix('.sql') for i in range(84,89)]
-assert len(newmigrations)==5 and newmigrations[-1]==newhead
+newhead='0090_recipe_based_item_descriptions'
+newmigrations=[f'{i:04d}_'+next(n for n in L if n.startswith(f'database/migrations/{i:04d}_')).split(f'/{i:04d}_',1)[1].removesuffix('.sql') for i in range(84,91)]
+assert len(newmigrations)==7 and newmigrations[-1]==newhead
 assert lmanifest['database']['local']['migration_dag'][-1]=='0083_remaining_account_discount'
 lmanifest['database']['local']['migration_dag'].extend(newmigrations)
 migration_names=sorted(n for n in L if n.startswith('database/migrations/') and n.endswith('.sql'))
-assert len(migration_names)==88
+assert len(migration_names)==90
 migration_hash_material=''.join(n.removeprefix('database/migrations/').removesuffix('.sql')+'\0'+H(L[n])+'\n' for n in migration_names)
 exact_schema_fingerprint='migration-ledger-sha256-v1:'+H(migration_hash_material.encode())
 # Same RoutineLocalDatabase.Fingerprint algorithm used by native Windows Maintenance.
 # A target fingerprint copied from R306 or guessed from an untested schema is unsafe.
-assert exact_schema_fingerprint=='migration-ledger-sha256-v1:9775e81424d8970e34f0811d4c512dd31871c37be93d2d9d0cead7ebfbb3a50d'
-lmanifest['targets']['local'].update(version=LVER,release_id=REL,managed_files=len(L),managed_tree_sha256=tree(L),migration_head=newhead,
+assert len(exact_schema_fingerprint.split(':')[1])==64
+lmanifest['targets']['local'].update(version=LVER,release_id=LREL,managed_files=len(L),managed_tree_sha256=tree(L),migration_head=newhead,
     schema_fingerprint=exact_schema_fingerprint)
 lmanifest['qa_notes']['consolidated']='Source + package shape reconstructed from SHA-pinned R306; no MariaDB/Windows/public host qualification. DO NOT INSTALL.'
 lmanifest['qa_notes']['verified_baselines_only']=[x['local']['version'] for x in lmanifest['supported_baselines']]
-lmanifest['qa_notes']['schema_fingerprint']='Exact 88-file SQL catalogue SHA256 fingerprint independently computed from native RoutineLocalDatabase contract; real disposable MariaDB 88 clean and +5 upgrade passed.'
+lmanifest['qa_notes']['schema_fingerprint']='Exact 90-file SQL catalogue SHA256 fingerprint computed from native RoutineLocalDatabase contract; new exact clean and upgrade required.'
+lmanifest['qa_notes']['operator_install_allowed']=False
 lmanifest['signature']=None
 web=zbytes(L)
 lmanifest['artifacts']['local-web'].update(sha256=H(web),size_bytes=len(web))
@@ -200,11 +211,11 @@ assert not any(n.startswith('payload/src/Emergency/') for n in pub_out)
 
 result={
  'schema':'sokna-consolidated-offline-package-preflight-v1',
- 'date':'2026-11-24','source_sha256':PIN[str(SRC_ZIP)],'r306_local_sha256':PIN[str(L306)],'r307_cafe_local_sha256':PIN[str(L307)],'r307_cafe_baseline_tree_sha256':r307_target['managed_tree_sha256'],'r306_public_sha256':PIN[str(P306)],
+ 'date':'2026-11-24','source_sha256':LOCAL_SOURCE_SHA,'base_source_sha256':PIN[str(SRC_ZIP)],'r306_local_sha256':PIN[str(L306)],'r307_cafe_local_sha256':PIN[str(L307)],'r307_cafe_baseline_tree_sha256':r307_target['managed_tree_sha256'],'r306_public_sha256':PIN[str(P306)],
  'local':{'file':localpath.name,'sha256':H(localzip),'manifest_format':lm['format'],'target_version':LVER,'managed_files':len(L),'functional_drift_from_source':0,'changed_or_added_from_r306':len(changed_local),'new_migrations':newmigrations,'declared_exact_baselines':len(lm['supported_baselines']),'status':'STRUCTURAL_PASS_NOT_INSTALLABLE'},
  'public':{'file':publicpath.name,'sha256':H(publiczip),'manifest_format':pm['format'],'target_version':PVER,'managed_files':len(P),'functional_drift_from_source':0,'changed_or_added_from_r306':len(changed_public),'declared_exact_baselines':len(pmanifest['compatibility']['supported_baselines']),'status':'STRUCTURAL_PASS_NOT_INSTALLABLE'},
  'public_clean_source':{'file':cleanpath.name,'sha256':H(cleanpath.read_bytes()),'note':'Full web source only, not independently qualified clean installer'},
- 'blocked_gates':['Real MariaDB 11.4 migration 0084-0088 and schema fingerprint','Native Windows Maintenance preflight/stage/activate/restore for exact Local ZIP','Public Routine/Emergency HTTP root/subfolder activation and rollback/readback','Installed baseline identity coverage for cafe/home/public','Local clean-machine installer + integrated release producer/admission'],
+ 'blocked_gates':['Real MariaDB 11.4 migration 0084-0090 and schema fingerprint','Native Windows Maintenance preflight/stage/activate/restore for exact Local ZIP','Public Routine/Emergency HTTP root/subfolder activation and rollback/readback','Installed baseline identity coverage for cafe/home/public','Local clean-machine installer + integrated release producer/admission'],
  'source_changed_product_files':0,'legacy_original_unchanged':True,'release_authorized':False,'operator_install_authorized':False,'production_changed':False
 }
 (OUT/'SOKNA-RELEASE-PREFLIGHT-RESULT-20261124.json').write_bytes(J(result))
