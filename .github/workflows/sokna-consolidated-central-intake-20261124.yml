@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: qa/sokna-consolidated-release-factory-20261124
+          ref: 96cae02ae48e063b634a63942e9219763f85517e
           path: checked-source
           persist-credentials: false
       - uses: actions/download-artifact@v4
