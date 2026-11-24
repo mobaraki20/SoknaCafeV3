@@ -63,6 +63,28 @@ assert L[ops_path].count(old)==1
 L[ops_path]=L[ops_path].replace(old,new)
 assert H(L[ops_path])=='9c6e1523bcb422af9dfd679cb615d70f8a45f8e5142b2a0d727dd3ace85e80e0'
 source_sha=H((source_sha+':'+H(L[ops_path])).encode())
+# Verified transactional discount invalidation: real HTTP root/subfolder 45488410331.
+settlement_path='src/Domain/Finance/SettlementService.php'
+assert H(L[settlement_path])=='e6d6eb2c196e05fd316df11d0d61d4a49e677b280f83182d4d543df3c76da4b9'
+for kind,indent in [('granted',b'        '),('corrected',b'            '),('rebased',b'        ')]:
+ marker=b"$this->audit('settlement.remaining_discount_"+kind.encode()+b"'"
+ assert L[settlement_path].count(marker)==1
+ L[settlement_path]=L[settlement_path].replace(marker,b'$this->invalidateRemainingDiscountProjectionTx($sessionId);\n'+indent+marker)
+marker=b'    private function audit(string $action'
+assert L[settlement_path].count(marker)==1
+new=b"""    /** Publish the changed account atomically with its grant/revision; audit alone only invalidates reports. */
+    private function invalidateRemainingDiscountProjectionTx(int $sessionId): void
+    {
+        if(!$this->pdo->inTransaction())throw new \\LogicException('Discount invalidation requires an open transaction.');
+        $this->pdo->prepare('INSERT INTO public_projection_outbox(event_type,aggregate_type,aggregate_id,model_keys) VALUES(?,?,?,?)')
+            ->execute(['settlement.remaining_discount_changed','session',(string)$sessionId,'operations,reports']);
+    }
+
+"""
+L[settlement_path]=L[settlement_path].replace(marker,new+marker)
+assert H(L[settlement_path])=='c82cdc68b960552fbbfbccfd389ec44cfa04886ab9ffc4735a05165bb4b9a385'
+source_sha=H((source_sha+':'+H(L[settlement_path])).encode())
+
 
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
