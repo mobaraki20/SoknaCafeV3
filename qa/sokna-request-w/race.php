@@ -1,5 +1,5 @@
 $mode=getenv('SOKNA_W_MODE');
-$o=$order('ci-w-order-0001',4);$core->inventoryOrders()->processPending();
+$o=$order('ci-w-race-order-0001',4);$core->inventoryOrders()->processPending();
 $oid=(int)$o['order_id'];$line=(int)$o['lines'][0]['order_item_id'];$price=(int)$item['price'];
 $svc=$core->settlements();$act=$core->orderStaffActions();
 $second=\Sokna\Local\Core\Bootstrap::fromArray(require dirname($root).'/config.php');$p2=$second->database();$a($p!==$p2,'independent connections');
