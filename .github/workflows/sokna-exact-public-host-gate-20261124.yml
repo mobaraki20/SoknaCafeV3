@@ -160,7 +160,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat >/var/www/sokna-public-host-gate/operate.php <<'PHP'
+          cat >"$RUNNER_TEMP/operate.php" <<'PHP'
           <?php
           declare(strict_types=1);
           $root='/var/www/sokna-public-host-gate/upgrade/webroot';
@@ -187,6 +187,7 @@ jobs:
           if($op==='emergency-commit' && ($s['current_version']!==$contract['target'] || $s['active_version']!==$contract['target'] || $s['managed_tree_sha256']!==$contract['target_tree'] || $s['pending_verification']!==null)) throw new RuntimeException('commit_identity');
           echo json_encode(['operation'=>$op,'version'=>$s['current_version'],'tree'=>$s['managed_tree_sha256'],'pending'=>is_array($s['pending_verification']),'health'=>$health()],JSON_THROW_ON_ERROR)."\n";
           PHP
+          sudo install -o www-data -g www-data -m 0640 "$RUNNER_TEMP/operate.php" /var/www/sokna-public-host-gate/operate.php
           for op in routine-stage routine-activate routine-rollback emergency-stage emergency-activate emergency-commit; do
             sudo -u www-data php /var/www/sokna-public-host-gate/operate.php "$op" | tee -a "$RUNNER_TEMP/public-lifecycle-receipt.jsonl"
             curl --fail --silent --show-error http://127.0.0.1:18082/health | python3 -c "import json,sys; j=json.load(sys.stdin); assert j['ok'] and j['database']=='ready' and j['pending_migrations']==0 and j['applied_migrations']==11; print('HTTP_READBACK_PASS',j['version'])"
