@@ -183,7 +183,8 @@ jobs:
             $needed=["public_move_owner_slots","public_move_owner_accounts","public_move_owner_receipts"];
             foreach($needed as $table){$stmt=$pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$stmt->execute([$table]);if(!$stmt->fetchColumn())throw new RuntimeException("MISSING_PUBLIC_TABLE_".$table);}
             echo "PASS_REAL_PUBLIC_MARIADB_11_IDEMPOTENT\n";
-          '  windows-format:
+          '
+  windows-format:
     needs: exact-factory
     runs-on: windows-2022
     timeout-minutes: 20
