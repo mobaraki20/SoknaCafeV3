@@ -113,10 +113,12 @@ jobs:
           for row in '18080 root' '18081 sub' '18082 upgrade'; do
             read -r port name <<< "$row"
             doc="/tmp/sokna-public-host-gate/$name/webroot"
-            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nAllowOverride All\nRequire all granted\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire all granted\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
           done
           sudo apache2ctl configtest
           sudo service apache2 restart
+          sudo apache2ctl -S
+          curl --silent --show-error --include http://127.0.0.1:18080/__sokna_route_probe__
       - name: Actual Setup status, rewrite, install, pairing, MariaDB readback and duplicate-install rejection
         shell: bash
         run: |
@@ -128,7 +130,10 @@ jobs:
               origin=f'http://127.0.0.1:{port}{base}'
               op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
               def get(path):
+                  try:
                   with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+              except urllib.error.HTTPError as e:
+                  raise RuntimeError((name,path,e.code,e.read(1000).decode('utf-8','replace'))) from e
               def post(action,body,want=200):
                   req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
                   try:
@@ -186,6 +191,11 @@ jobs:
             curl --fail --silent --show-error http://127.0.0.1:18082/health | python3 -c "import json,sys; j=json.load(sys.stdin); assert j['ok'] and j['database']=='ready' and j['pending_migrations']==0 and j['applied_migrations']==11; print('HTTP_READBACK_PASS',j['version'])"
           done
           echo 'PASS isolated core lifecycle and bridge; authenticated Emergency browser route not claimed'
+      - name: Apache diagnostics on failure (disposable host only)
+        if: failure()
+        run: |
+          sudo tail -n 100 /var/log/apache2/error.log || true
+          sudo apache2ctl -S || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
