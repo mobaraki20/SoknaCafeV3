@@ -1,4 +1,4 @@
-name: SOKNA exact discount and complete reversal cancellation acceptance
+name: SOKNA candidate exact proof for discount full reversal cancellation
 on:
   push:
     branches: [qa/sokna-consolidated-release-factory-20261124]
@@ -46,6 +46,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public"
           unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
           unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib,base64,zlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP']); h=lambda b:hashlib.sha256(b).hexdigest()
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-discount-reversal/delta.b64').read_bytes(),validate=True))
+          assert h(raw)=='18e647fb51f933dcd5c5e28731ebc935e938321a1b5496f2813a679a166110ba'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name;f.write_bytes(b)
+          PY
+          php -l "$RUNNER_TEMP/local/src/Domain/Finance/SettlementService.php"
+          php -l "$RUNNER_TEMP/local/src/Domain/Orders/OrderStaffActionService.php"
           php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0093_bundle_distribution_provenance
           awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/bundle.php"
           cat qa/sokna-discount-reversal/scenario.php >> "$RUNNER_TEMP/bundle.php"
