@@ -100,6 +100,7 @@ jobs:
           (r/'config.php').write_text("<?php return ['app'=>['data_dir'=>'"+str(data)+"']];\n")
           PY
           php -r '
+            require getenv("RUNNER_TEMP")."/local/src/Core/MigrationExecutionException.php";
             require getenv("RUNNER_TEMP")."/local/src/Core/Migrations.php";
             $pdo=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_consolidated_test;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
             $m=new \Sokna\Local\Core\Migrations($pdo,getenv("RUNNER_TEMP")."/local/database/migrations");
