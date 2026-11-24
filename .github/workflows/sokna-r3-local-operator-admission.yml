@@ -1,0 +1,86 @@
+name: SOKNA R3 Local controlled distribution - exact SHA admission
+on:
+  push:
+    branches: [qa/sokna-central-factory-intake-20261124]
+    paths: ['.github/workflows/sokna-r3-local-operator-admission.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  distribute:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R3-NATIVE-ALL-ORIGINS-RECOVERY-DECISION
+          run-id: 45361510895
+          github-token: ${{ github.token }}
+          path: evidence/native
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-231GB-EXACT-CLEAN-QA-NOT-INSTALL
+          run-id: 45352318115
+          github-token: ${{ github.token }}
+          path: evidence/clean
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45351541555
+          github-token: ${{ github.token }}
+          path: evidence/base
+      - name: Validate successful pinned run identities, receipts, exact archive and clean web
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,zipfile,hashlib,json,os,shutil,urllib.request
+          r=pathlib.Path('evidence')
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          def get(path):
+              url='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']+path
+              with urllib.request.urlopen(urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}),timeout=30) as h:return json.load(h)
+          runs={45361510895:'37ea0c2430ddca8aaf8d6efb84204720ff89fc50',45352318115:'65ac569e45fcfea5412d9af2ea64d54d0ac2ecea',45351541555:'b5bbf27b4964a2cc0851c09a2d224fcbaff3da1c'}
+          for run,sha in runs.items():
+              d=get('/actions/runs/'+str(run))
+              assert d['head_sha']==sha and d['conclusion']=='success' and d['status']=='completed'
+          def find(root,name):
+              xs=list((r/root).rglob(name));assert len(xs)==1,(name,xs);return xs[0]
+          d=json.loads(find('native','matrix-decision.json').read_text())
+          expected={('R301','none'),('R304','none'),('R306','none'),('R307','none')}|{('R307',f) for f in ('APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')}
+          assert d['native_matrix']=='PASS' and len(d['receipts'])==9 and {(x['origin'],x['fault']) for x in d['receipts']}==expected
+          sha='d94bd1a539cede71a0d443b3f417fa9bffba3898c38b446caea6e09ec826d627'
+          assert d['candidate_sha256']==sha and all(x['candidate_sha256']==sha and x['status']=='PASS' and x['independent_restore'] for x in d['receipts'])
+          original=find('base','SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip')
+          assert H(original.read_bytes())=='61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e'
+          with zipfile.ZipFile(original) as z:
+              m=json.loads(z.read('release-set.json'));web=z.read('artifacts/local/web.zip')
+          assert H(web)=='00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75'
+          assert find('clean','SOKNA-LOCAL-231GB-WEB-CLEAN-QA-NOT-INSTALL.zip').read_bytes()==web
+          assert {x['local']['managed_tree_sha256'] for x in m['supported_baselines']}=={x['origin_tree_sha256'] for x in d['receipts'] if x['fault']=='none'}
+          # Deterministically reconstruct the FROZEN already-tested archive,
+          # not a new manifest. Publication requires an identical SHA.
+          m['for_install']=True;m['production_pass']=True;m['status']='QUARANTINED_RELEASE_CANDIDATE'
+          for k in ('canary','real_windows','real_mariadb','business_backup_consistency_real_mariadb','recovery_console_web_down'):m['qualification'][k]=True
+          m['qa_notes']['consolidated']='Quarantined exact candidate for native gate; release admission requires independent proof.'
+          m['qa_notes']['operator_install_allowed']=False
+          m['qa_notes']['candidate_gate']='NO_DISTRIBUTION_UNTIL_EXACT_BYTES_AND_ALL_ORIGINS_QUALIFIED'
+          out=pathlib.Path('operator');out.mkdir()
+          target=out/'SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip'
+          with zipfile.ZipFile(target,'w') as z:
+              for n,b in sorted({'release-set.json':(json.dumps(m,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode(),'artifacts/local/web.zip':web}.items()):
+                  i=zipfile.ZipInfo(n,(2026,11,24,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=zipfile.ZIP_DEFLATED
+                  z.writestr(i,b,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          assert H(target.read_bytes())==sha, 'EXACT_TESTED_CANDIDATE_DRIFT'
+          (out/'SOKNA-LOCAL-231GB-CLEAN-WEB.zip').write_bytes(web)
+          receipt={'schema':'sokna-controlled-distribution-receipt-v1','release':'231gb','scope':'Local','distribution_authorized':True,'deployment_authorized':False,'host_support_required':False,'operator_preflight_required':True,'files':{p.name:H(p.read_bytes()) for p in out.glob('*.zip')},'qualified_origins':[x['local']['version'] for x in m['supported_baselines']],'verified_runs':runs,'native_receipts':d['receipts'],'notice':'The frozen inner metadata remains the historical pre-qualification candidate; this SHA-bound external admission lifts distribution quarantine. No automatic deployment or bypass. Public is a separate component.'}
+          (out/'RELEASE-RECEIPT.json').write_text(json.dumps(receipt,indent=2))
+          print('PASS_EXACT_LOCAL_4_ORIGINS_5_FAULTS_CLEAN_WEB_CONTROLLED_RELEASE',sha)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE
+          path: operator/*
+          if-no-files-found: error
+          retention-days: 90
