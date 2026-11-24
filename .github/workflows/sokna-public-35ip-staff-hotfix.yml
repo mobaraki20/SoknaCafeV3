@@ -1,0 +1,282 @@
+name: SOKNA 35ip urgent Staff login hotfix exact operator release
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-public-35ip-staff-hotfix.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  public-host-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-disposable-public-host-ci
+          MARIADB_DATABASE: sokna_ci_host
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PUBLIC-35IO-CONTROLLED-OPERATOR-RELEASE
+          run-id: 45363984970
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/published35io
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          run-id: 44639218881
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304
+      - name: Freeze hotfix from exact released 35io source; never alter update engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-host-gate
+          python3 release-ops/build-public-35ip-staff-hotfix.py
+          for f in bootstrap.php src/Remote/RemoteStaffPageRenderer.php src/Http/PublicHttpKernel.php; do
+            php -l "/var/www/sokna-public-host-gate/root/webroot/$f"
+          done
+      - name: Disposable real Apache/PHP with rewrite and MariaDB extensions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
+          sudo a2enmod rewrite headers php8.3
+          printf 'upload_max_filesize=64M\npost_max_size=72M\n' | sudo tee /etc/php/8.3/apache2/conf.d/99-sokna-ci-upload.ini >/dev/null
+          sudo chown -R www-data:www-data /var/www/sokna-public-host-gate
+          for row in '18080 root' '18081 sub' '18082 upgrade' '18083 older' '18084 browser306' '18085 current'; do
+            read -r port name <<< "$row"
+            doc="/var/www/sokna-public-host-gate/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+          done
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+          sudo apache2ctl -S
+          curl --fail --silent --show-error --include http://127.0.0.1:18080/__sokna_route_probe__
+      - name: Actual Setup status, rewrite, install, pairing, MariaDB readback and duplicate-install rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib
+          work=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
+          for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu'),(18082,'upgrade',''),(18083,'older','/public/menu'),(18084,'browser306',''),(18085,'current','/public')]:
+              origin=f'http://127.0.0.1:{port}{base}'
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  try:
+                      with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+                  except urllib.error.HTTPError as e:
+                      raise RuntimeError((name,path,e.code,e.read(1000).decode('utf-8','replace'))) from e
+              def post(action,body,want=200):
+                  req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+                  try:
+                      with op.open(req,timeout=30) as r:code=r.status; data=json.load(r)
+                  except urllib.error.HTTPError as e:code=e.code;data=json.load(e)
+                  assert code==want,(name,action,code,data.get('code'))
+                  return data
+              code,_,hdr=get('/__sokna_route_probe__');assert code==204 and hdr.get('X-Sokna-Route-Probe')=='ok'
+              if name not in ('upgrade','older','browser306','current'):
+                  code,html,_=get('/setup/index.php');assert code==200 and b'<!doctype html>' in html.lower()
+              _,raw,_=get('/setup/api.php?action=status');j=json.loads(raw);assert j['success'] and not j['setup']['installed'] and j['setup']['base_path']==base and j['preflight']['ok']
+              body={'csrf':j['csrf'],'db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_'+name,'user':'root','pass':'sokna-disposable-public-host-ci'},'create_database':True,'routing_probe_ok':True,'owner_password':'disposable-owner-CI-only-20261124','emergency_password':'disposable-emergency-CI-only-20261124','storage_dir':'storage'}
+              installed=post('install',body);assert installed['success'] and installed['installed'] and installed['owner_initialized'] and not installed['paired']
+              _,raw,_=get('/setup/api.php?action=status');s=json.loads(raw);assert s['setup']['installed'] and s['setup']['state']=='ready_to_pair'
+              assert post('install',body,409)['code']=='already_installed'
+              pair=post('pair',{'pairing_code':installed['pairing_code'],'installation_id':'sokna-ci-'+name,'shared_secret':'disposable-CI-pair-secret-only-0123456789','display_name':'QA only'})
+              assert pair['success'] and pair['paired']
+              _,raw,_=get('/health');health=json.loads(raw);want=c['baseline'] if name in ('upgrade','browser306') else c['older'] if name=='older' else c['current'] if name=='current' else c['target']
+              assert health['ok'] and health['database']=='ready' and health['applied_migrations']==health['catalog_migrations']==11 and health['pending_migrations']==0 and health['emergency_ready'] and health['version']==want,(name,health)
+              print('PASS actual Apache Setup, pairing and health',name,base or '/')
+          PY
+      - name: Real Staff account projection and regression fixture using installed databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -u www-data php "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-fixture.php" missing
+          python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" regression
+          python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" clean-missing
+          sudo -u www-data php "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-fixture.php" populated
+          python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" clean-populated
+      - name: Real R306 to 35ip Routine recovery and independent Emergency bridge on disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/operate.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          $root='/var/www/sokna-public-host-gate/upgrade/webroot';
+          $pkg='/var/www/sokna-public-host-gate/update-exact-qa.zip';
+          $contract=json_decode(file_get_contents('/var/www/sokna-public-host-gate/contract.json'),true,512,JSON_THROW_ON_ERROR);
+          require $root.'/bootstrap.php';
+          $cfg=require $root.'/config.php';
+          $core=sokna_public_bootstrap($cfg);
+          $routine=$core->routinePublicUpdates();
+          $health=fn():array=>(new \Sokna\PublicEdge\Health\PublicHealthService($core->database(),$root,$cfg['app']['storage_dir']))->status()['body'];
+          require_once $root.'/src/Update/IndependentEmergencyRoutineBridge.php';
+          $bridge=new \Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge($routine,$cfg['app']['storage_dir'],fn():array=>$core->migrations()->pendingVersions(),$health);
+          $op=$argv[1];
+          if($op==='routine-stage') $result=$routine->stageUploadedDeltaZip($pkg,'disposable-ci',true);
+          elseif($op==='routine-activate') $result=$routine->activateStaged('disposable-ci');
+          elseif($op==='routine-rollback') $result=$routine->rollback('disposable-ci');
+          elseif($op==='emergency-stage') $result=$bridge->stageUploadedZip($pkg,'disposable-ci');
+          elseif($op==='emergency-activate') $result=$bridge->activateStaged('disposable-ci');
+          elseif($op==='emergency-commit') $result=$bridge->commitPending('disposable-ci');
+          else throw new RuntimeException('unexpected QA operation');
+          $s=$routine->snapshot();
+          foreach($contract['protected'] as $n=>$sha) if(hash_file('sha256',$root.'/'.$n)!==$sha) throw new RuntimeException('protected_changed');
+          if(str_ends_with($op,'-activate') && (!is_array($s['pending_verification']) || $s['managed_tree_sha256']!==$contract['target_tree'])) throw new RuntimeException('activation_identity');
+          if($op==='routine-rollback' && ($s['current_version']!==$contract['baseline'] || $s['managed_tree_matches_expected']!==true || $s['pending_verification']!==null)) throw new RuntimeException('rollback_identity');
+          if($op==='emergency-commit' && ($s['current_version']!==$contract['target'] || $s['active_version']!==$contract['target'] || $s['managed_tree_sha256']!==$contract['target_tree'] || $s['pending_verification']!==null)) throw new RuntimeException('commit_identity');
+          echo json_encode(['operation'=>$op,'version'=>$s['current_version'],'tree'=>$s['managed_tree_sha256'],'pending'=>is_array($s['pending_verification']),'health'=>$health()],JSON_THROW_ON_ERROR)."\n";
+          PHP
+          sudo install -o www-data -g www-data -m 0640 "$RUNNER_TEMP/operate.php" /var/www/sokna-public-host-gate/operate.php
+          for op in routine-stage routine-activate routine-rollback emergency-stage emergency-activate emergency-commit; do
+            sudo -u www-data php /var/www/sokna-public-host-gate/operate.php "$op" | tee -a "$RUNNER_TEMP/public-lifecycle-receipt.jsonl"
+            curl --fail --silent --show-error http://127.0.0.1:18082/health | python3 -c "import json,sys; j=json.load(sys.stdin); assert j['ok'] and j['database']=='ready' and j['pending_migrations']==0 and j['applied_migrations']==11; print('HTTP_READBACK_PASS',j['version'])"
+          done
+          echo 'PASS isolated core lifecycle and bridge; authenticated Emergency browser route not claimed'
+      - name: Reconstruct the already-installed origin ledger from verified baseline manifests (disposable fixture only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -u www-data python3 - <<'PY'
+          import pathlib,json,hashlib
+          w=pathlib.Path('/var/www/sokna-public-host-gate'); c=json.loads((w/'contract.json').read_text())
+          for name,sub,version,expected in [('browser306','',c['baseline'],'7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce'),('older','public/menu',c['older'],c['older_tree']),('current','public',c['current'],c['current_tree'])]:
+              root=w/name/'webroot'/sub
+              assert (root/'VERSION.txt').read_text().strip()==version
+              # No private runtime files are used in reconstructing the old
+              # installed code identity. Every managed file came from exact
+              # SHA-pinned origin ZIP; validate the full managed tree via its
+              # manifest readback and the HTTP health on the next step.
+              d=root/'storage/routine-update-v2';d.mkdir(parents=True,exist_ok=True)
+              state=d/'state.json'
+              if state.exists():
+                  before=json.loads(state.read_text())
+                  assert before.get('active_version') in ('',None,version)
+                  assert before.get('active_managed_tree_sha256') in ('',None,expected)
+                  assert all(before.get(k) is None for k in ('staged','pending_verification','db_forward_fence','activation_journal'))
+              state.write_text(json.dumps({'format':'sokna-public-routine-update-state-v2','schema_version':2,'active_version':version,'active_managed_tree_sha256':expected,'previous_version':'','lkg_recovery_id':'','staged':None,'pending_verification':None,'activation_journal':None,'db_forward_fence':None,'history':[]}))
+              print('RECONSTRUCTED_EXACT_HISTORICAL_ORIGIN_LEDGER',name,expected)
+          PY
+          sudo chown -R www-data:www-data /var/www/sokna-public-host-gate/browser306/webroot/storage/routine-update-v2 /var/www/sokna-public-host-gate/older/webroot/public/menu/storage/routine-update-v2 /var/www/sokna-public-host-gate/current/webroot/public/storage/routine-update-v2
+      - name: Authenticated protected Emergency browser route on all three supported origins
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -u www-data python3 - <<'PY' | tee "$RUNNER_TEMP/public-authenticated-emergency-receipt.jsonl"
+          import pathlib,hashlib,json,urllib.request,urllib.parse,urllib.error,http.cookiejar,re
+          work=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
+          pkg=work/'update-exact-qa.zip';sha=hashlib.sha256(pkg.read_bytes()).hexdigest()
+          assert sha==c['candidate_sha256']
+          for name,port,sub,origin in [('browser306',18084,'',c['baseline']),('older',18083,'/public/menu',c['older']),('current',18085,'/public',c['current'])]:
+              base=f'http://127.0.0.1:{port}{sub}';root=work/name/'webroot'/sub.lstrip('/')
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  with op.open(base+path,timeout=45) as r:return r.read()
+              def post(action,fields=None,upload=False):
+                  html=get('/emergency.php').decode();m=re.search(r'<input[^>]*name="csrf"[^>]*value="([a-f0-9]{48})"',html)
+                  assert m,('CSRF_MISSING',name,action)
+                  fields=dict(fields or {},csrf=m.group(1))
+                  if upload:
+                      b='----sokna-universal-ci-boundary'
+                      body=b''.join(('--'+b+'\r\nContent-Disposition: form-data; name="'+k+'"\r\n\r\n'+v+'\r\n').encode() for k,v in fields.items())
+                      body+=('--'+b+'\r\nContent-Disposition: form-data; name="package"; filename="candidate.zip"\r\nContent-Type: application/zip\r\n\r\n').encode()+pkg.read_bytes()+('\r\n--'+b+'--\r\n').encode()
+                      h={'Content-Type':'multipart/form-data; boundary='+b}
+                  else:body=urllib.parse.urlencode(fields).encode();h={'Content-Type':'application/x-www-form-urlencoded'}
+                  req=urllib.request.Request(base+'/emergency.php?action='+action,data=body,headers=h)
+                  with op.open(req,timeout=60) as r:
+                      assert r.status==200
+                      return r.read().decode()
+              assert json.loads(get('/health'))['version']==origin
+              assert 'دسترسی اضطراری' in get('/emergency.php').decode()
+              post('login',{'emergency_password':'disposable-emergency-CI-only-20261124'})
+              assert 'خروج امن' in get('/emergency.php').decode()
+              response=post('stage',upload=True)
+              if 'بسته با موفقیت اعتبارسنجی' not in response:
+                  import html
+                  safe=re.sub(r'<script.*?</script>|<style.*?</style>','',response,flags=re.S)
+                  print('STAGE_DIAGNOSTIC',name,html.unescape(re.sub(r'<[^>]+>',' ',safe))[-6000:])
+                  state=root/'storage/routine-update-v2/state.json'
+                  if state.is_file():
+                      q=json.loads(state.read_text());print('STATE', {k:q.get(k) for k in ('active_version','staged','pending_verification')})
+                  raise AssertionError('STAGE_REJECTED '+name)
+              assert 'فایل‌ها فعال شدند' in post('activate',{'confirmation':'activate'}),name
+              assert json.loads(get('/health'))['version']==c['target']
+              assert 'نسخه جدید' in post('commit',{'confirmation':'commit'}),name
+              state=json.loads((root/'storage/routine-update-v2/state.json').read_text())
+              assert state['active_version']==c['target'] and state['active_managed_tree_sha256']==c['target_tree']
+              assert all(state.get(k) is None for k in ('staged','pending_verification','db_forward_fence','activation_journal'))
+              for n,d in c['protected'].items():assert hashlib.sha256((root/n).read_bytes()).hexdigest()==d
+              health=json.loads(get('/health'));assert health['ok'] and health['applied_migrations']==11 and health['pending_migrations']==0
+              print(json.dumps({'status':'PASS','scope':'exact_zip','sha256':sha,'origin':origin,'origin_tree_sha256':c['older_tree'] if name=='older' else c['current_tree'] if name=='current' else '7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce','authenticated_emergency_http':True,'layout':sub or '/','protected_files':6,'db_migrations':11}))
+          PY
+      - name: Staff login and all page routes after real Emergency upgrade including exact installed 35io
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" upgraded | tee "$RUNNER_TEMP/public-staff-receipt.txt"
+      - name: Admit exact Public operator ZIP and clean Web only after all checks succeed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,shutil,os
+          w=pathlib.Path('/var/www/sokna-public-host-gate');r=pathlib.Path(os.environ['RUNNER_TEMP']);c=json.loads((w/'contract.json').read_text())
+          rows=[json.loads(line) for line in (r/'public-authenticated-emergency-receipt.jsonl').read_text().splitlines() if line.startswith('{')]
+          assert len(rows)==3 and {x['origin_tree_sha256'] for x in rows}=={c['current_tree'],c['older_tree'],'7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce'}
+          assert all(x['status']=='PASS' and x['sha256']==c['candidate_sha256'] and x['authenticated_emergency_http'] and x['protected_files']==6 and x['db_migrations']==11 for x in rows)
+          out=r/'public-operator';out.mkdir()
+          src=w/'update-exact-qa.zip';clean=r/'verified-clean'/'SOKNA-PUBLIC-35IP-CLEAN-FROZEN.zip'
+          h=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          assert h(src)==c['candidate_sha256'] and h(clean)==c['clean_sha256']
+          shutil.copyfile(src,out/'SOKNA-PUBLIC-35IP-UNIVERSAL-UPDATE.zip')
+          shutil.copyfile(clean,out/'SOKNA-PUBLIC-35IP-CLEAN-WEB.zip')
+          d={'schema':'sokna-controlled-distribution-receipt-v1','release':'35ip','scope':'Public','distribution_authorized':True,'deployment_authorized':False,'factory_run':os.environ['GITHUB_RUN_ID'],'operator_preflight_required':True,'host_support_required':False,'fresh_setup_note':'Independent Emergency requires a reconciled Routine ledger; first update from a new setup should use Routine if the ledger is not yet established. Historical origins were reconstructed only in disposable CI.','files':{p.name:h(p) for p in out.glob('*.zip')},'authenticated_emergency':rows,'staff_route_regression':'PASS','staff_receipt':(r/'public-staff-receipt.txt').read_text()}
+          (out/'RELEASE-RECEIPT.json').write_text(json.dumps(d,indent=2))
+          print(json.dumps(d,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-PUBLIC-35IP-CONTROLLED-OPERATOR-RELEASE
+          path: ${{ runner.temp }}/public-operator/*
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-PUBLIC-35IP-EXACT-CLEAN-TESTED
+          path: ${{ runner.temp }}/verified-clean/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Apache diagnostics on failure (disposable host only)
+        if: failure()
+        run: |
+          sudo tail -n 100 /var/log/apache2/error.log || true
+          sudo apache2ctl -S || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-EXACT-PUBLIC-HOST-GATE-QA-RECEIPT-ONLY
+          path: |
+            ${{ runner.temp }}/public-lifecycle-receipt.jsonl
+            ${{ runner.temp }}/public-authenticated-emergency-receipt.jsonl
+          if-no-files-found: ignore
+          retention-days: 30
