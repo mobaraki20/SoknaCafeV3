@@ -1,0 +1,85 @@
+name: SOKNA persistent default tender and explicit mixed payment acceptance
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-tender-policy.yml','qa/sokna-tender-policy/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  workspaces:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [root, subfolder]
+        tender: [pos, none]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd, sodium
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45507071762
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Verify exact candidate, install disposable data
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_Z_MODE: ${{ matrix.mode }}
+          SOKNA_BUNDLE_MODE: patched
+        run: |
+          set -euo pipefail
+          python3 -c "import hashlib,pathlib,json,os; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'frozen'; m=json.loads((p/'freeze-receipt.json').read_text()); assert all(hashlib.sha256((p/k).read_bytes()).hexdigest()==v for k,v in m['files'].items())"
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" "$RUNNER_TEMP/browser-evidence"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 qa/sokna-tender-policy/patch.py "$RUNNER_TEMP"
+          php -l "$RUNNER_TEMP/local/src/Domain/Orders/OrderWorkspaceService.php"
+          node --check "$RUNNER_TEMP/public/assets/staff-app/hall-workspace.js"
+          node --check "$RUNNER_TEMP/public/assets/hall-settlement-v32.js"
+          node --check "$RUNNER_TEMP/public/assets/settlement-tender.js"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0093_bundle_distribution_provenance
+          php qa/sokna-final-consolidated/auth-setup.php
+      - name: Browser dependencies
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Run paired workspaces with real data
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_Z_MODE: ${{ matrix.mode }}
+          SOKNA_Z_ROUTER: ${{ github.workspace }}/qa/sokna-request-z/router.php
+          SOKNA_MULTI_AUDIT: '1'
+          SOKNA_QA_TENDER: ${{ matrix.tender }}
+          SOKNA_MULTI_BROWSER_SCRIPT: ${{ github.workspace }}/qa/sokna-tender-policy/browser.py
+          PHP_CLI_SERVER_WORKERS: '4'
+        run: |
+          set -euo pipefail
+          awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/test-browser.php"
+          cat qa/sokna-tender-policy/fixture.php >> "$RUNNER_TEMP/test-browser.php"
+          php "$RUNNER_TEMP/test-browser.php"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-TENDER-ACCEPTANCE-${{ matrix.mode }}-${{ matrix.tender }}
+          path: ${{ runner.temp }}/browser-evidence/
+          retention-days: 90
