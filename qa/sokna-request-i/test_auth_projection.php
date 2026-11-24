@@ -50,7 +50,7 @@ $u['capabilities']=['cashier_accounts'];$svc->saveUser($u,$actor);$sync();
 $a($sessions->resolve($l['token'])===null,'remote removal did not revoke');$a($login($next)['ok']===false,'remote removal still allows login');
 $a($lookup()['remote_login_ready']===0,'remote disabled falsely ready');
 $u['capabilities'][]='remote_access';$reject(fn()=>$svc->saveUser($u,$actor));
-$team['password']='FixtureOnly-Remote-Three';$svc->saveTeamMember($team,$actor);$sync();
+$team['password']='FixtureOnly-Remote-Three';$savedTeam=$svc->saveTeamMember($team,$actor);$team['personnel_id']=$savedTeam['personnel_id'];$sync();
 $l=$login($team['password']);$a($l['ok']===true,'team activation failed');
 $team['password']='';$team['system_access']=false;$svc->saveTeamMember($team,$actor);$sync();
 $a($sessions->resolve($l['token'])===null,'deactivated account still valid');$a($login($team['password']===''?'FixtureOnly-Remote-Three':$team['password'])['ok']===false,'deactivated login accepted');
