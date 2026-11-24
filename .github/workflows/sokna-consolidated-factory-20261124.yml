@@ -205,9 +205,77 @@ jobs:
           if(!$pkg){ throw 'NO_LOCAL_RELEASE_SET' }
           python -c "import zipfile,json,sys,hashlib;z=zipfile.ZipFile(sys.argv[1]);m=json.loads(z.read('release-set.json'));w=z.read('artifacts/local/web.zip');assert hashlib.sha256(w).hexdigest()==m['artifacts']['local-web']['sha256'];assert m['for_install'] is False;assert m['production_pass'] is False;assert zipfile.ZipFile(__import__('io').BytesIO(w)).testzip() is None;print('PASS_WINDOWS_PACKAGE_READBACK__NOT_INSTALLABLE')" "$($pkg.FullName)"
           if($LASTEXITCODE -ne 0){throw 'WINDOWS_PKG_SHA_FAILURE'}
+  windows-native-lifecycle:
+    needs: exact-factory
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r307-231fv-dashboard-ui-20261120
+          path: r307-fixtures
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          run-id: 44730988488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/current-qa
+      - name: Native Windows R307 to 231ga exact-source stage and HTTP readback (DISPOSABLE ONLY)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/r307-baseline" -Recurse -Filter 'SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip' | Select-Object -First 1
+          $target=Get-ChildItem "$env:RUNNER_TEMP/current-qa" -Recurse -Filter 'SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'SOKNA_EXACT_R307_OR_CURRENT_PACKAGE_MISSING'}
+          $env:SOKNA_R307_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_CURRENT_QA_ZIP=$target.FullName
+          Push-Location r307-fixtures
+          try {
+            python r307/qa/prepare_native_r307.py
+            if($LASTEXITCODE -ne 0){throw 'R307_HISTORICAL_NATIVE_ADAPTER_FAILED'}
+          } finally {Pop-Location}
+          python qa/sokna-final-20261124/prepare_native_ci_current.py
+          if($LASTEXITCODE -ne 0){throw 'SOKNA_NATIVE_CI_REBASE_FAILED'}
+          $env:SOKNA_CURRENT_CI_STAGE_ZIP=Join-Path $env:RUNNER_TEMP 'SOKNA-NATIVE-CI-ONLY-DO-NOT-PUBLISH.zip'
+          # CI-only rewrite of an outer manifest is NOT an operator release.
+          # Verify temporary structural stage and NEVER upload the stage ZIP.
+          python r307-fixtures/packaging/windows/release-gates/check_local_release_set.py $env:SOKNA_CURRENT_CI_STAGE_ZIP --require-installable
+          if($LASTEXITCODE -ne 0){throw 'SOKNA_DISPOSABLE_STAGE_SHAPE_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'sokna-current-r307-to-r2-native.ps1')
+            if($LASTEXITCODE -ne 0){throw 'SOKNA_NATIVE_WINDOWS_REAL_LIFECYCLE_FAILED'}
+          } finally {Pop-Location}
+          'PASS_EXACT_R307_TO_231GA_NATIVE_STAGE_ACTIVATE_HTTP_DB88_DISPOSABLE_ONLY' | Out-File (Join-Path $env:RUNNER_TEMP 'sokna-current-native-lifecycle-receipt.txt')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CURRENT-WINDOWS-NATIVE-LIFECYCLE-RECEIPT-ONLY
+          path: |
+            ${{ runner.temp }}/sokna-current-native-lifecycle-receipt.txt
+            ${{ runner.temp }}/sokna-current-native-adapter.json
+          if-no-files-found: ignore
+          retention-days: 30
   final-decision:
     if: always()
-    needs: [exact-factory,mariadb-migration,public-mariadb-clean,windows-format]
+    needs: [exact-factory,mariadb-migration,public-mariadb-clean,windows-format,windows-native-lifecycle]
     runs-on: ubuntu-24.04
     steps:
       - name: Record real independent gate conclusions without claiming operator release
@@ -216,7 +284,8 @@ jobs:
           DB: ${{ needs.mariadb-migration.result }}
           PUBLIC_DB: ${{ needs.public-mariadb-clean.result }}
           WINDOWS: ${{ needs.windows-format.result }}
+          NATIVE: ${{ needs.windows-native-lifecycle.result }}
         run: |
           printf 'Exact source/package: %s\nMariaDB: %s\nWindows package: %s\n' "$EXACT" "$DB" "$WINDOWS"
-          test "$EXACT" = success && test "$DB" = success && test "$PUBLIC_DB" = success && test "$WINDOWS" = success
+          test "$EXACT" = success && test "$DB" = success && test "$PUBLIC_DB" = success && test "$WINDOWS" = success && test "$NATIVE" = success
           echo 'PASS_DISPOSABLE_PREFLIGHT__OPERATOR_RELEASE_STILL_BLOCKED_PENDING_NATIVE_ACTIVATION'
