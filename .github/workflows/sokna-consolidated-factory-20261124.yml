@@ -72,43 +72,50 @@ jobs:
         with:
           name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
           path: ${{ runner.temp }}/target
-      - name: Validate exact Local 0084-0088 migrations with production Migrations runner
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-original
+      - name: Exact production-sequenced clean Local MariaDB and R306-to-current upgrade
         shell: bash
         env:
           SOKNA_CI_DB_PASS: disposable-consolidated-ci
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/local"
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/r306-local"
           python3 - <<'PY'
-          import zipfile,io,pathlib,os
+          import zipfile,io,pathlib,hashlib,os
           r=pathlib.Path(os.environ['RUNNER_TEMP'])
-          a=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
-          assert len(a)==1
-          with zipfile.ZipFile(a[0]) as z:
-            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
-              for n in w.namelist():
-                if n.endswith('/'):continue
-                p=r/'local'/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(n))
-          PY
-          # Exact Local photo-bundle preflight requires an isolated, writable host vault even in CI.
-          # Satisfy the real guard using disposable paths; never skip/bypass the guard.
-          python3 - <<'PY'
-          import os,pathlib
-          r=pathlib.Path(os.environ['RUNNER_TEMP'])
-          data=r/'sokna-disposable-data'
-          (data/'guest-media').mkdir(parents=True,exist_ok=True)
-          (r/'config.php').write_text("<?php return ['app'=>['data_dir'=>'"+str(data)+"']];\n")
+          original=list((r/'r306-original').rglob('SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip'))
+          target=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(original)==len(target)==1
+          assert hashlib.sha256(original[0].read_bytes()).hexdigest()=='1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209'
+          for archive,dest,want in [(target[0],r/'local',619),(original[0],r/'r306-local',608)]:
+            with zipfile.ZipFile(archive) as z:
+              with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+                assert len(w.namelist())==want and w.testzip() is None
+                for name in w.namelist():
+                  if name.endswith('/'):continue
+                  p=dest/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(name))
           PY
           php -r '
-            require getenv("RUNNER_TEMP")."/local/src/Core/MigrationExecutionException.php";
-            require getenv("RUNNER_TEMP")."/local/src/Core/Migrations.php";
-            $pdo=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_consolidated_test;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
-            $m=new \Sokna\Local\Core\Migrations($pdo,getenv("RUNNER_TEMP")."/local/database/migrations");
-            $applied=$m->migrate();
-            $rows=$pdo->query("SELECT version FROM schema_migrations ORDER BY version")->fetchAll(PDO::FETCH_COLUMN);
-            foreach(["0084_remaining_account_discount_revisions","0085_whole_order_cancellations","0086_order_cancellation_batches","0087_partial_order_payment_reversals","0088_historical_variant_order_snapshots"] as $v){if(!in_array($v,$rows,true))throw new RuntimeException("MISSING_MIGRATION_".$v);}
-            echo "PASS_LOCAL_MARIADB_MIGRATIONS count=".count($rows)." newly=".count($applied)."\\n";
+          $p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $p->exec("CREATE DATABASE IF NOT EXISTS sokna_ci_clean CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          $p->exec("CREATE DATABASE IF NOT EXISTS sokna_ci_upgrade CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
           '
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_clean setup 0088_historical_variant_order_snapshots | tee "$RUNNER_TEMP/clean-mariadb-receipt.json"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/r306-local" sokna_ci_upgrade setup 0083_remaining_account_discount | tee "$RUNNER_TEMP/r306-mariadb-receipt.json"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_upgrade upgrade 0088_historical_variant_order_snapshots | tee "$RUNNER_TEMP/upgrade-mariadb-receipt.json"
+          echo 'PASS_REAL_MARIADB_CLEAN_AND_R306_UPGRADE__DISPOSABLE_ONLY'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CONSOLIDATED-MARIADB-CLEAN-AND-UPGRADE-RECEIPTS
+          path: ${{ runner.temp }}/*-mariadb-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
   windows-format:
     needs: exact-factory
     runs-on: windows-2022
