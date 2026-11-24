@@ -1,0 +1,824 @@
+{
+  "schema": "sokna-recipe-purchase-import-contract-v1",
+  "date": "2026-11-24",
+  "status": "QA_SPEC_ONLY_NOT_APPLIED",
+  "reference": [
+    "SOKNA-RECIPES-COSTING-RECONCILED-20261123.xlsx",
+    "SOKNA-INGREDIENT-PACKAGING-PRICE-MASTER.xlsx",
+    "SOKNA-PURCHASES-TELEGRAM-TRANSCRIPT-20261123.jsonl",
+    "SOKNA-PURCHASES-LATE-ABAN-AZAR-RAW-20261123.md"
+  ],
+  "menu_policy": {
+    "existing": "match stable item code and verify identity; recipe changes only; never write existing menu prices, visibility, descriptions or ordering",
+    "new_only": {
+      "name": "بلک موهیتو",
+      "price_toman": 275000,
+      "category_key": "cold-drinks",
+      "preparation_station": "cold_bar",
+      "placement": "adjacent to other mojitos; collision-safe new item code; no duplicate on repeat"
+    }
+  },
+  "recipe_policy": {
+    "approval": "user approved; review_status=ready, technical completeness and quantity accuracy remain independent",
+    "versioning": "retire existing active recipe only after all target mappings verified; create new version atomically; no overwrite of prior versions or snapshots; idempotent",
+    "mapping": "candidate codes reflect source, verify live canonical identity/unit/active state; null mapping requires search active names and aliases before creating only genuinely missing required ingredient",
+    "never_import": [
+      "historical selling prices",
+      "costing estimates",
+      "5% hypothetical waste",
+      "purchases as receipts",
+      "inventory movements or balances",
+      "retroactive recipe application"
+    ]
+  },
+  "recipes": [
+    {
+      "item_code": "1104",
+      "name": "شیک لوتوس",
+      "components": [
+        {
+          "ingredient": "کره لوتوس",
+          "quantity": 18,
+          "unit": "g",
+          "candidate_inventory_code": "INV-096"
+        },
+        {
+          "ingredient": "بیسکویت لوتوس",
+          "quantity": 3,
+          "unit": "count",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 280,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 75,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        }
+      ]
+    },
+    {
+      "item_code": "1113",
+      "name": "شیک پروتئینی",
+      "components": [
+        {
+          "ingredient": "کره بادام‌زمینی",
+          "quantity": 50,
+          "unit": "g",
+          "candidate_inventory_code": "INV-058"
+        },
+        {
+          "ingredient": "دارچین",
+          "quantity": 1,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "کنجد",
+          "quantity": 10,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "موز",
+          "quantity": 160,
+          "unit": "g",
+          "candidate_inventory_code": "INV-032"
+        },
+        {
+          "ingredient": "جو دوسر",
+          "quantity": 25,
+          "unit": "g",
+          "candidate_inventory_code": "INV-108"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 90,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        }
+      ]
+    },
+    {
+      "item_code": "1010",
+      "name": "شیر موز بستنی",
+      "components": [
+        {
+          "ingredient": "موز",
+          "quantity": 200,
+          "unit": "g",
+          "candidate_inventory_code": "INV-032"
+        },
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 190,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 125,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        }
+      ]
+    },
+    {
+      "item_code": "1009",
+      "name": "شیر موز",
+      "components": [
+        {
+          "ingredient": "موز",
+          "quantity": 250,
+          "unit": "g",
+          "candidate_inventory_code": "INV-032"
+        },
+        {
+          "ingredient": "یخ دستگاه",
+          "quantity": 70,
+          "unit": "g",
+          "candidate_inventory_code": null,
+          "note": "در دستور ثبت شود؛ بدون حرکت خرید ساختگی"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 195,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        },
+        {
+          "ingredient": "عسل",
+          "quantity": 2,
+          "unit": "g",
+          "candidate_inventory_code": "INV-106"
+        }
+      ]
+    },
+    {
+      "item_code": "1110",
+      "name": "اسموتی انبه",
+      "components": [
+        {
+          "ingredient": "انبه منجمد",
+          "quantity": 320,
+          "unit": "g",
+          "candidate_inventory_code": "INV-020"
+        },
+        {
+          "ingredient": "نکتار انبه",
+          "quantity": 30,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-098"
+        },
+        {
+          "ingredient": "سیروپ انبه",
+          "quantity": 30,
+          "unit": "ml",
+          "candidate_inventory_code": null
+        }
+      ]
+    },
+    {
+      "item_code": "1109",
+      "name": "شیک انبه",
+      "components": [
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 165,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "انبه منجمد",
+          "quantity": 120,
+          "unit": "g",
+          "candidate_inventory_code": "INV-020"
+        },
+        {
+          "ingredient": "سیروپ انبه",
+          "quantity": 60,
+          "unit": "ml",
+          "candidate_inventory_code": null
+        }
+      ]
+    },
+    {
+      "item_code": "1103",
+      "name": "شیک شکلات",
+      "components": [
+        {
+          "ingredient": "بستنی شکلاتی",
+          "quantity": 285,
+          "unit": "g",
+          "candidate_inventory_code": "INV-008"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 75,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        },
+        {
+          "ingredient": "سس شکلات",
+          "quantity": 50,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-014",
+          "note": "۶۵ گرم فقط برآورد هزینه؛ واحد فعلی ml تغییر نکند"
+        }
+      ]
+    },
+    {
+      "item_code": "1112",
+      "name": "شیک توت فرنگی",
+      "components": [
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 285,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "سیروپ توت‌فرنگی",
+          "quantity": 80,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-093"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 75,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        }
+      ]
+    },
+    {
+      "item_code": "1111",
+      "name": "اسموتی منگو بری",
+      "components": [
+        {
+          "ingredient": "توت‌فرنگی منجمد",
+          "quantity": 140,
+          "unit": "g",
+          "candidate_inventory_code": "INV-021"
+        },
+        {
+          "ingredient": "انبه منجمد",
+          "quantity": 320,
+          "unit": "g",
+          "candidate_inventory_code": "INV-020"
+        },
+        {
+          "ingredient": "نکتار انبه",
+          "quantity": 70,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-098"
+        },
+        {
+          "ingredient": "سیروپ انبه",
+          "quantity": 20,
+          "unit": "ml",
+          "candidate_inventory_code": null
+        }
+      ]
+    },
+    {
+      "item_code": "1107",
+      "name": "شیک پینات",
+      "components": [
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 280,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "کره بادام‌زمینی",
+          "quantity": 50,
+          "unit": "g",
+          "candidate_inventory_code": "INV-058"
+        },
+        {
+          "ingredient": "پنیر ویلی",
+          "quantity": 4,
+          "unit": "g",
+          "candidate_inventory_code": "INV-015"
+        }
+      ]
+    },
+    {
+      "item_code": "1101",
+      "name": "شیک ارده",
+      "components": [
+        {
+          "ingredient": "گردو",
+          "quantity": 20,
+          "unit": "g",
+          "candidate_inventory_code": "INV-107"
+        },
+        {
+          "ingredient": "ارده",
+          "quantity": 80,
+          "unit": "g",
+          "candidate_inventory_code": "INV-095"
+        },
+        {
+          "ingredient": "کنجد",
+          "quantity": 10,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "دارچین",
+          "quantity": 1,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 280,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "شیر",
+          "quantity": 30,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        }
+      ]
+    },
+    {
+      "item_code": "1108",
+      "name": "شیک نسکافه",
+      "components": [
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 285,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "قهوه گلد",
+          "quantity": 5,
+          "unit": "g",
+          "candidate_inventory_code": "INV-097"
+        }
+      ]
+    },
+    {
+      "item_code": "1102",
+      "name": "شیک ارده اسپرسو",
+      "components": [
+        {
+          "ingredient": "گردو",
+          "quantity": 20,
+          "unit": "g",
+          "candidate_inventory_code": "INV-107"
+        },
+        {
+          "ingredient": "ارده",
+          "quantity": 80,
+          "unit": "g",
+          "candidate_inventory_code": "INV-095"
+        },
+        {
+          "ingredient": "کنجد",
+          "quantity": 10,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "دارچین",
+          "quantity": 1,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 280,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "قهوه اسپرسو",
+          "quantity": 12,
+          "unit": "g",
+          "candidate_inventory_code": "INV-001"
+        }
+      ]
+    },
+    {
+      "item_code": "905",
+      "name": "آفوگاتو",
+      "components": [
+        {
+          "ingredient": "بستنی وانیلی",
+          "quantity": 130,
+          "unit": "g",
+          "candidate_inventory_code": "INV-007"
+        },
+        {
+          "ingredient": "قهوه اسپرسو",
+          "quantity": 12,
+          "unit": "g",
+          "candidate_inventory_code": "INV-001"
+        }
+      ]
+    },
+    {
+      "item_code": "1019",
+      "name": "آیس دالگونا",
+      "components": [
+        {
+          "ingredient": "شیر",
+          "quantity": 120,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-003"
+        },
+        {
+          "ingredient": "قهوه گلد",
+          "quantity": 3,
+          "unit": "g",
+          "candidate_inventory_code": "INV-097"
+        },
+        {
+          "ingredient": "شکر قهوه‌ای",
+          "quantity": 2,
+          "unit": "g",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "سیروپ وانیل",
+          "quantity": 20,
+          "unit": "ml",
+          "candidate_inventory_code": null
+        }
+      ]
+    },
+    {
+      "item_code": "1005",
+      "name": "موهیتو",
+      "components": [
+        {
+          "ingredient": "لیمو",
+          "quantity": 150,
+          "unit": "g",
+          "candidate_inventory_code": "INV-031"
+        },
+        {
+          "ingredient": "نعنا",
+          "quantity": 1,
+          "unit": "serving",
+          "candidate_inventory_code": "INV-036",
+          "note": "وزن سهم اعلام نشده؛ گرم ساختگی وارد نشود"
+        },
+        {
+          "ingredient": "سیروپ نعنا",
+          "quantity": 60,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-117",
+          "note": "هویت سن‌ایچ با INV-060 بررسی شود، ادغام کور ممنوع"
+        },
+        {
+          "ingredient": "آب گازدار",
+          "quantity": 1,
+          "unit": "count",
+          "candidate_inventory_code": "INV-072"
+        }
+      ]
+    },
+    {
+      "item_code": "1018",
+      "name": "رد موهیتو",
+      "components": [
+        {
+          "ingredient": "لیمو",
+          "quantity": 150,
+          "unit": "g",
+          "candidate_inventory_code": "INV-031"
+        },
+        {
+          "ingredient": "نعنا",
+          "quantity": 1,
+          "unit": "serving",
+          "candidate_inventory_code": "INV-036",
+          "note": "وزن سهم اعلام نشده"
+        },
+        {
+          "ingredient": "سیروپ توت‌فرنگی",
+          "quantity": 60,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-093"
+        },
+        {
+          "ingredient": "شربت فیمتو",
+          "quantity": 5,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-062"
+        },
+        {
+          "ingredient": "آب گازدار",
+          "quantity": 1,
+          "unit": "count",
+          "candidate_inventory_code": "INV-072"
+        }
+      ]
+    },
+    {
+      "item_code": "1016",
+      "name": "بلو موهیتو",
+      "components": [
+        {
+          "ingredient": "لیمو",
+          "quantity": 150,
+          "unit": "g",
+          "candidate_inventory_code": "INV-031"
+        },
+        {
+          "ingredient": "نعنا",
+          "quantity": 1,
+          "unit": "serving",
+          "candidate_inventory_code": "INV-036",
+          "note": "وزن سهم اعلام نشده"
+        },
+        {
+          "ingredient": "سیروپ بلوکاراسائو",
+          "quantity": 60,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-059"
+        },
+        {
+          "ingredient": "آب گازدار",
+          "quantity": 1,
+          "unit": "count",
+          "candidate_inventory_code": "INV-072"
+        }
+      ]
+    },
+    {
+      "item_code": null,
+      "name": "بلک موهیتو",
+      "components": [
+        {
+          "ingredient": "سیروپ آلبالو",
+          "quantity": 30,
+          "unit": "ml",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "سیروپ بلوکاراسائو",
+          "quantity": 30,
+          "unit": "ml",
+          "candidate_inventory_code": "INV-059"
+        },
+        {
+          "ingredient": "نوشیدنی آلوئه‌ورا",
+          "quantity": 30,
+          "unit": "ml",
+          "candidate_inventory_code": null
+        },
+        {
+          "ingredient": "آب گازدار",
+          "quantity": 1,
+          "unit": "count",
+          "candidate_inventory_code": "INV-072"
+        },
+        {
+          "ingredient": "لیمو",
+          "quantity": 120,
+          "unit": "g",
+          "candidate_inventory_code": "INV-031"
+        }
+      ]
+    }
+  ],
+  "purchase_units": [
+    {
+      "item_code": "INV-007",
+      "aliases": [
+        "بستنی سفید",
+        "بستنی وانیلی"
+      ],
+      "units": [
+        [
+          "بن‌ماری ۳ کیلویی",
+          3000
+        ],
+        [
+          "کارتن ۲ بن‌ماری",
+          6000
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-008",
+      "units": [
+        [
+          "بن‌ماری ۳ کیلویی",
+          3000
+        ],
+        [
+          "کارتن ۲ بن‌ماری",
+          6000
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-003",
+      "units": [
+        [
+          "پاکت یک لیتری",
+          1000
+        ],
+        [
+          "کارتن ۱۰ پاکتی",
+          10000
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-062",
+      "aliases": [
+        "ویمتو",
+        "فیمتو",
+        "شربت ویمتو"
+      ],
+      "units": [
+        [
+          "بطری ۷۱۰ میلی‌لیتری",
+          710
+        ],
+        [
+          "کارتن ۱۲ بطری",
+          8520
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-020",
+      "units": [
+        [
+          "بسته ۲٫۵ کیلویی",
+          2500
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-021",
+      "units": [
+        [
+          "بسته ۲٫۵ کیلویی",
+          2500
+        ]
+      ],
+      "note": "دو بسته در فاکتور به معنی تعداد خرید است نه کارتن دو بسته‌ای"
+    },
+    {
+      "item_code": "INV-093",
+      "units": [
+        [
+          "بطری ۸۲۰ میلی‌لیتری",
+          820
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-059",
+      "units": [
+        [
+          "بطری ۸۲۰ میلی‌لیتری",
+          820
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-117",
+      "units": [
+        [
+          "بطری ۸۲۰ میلی‌لیتری",
+          820
+        ]
+      ],
+      "note": "verify product identity vs INV-060"
+    },
+    {
+      "item_code": "INV-098",
+      "units": [
+        [
+          "پاکت یک لیتری",
+          1000
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-096",
+      "units": [
+        [
+          "ظرف ۴۰۰ گرمی",
+          400
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-108",
+      "units": [
+        [
+          "بسته ۵۰۰ گرمی",
+          500
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-072",
+      "units": [
+        [
+          "بطری",
+          1
+        ],
+        [
+          "شل ۱۵ بطری",
+          15
+        ]
+      ]
+    },
+    {
+      "item_code": "INV-015",
+      "units": [
+        [
+          "بسته یک کیلویی",
+          1000
+        ]
+      ]
+    },
+    {
+      "ingredient": "بیسکویت لوتوس",
+      "units": [
+        [
+          "بسته ۲۷ عددی",
+          27
+        ]
+      ],
+      "note": "cost conflict must not block confirmed quantity"
+    },
+    {
+      "ingredient": "نوشیدنی آلوئه‌ورا",
+      "units": [
+        [
+          "بطری یک لیتری",
+          1000
+        ]
+      ]
+    },
+    {
+      "ingredient": "سیروپ انبه",
+      "units": [
+        [
+          "بطری ۸۲۰ میلی‌لیتری",
+          820
+        ]
+      ]
+    },
+    {
+      "ingredient": "سیروپ وانیل",
+      "units": [
+        [
+          "بطری ۸۲۰ میلی‌لیتری",
+          820
+        ]
+      ]
+    },
+    {
+      "ingredient": "سیروپ آلبالو",
+      "note": "820ml assumed by costing master, not verified packaging; use note until confirmed"
+    },
+    {
+      "item_code": "INV-014",
+      "note": "ظرف ۸۰۰ گرمی؛ موجودی فعلی ml؛ تبدیل وزنی به حجمی ممنوع تا شاهد دقیق؛ رسیپی ۵۰ml"
+    }
+  ],
+  "purchase_policy": {
+    "tables": [
+      "inventory_items",
+      "inventory_item_aliases",
+      "inventory_purchase_units"
+    ],
+    "mode": "fixed conversion when confirmed; keep note for unresolved packaging; preserve all existing purchase snapshots",
+    "scope": "reconcile full purchase transcript to canonical inventory vocabulary; no automatic fuzzy merge, no double counting, no import of past receipts; distinguish quantities bought from units inside packaging",
+    "daily_flow": "item + existing purchase unit + quantity + total invoice amount; no new required fields",
+    "export": "include canonical code, name, base unit, active purchase unit name, base conversion, note and aliases using existing export or minimal extension only if absent"
+  },
+  "gates": [
+    "exact source catalog mapping verified",
+    "all 19 recipes readback, 18 unchanged existing menu rows and exactly one new menu row",
+    "no historical recipe/movement/order/payment/balance change",
+    "repeat migration no duplicate or reactivation",
+    "clean installation and real upgrade on disposable MariaDB",
+    "one bottle vs carton conversion and export readback",
+    "release via central factory with new exact hashes"
+  ]
+}
