@@ -46,7 +46,7 @@ def apply(c,old):
 L=apply('local',L0);Pfull=apply('public',P0);assert all(Pfull[n]==b for n,b in protected.items());P={n:b for n,b in Pfull.items() if n not in protected}
 # Owner-reported regressions; verified against the exact pre-correction consolidated tree.
 owner_raw=zlib.decompress(base64.b64decode(b''.join(p.read_bytes() for p in sorted(pathlib.Path(__file__).parent.glob('owner-delta-*.b64'))),validate=True))
-owner_sha=H(owner_raw);assert owner_sha=='47e319b0aef36c425985145145736d90c1a05e3b755fccfc719aa1672f279803'
+owner_sha=H(owner_raw);assert owner_sha=='8b00c8bf1f7748e830aef08b66fcca8e0eb11a1275ee81ccc518db3a3b3ae7ba'
 for path,v in json.loads(owner_raw).items():
  c,n=path.split('/',1); files=L if c=='local' else P
  assert H(files[n])==v['before'],path
