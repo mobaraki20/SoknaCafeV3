@@ -136,7 +136,7 @@ jobs:
           php -l local/src/Domain/Finance/SettlementService.php
           python3 - <<'PY'
           import pathlib,os,base64,zlib,hashlib
-          for name,sha,output in [('qa/sokna-request-o/grant-rebase.b64','8b8b5772487c30ad83714e57c31d99c8560c59bf43485e98789bf177bd8e5858','o.patch'),('qa/sokna-request-o/scenario.b64','ecc3fa2b70e7d9f773e8b05f66a6d0a30b303246c321e1ae721bc44880a09b4f','scenario-o.php')]:
+          for name,sha,output in [('qa/sokna-request-o/grant-rebase.b64','8b8b5772487c30ad83714e57c31d99c8560c59bf43485e98789bf177bd8e5858','o.patch'),('qa/sokna-request-o/scenario.b64','1e56c6781bb825032f3a516cad7635a6990b6b404d4c19cb5663b6dee6cf6413','scenario-o.php')]:
               b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/name).read_bytes()))
               assert hashlib.sha256(b).hexdigest()==sha
               pathlib.Path(output).write_bytes(b)
