@@ -1,0 +1,90 @@
+name: SOKNA targeted authenticated hall acceptance on verified corrected source
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-hall-acceptance.yml','qa/sokna-hall-acceptance/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  workspaces:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [root, subfolder]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd, sodium
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45491334880
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Verify exact candidate, install disposable data
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_Z_MODE: ${{ matrix.mode }}
+          SOKNA_BUNDLE_MODE: patched
+        run: |
+          set -euo pipefail
+          python3 -c "import hashlib,pathlib,json,os; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'frozen'; m=json.loads((p/'freeze-receipt.json').read_text()); assert all(hashlib.sha256((p/k).read_bytes()).hexdigest()==v for k,v in m['files'].items())"
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" "$RUNNER_TEMP/browser-evidence"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib,base64,zlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP']); h=lambda b:hashlib.sha256(b).hexdigest()
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-report/delta.b64').read_bytes(),validate=True))
+          assert h(raw)=='02daec6598c20460b7bd6e684977611a7eacfe006ee62ba97a735937a774057b'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name
+              if os.environ['SOKNA_BUNDLE_MODE']!='baseline':f.write_bytes(b)
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
+          php qa/sokna-final-consolidated/auth-setup.php
+      - name: Browser dependencies
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Run paired workspaces with real data
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_Z_MODE: ${{ matrix.mode }}
+          SOKNA_Z_ROUTER: ${{ github.workspace }}/qa/sokna-request-z/router.php
+          SOKNA_MULTI_AUDIT: '1'
+          SOKNA_MULTI_BROWSER_SCRIPT: ${{ github.workspace }}/qa/sokna-hall-acceptance/browser.py
+          PHP_CLI_SERVER_WORKERS: '4'
+        run: |
+          set -euo pipefail
+          awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/test-browser.php"
+          cat qa/sokna-hall-acceptance/fixture.php >> "$RUNNER_TEMP/test-browser.php"
+          php "$RUNNER_TEMP/test-browser.php"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-HALL-ACCEPTANCE-${{ matrix.mode }}
+          path: ${{ runner.temp }}/browser-evidence/
+          retention-days: 90
