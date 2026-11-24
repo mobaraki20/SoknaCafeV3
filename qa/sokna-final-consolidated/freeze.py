@@ -107,7 +107,7 @@ for path,v in json.loads(bundle_raw).items():
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+H(bundle_raw)).encode())
 # Current guest/order report quantities and stable hall card width.
-for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'),('sokna-bundle-distribution/candidate.b64','02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'),('sokna-bundle-distribution/candidate-v2.b64','f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'),('sokna-bundle-history/delta.b64','c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4'),('sokna-fin-reversal/delta.b64','73d4741e210bff9b1022a56780f7f7ffe7d95ddf31b9e00a646bf61f08629450')]:
+for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'),('sokna-bundle-distribution/candidate.b64','02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'),('sokna-bundle-distribution/candidate-v2.b64','f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'),('sokna-bundle-history/delta.b64','c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4'),('sokna-fin-reversal/delta.b64','73d4741e210bff9b1022a56780f7f7ffe7d95ddf31b9e00a646bf61f08629450'),('sokna-report-archive/delta.b64','d4b20acb460cf30b9115767f57f00abc3116f3723552fd7a1b851238731246ac')]:
  raw=zlib.decompress(base64.b64decode((pathlib.Path(__file__).parent.parent/filename).read_bytes(),validate=True))
  assert H(raw)==sha
  for path,v in json.loads(raw).items():
@@ -122,6 +122,15 @@ assert H(migration)=='5e11b25e505d82f3eac7ab22dd57ece3603c31c250942505a9addf0988
 assert 'database/migrations/0093_bundle_distribution_provenance.sql' not in L
 L['database/migrations/0093_bundle_distribution_provenance.sql']=migration
 source_sha=H((source_sha+':'+H(migration)).encode())
+# Four-file tested tender policy; same patch.py as authenticated browser gate 45510176305.
+import runpy
+tender_script=pathlib.Path(__file__).parent.parent/'sokna-tender-policy/patch.py'
+tender=runpy.run_path(str(tender_script))
+tender_files={'local/'+n:b for n,b in L.items()}|{'public/'+n:b for n,b in P.items()}
+tender['apply'](tender_files)
+for path in tender['pins']:
+ c,n=path.split('/',1);files=L if c=='local' else P;files[n]=tender_files[path]
+source_sha=H((source_sha+':'+H(tender_script.read_bytes())).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
