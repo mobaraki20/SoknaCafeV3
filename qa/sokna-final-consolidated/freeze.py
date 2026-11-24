@@ -54,6 +54,16 @@ for path,v in json.loads(owner_raw).items():
  for a,b,s in reversed(v['edits']):lines[a:b]=[s]
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+owner_sha).encode())
+# Validated internal settings snapshot; same product bytes as focused run 45487427833.
+ops_path='src/Domain/Orders/OrderStaffActionService.php'
+assert H(L[ops_path])=='b6eebc43bf151ea17be35c57092ab0aae0918f4f20665243840fc99a57584b41'
+old=b"        $this->actorAny($user,['orders_floor','cashier_accounts','shift_supervision']);\n        $keys=["
+new=b"        $this->actorAny($user,['orders_floor','cashier_accounts','shift_supervision']);\n        return $this->printQuickPreferencesSnapshot();\n    }\n\n    /** Internal read-only settings projection; authenticated actions retain their role checks. */\n    public function printQuickPreferencesSnapshot(): array\n    {\n        $keys=["
+assert L[ops_path].count(old)==1
+L[ops_path]=L[ops_path].replace(old,new)
+assert H(L[ops_path])=='9c6e1523bcb422af9dfd679cb615d70f8a45f8e5142b2a0d727dd3ace85e80e0'
+source_sha=H((source_sha+':'+H(L[ops_path])).encode())
+
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)

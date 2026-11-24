@@ -88,6 +88,7 @@ try{
  $kpi=function(int $want,int $count)use($remote,$core,$a,$session,$http,$cc,$fc){
    $db=$core->database();$db->beginTransaction();try{$local=$core->settlements()->dashboardOpenAccountsTx();}finally{$db->rollBack();}
    $a($local['amount_toman']===$want&&$local['account_count']===$count,'canonical Local open account '.json_encode($local));
+   $models=$remote->publicProjectionBuilder()->remoteModelsFor(['operations']);$a(($models[0]['payload']['open_accounts']['status']??'')==='ready','raw coherent projection '.json_encode($models[0]['payload']['open_accounts']??[]));
    $p=$remote->publicEdgePublisher()->syncProjectionModelsV2(250,4,5,null,['operations']);$a($p['success']===true,'operations projection '.json_encode($p));
    $r=$http('/api/staff/read?model=operations',null,$cc);$v=$r[1]['payload']['open_accounts']??[];$a($r[0]===200&&($v['status']??'')==='ready'&&($v['amount_toman']??-1)===$want&&($v['account_count']??-1)===$count,'Public amount parity '.json_encode($v));
    $r=$http('/api/staff/read?model=operations',null,$fc);$a($r[0]===200&&!array_key_exists('open_accounts',$r[1]['payload']??[]),'floor cannot read financial KPI');
@@ -108,6 +109,39 @@ try{
  $a((int)$one('SELECT COUNT(*) FROM settlement_tender_allocations WHERE settlement_id=?',[(int)$receipt['settlement_id']])===0,'no phantom tender');
  $a((string)$one('SELECT status FROM table_sessions WHERE id=?',[$session])==='closed','table actually closed');
  echo "PASS owner Public cashier full discount, zero receipt, Local/Public open account parity and role isolation\n";
+
+
+ // Additional owner acceptance: paid item remains immutable, 100% discount on remaining units.
+ $business=$core->businessClock()->assignment();$businessDay=$business['business_date'];
+ $session2=$run("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,opened_by_user_id,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,?,?,?,?)",['ci-owner-partial-session-0002',$table,$table,$admin,$businessDay,$business['shift_key'],$business['shift_label'],$business['cutoff']]);
+ $order2=$core->orders()->commit(['source'=>'staff','table_id'=>$table,'session_id'=>$session2,'client_token'=>'ci-owner-partial-order-0002','actor_user_id'=>$admin,'items'=>[['id'=>$item['id'],'quantity'=>3]]]);
+ $core->inventoryOrders()->processPending();
+ $line2=(int)$order2['lines'][0]['order_item_id'];$acc2=$svc->account($session2);
+ $req=['session_id'=>$session2,'expected_session_id'=>$session2,'expected_remaining_total'=>$acc2['remaining_total'],'expected_signature'=>$acc2['signature'],'mode'=>'itemized','destination'=>'direct','selection'=>[['order_item_id'=>$line2,'quantity'=>1]],'print_receipt'=>false];
+ $quote=$svc->review($req,$user);$paidAmount=(int)$quote['total'];$a($paidAmount>0,'positive initial item payment');$req['tenders']=['pos'=>$paidAmount];
+ $first=$cmd('ci-owner-partial-first-pay','settlement.commit',$req);$firstId=(int)$first['settlement_id'];
+ $beforeReceipt=$rows('SELECT * FROM settlement_records WHERE id=?',[$firstId]);$beforeLines=$rows('SELECT * FROM settlement_record_lines WHERE settlement_id=? ORDER BY id',[$firstId]);
+ $acc2=$svc->account($session2);$a($acc2['paid_total']===$paidAmount&&$acc2['remaining_total']>0,'itemized balance');$kpi($acc2['remaining_total'],1);
+ $d2=['session_id'=>$session2,'discount_type'=>'percent','discount_value'=>100];
+ $pv2=$cmd('ci-owner-partial-preview-100','settlement.discount_preview',$d2);
+ $a($pv2['total']===0&&$pv2['remaining_only']===true&&$pv2['expected_signature']===$acc2['signature'],'remaining preview zero and authoritative signature');
+ $d2['expected_signature']=$pv2['expected_signature'];
+ $apply2=$cmd('ci-owner-partial-apply-100','settlement.discount',$d2);$a($apply2['remaining_only']===true&&$apply2['remaining_total']===0,'remaining grant applied');
+ $acc2=$svc->account($session2);$a($acc2['paid_total']===$paidAmount&&$acc2['remaining_total']===0,'no refund of paid receipt');$kpi(0,0);
+ $zero2=$cmd('ci-owner-partial-close-zero','settlement.commit',['session_id'=>$session2,'expected_session_id'=>$session2,'expected_remaining_total'=>0,'expected_signature'=>$acc2['signature'],'mode'=>'full','destination'=>'direct','selection'=>[],'tenders'=>[],'print_receipt'=>false]);
+ $zeroId=(int)$zero2['settlement_id'];$a((int)$one('SELECT total FROM settlement_records WHERE id=?',[$zeroId])===0,'remaining complimentary zero receipt');$a((int)$one('SELECT COUNT(*) FROM settlement_tender_allocations WHERE settlement_id=?',[$zeroId])===0,'no zero phantom tender');
+ $a((string)$one('SELECT status FROM table_sessions WHERE id=?',[$session2])==='closed','partially paid account closed');
+ $a($rows('SELECT * FROM settlement_records WHERE id=?',[$firstId])===$beforeReceipt&&$rows('SELECT * FROM settlement_record_lines WHERE settlement_id=? ORDER BY id',[$firstId])===$beforeLines,'initial payment immutable');
+ // Real report publication and display, current Local business day and actual signed ledger.
+ $expected=(int)$one("SELECT COALESCE(SUM(CASE WHEN r.status='completed' THEN r.total ELSE -r.total END),0) FROM settlement_records r JOIN table_sessions s ON s.id=r.session_id WHERE s.business_date=? AND r.status IN ('completed','reversal')",[$businessDay]);
+ $localReport=$core->reporting()->dashboardSnapshot($businessDay);$a($localReport['today_summary']['net_sales']===$expected,'Local dashboard ledger');
+ $rm=$remote->publicProjectionBuilder()->remoteModelsFor(['reports']);$a($rm[0]['payload']['dashboard']['today_summary']['net_sales']===$expected,'raw report KPI');
+ $publisher=$remote->publicEdgePublisher();$publisher->seedProjectionInvalidations(['reports'],'qa.owner.report');
+ $r=$publisher->syncProjectionModelsV2(250,4,10,null,['reports']);$a($r['success']===true,'real report publication '.json_encode($r));
+ $r=$http('/api/staff/read?model=reports',null,$cc);$a($r[0]===200&&($r[1]['payload']['business_clock']['business_date']??'')===$businessDay&&($r[1]['payload']['dashboard']['today_summary']['net_sales']??null)===$expected,'Public current day and net sales exact');
+ $page=$http('/staff/',null,$cc);$money=strtr(number_format($expected),['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹',','=>'٬']).' تومان';
+ $a($page[0]===200&&preg_match('~<small>فروش خالص امروز</small>\\s*<strong>'.preg_quote($money,'~').'</strong>~u',$page[3])===1,'rendered exact net sales card');
+ echo "PASS owner remaining discount after itemized receipt; current-day net sales Local/Public HTTP and rendered dashboard\n";
 
  echo json_encode(['status'=>'PASS','mode'=>$mode,'real_http'=>true,'two_databases'=>true,'signed_replay_denied'=>true,'collision_rollback'=>true,'durable_ack_recovery'=>true,'local_role_preserved'=>true,'remote_revocation_guard'=>$mode!=='baseline','baseline_defect_reproduced'=>$mode==='baseline','stale_snapshot_reaccepted'=>$oldAccepted,'password_changed'=>true,'inventory_exact'=>true],JSON_THROW_ON_ERROR)."\n";
 }finally{$stop();}
