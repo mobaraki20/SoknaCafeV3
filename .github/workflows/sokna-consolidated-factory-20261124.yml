@@ -90,6 +90,15 @@ jobs:
                 if n.endswith('/'):continue
                 p=r/'local'/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(n))
           PY
+          # Exact Local photo-bundle preflight requires an isolated, writable host vault even in CI.
+          # Satisfy the real guard using disposable paths; never skip/bypass the guard.
+          python3 - <<'PY'
+          import os,pathlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          data=r/'sokna-disposable-data'
+          (data/'guest-media').mkdir(parents=True,exist_ok=True)
+          (r/'config.php').write_text("<?php return ['app'=>['data_dir'=>'"+str(data)+"']];\\n")
+          PY
           php -r '
             require getenv("RUNNER_TEMP")."/local/src/Core/Migrations.php";
             $pdo=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_consolidated_test;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
