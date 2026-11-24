@@ -34,4 +34,35 @@ foreach([
  echo 'PASS '.$key."\n";
  }catch(Throwable $e){$fail[]=$key;echo 'FAIL '.$key.' '.get_class($e).' '.$e->getMessage()."\n";}
 }
+
+foreach(['multiple-original','repay','corrupt-origin'] as $n=>$key){
+ try{
+ $before=$balances();$t=$run("INSERT INTO cafe_tables(name,table_number,code,access_token) VALUES(?,?,?,?)",['QA '.$key,64750+$n,'ci-disc-'.$key.'-t','ci-disc-'.$key.'-token']);
+ $s=$run("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,opened_by_user_id,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,?,?,?,?)",['ci-disc-'.$key.'-session',$t,$t,$admin,$day,$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);
+ $o=$core->orders()->commit(['source'=>'staff','table_id'=>$t,'session_id'=>$s,'client_token'=>'ci-disc-'.$key.'-order-0001','actor_user_id'=>$admin,'items'=>[['id'=>$item['id'],'quantity'=>4]]]);$oid=(int)$o['order_id'];$line=(int)$o['lines'][0]['order_item_id'];$core->inventoryOrders()->processPending();
+ $svc->setDiscount($s,'fixed',1000,$user,$svc->account($s)['signature']);
+ $p1=$pay($s,'ci-disc-'.$key.'-pay1-0001','itemized',[['order_item_id'=>$line,'quantity'=>1]]);$ids=[(int)$p1['settlement_id']];
+ if($key==='multiple-original'){$p2=$pay($s,'ci-disc-'.$key.'-pay2-0001','itemized',[['order_item_id'=>$line,'quantity'=>1]]);$ids[]=(int)$p2['settlement_id'];}
+ $svc->setDiscount($s,'percent',10,$user,$svc->account($s)['signature']);$start=$svc->account($s);$grant=$rows('SELECT * FROM remaining_account_discount_grants WHERE session_id=?',[$s]);$gLines=$rows('SELECT * FROM remaining_account_discount_lines WHERE grant_id=? ORDER BY order_item_id',[(int)$grant[0]['id']]);
+ foreach(array_reverse($ids) as $i){$v=$svc->reverse($i,'QA full refund','ci-disc-'.$key.'-rev-'.$i,$user);$now=$svc->account($s);$a($now['total']===$start['total']&&$now['discount']===$start['discount'],'aggregate invoice unchanged after each reversal');}
+ $a($svc->account($s)['paid_total']===0,'no remaining payment');
+ if($key==='corrupt-origin'){
+   $rid=(int)$one('SELECT id FROM settlement_records WHERE reverses_settlement_id=?',[$ids[0]]);
+   $p->prepare('UPDATE settlement_tender_allocations SET amount=amount-1 WHERE settlement_id=?')->execute([$rid]);
+   try{$svc->account($s);throw new RuntimeException('corrupted receipt pair accepted');}catch(\Sokna\Local\Domain\Finance\SettlementStateConflict $e){$a($e->errorCode==='reversed_history_mismatch','strict mismatch '.$e->errorCode);}
+   $a($one('SELECT status FROM orders WHERE id=?',[$oid])==='accounted','unchanged order');echo "PASS corrupt-origin rejected\n";continue;
+ }
+ if($key==='repay'){
+   $v=$pay($s,'ci-disc-repay-new-item-0001','itemized',[['order_item_id'=>$line,'quantity'=>1]]);$ids[]=(int)$v['settlement_id'];$now=$svc->account($s);$a($now['total']===$start['total'],'repayment amount preserved');
+   $v=$pay($s,'ci-disc-repay-new-full-0001');$ids[]=(int)$v['settlement_id'];$a($v['closes_session'],'repaid closes');
+   foreach(array_reverse(array_slice($ids,1)) as $i)$svc->reverse($i,'QA repay reversal','ci-disc-repay-again-'.$i,$user);
+   $a($svc->account($s)['remaining_total']===$start['total'],'reopened amount preserved after second refund');
+ }
+ $r=$actions->cancelSelection(['session_id'=>$s,'scope'=>'all','expected_order_ids'=>[$oid],'request_id'=>'ci-disc-'.$key.'-cancel-0001','reason'=>'QA full reversal cancel'],$user,fn($oid,$sid,$rid,$why,$actor)=>$svc->refundOrderPaymentsTx($oid,$sid,$rid,$why,$actor),fn($sid)=>$svc->accountTx($sid));
+ $a($r['success'],'cancel');$core->inventoryOrders()->processPending();$a($balances()===$before,'stock restored');
+ $a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='closed','closed');$a((int)$one('SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$s])===2*count($ids),'no duplicate receipt');
+ $a($rows('SELECT * FROM remaining_account_discount_grants WHERE session_id=?',[$s])===$grant&&$rows('SELECT * FROM remaining_account_discount_lines WHERE grant_id=? ORDER BY order_item_id',[(int)$grant[0]['id']])===$gLines,'original grant immutable');
+ echo 'PASS '.$key."\n";
+ }catch(Throwable $e){$fail[]=$key;echo 'FAIL '.$key.' '.get_class($e).' '.$e->getMessage()."\n";}
+}
 $a(!$fail,'failed discount reversal cases '.implode(',',$fail));
