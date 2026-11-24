@@ -92,7 +92,7 @@ jobs:
           python3 - <<'PY'
           import base64,zlib,hashlib,os,pathlib
           b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-i/auth.b64').read_bytes()))
-          assert hashlib.sha256(b).hexdigest()=='f5ab46462cf07011a7c87fb760b30718fd5b086321017a6c8d5914667174ac48'
+          assert hashlib.sha256(b).hexdigest()=='daa053da2168536aeb2359a7980e48643c78865904a54d187a7bf39d5cf7ea30'
           pathlib.Path('i.patch').write_bytes(b)
           PY
           patch -p1 --fuzz=0 < i.patch
