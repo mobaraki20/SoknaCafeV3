@@ -1,0 +1,107 @@
+name: SOKNA recipe-derived catalog descriptions (disposable QA only)
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths:
+      - '.github/workflows/sokna-recipe-description-gate-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  descriptions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-description-ci
+          MARIADB_DATABASE: sokna_ci_description
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45334121276
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target
+      - name: Seed exact current Local on disposable MariaDB
+        env:
+          SOKNA_CI_DB_PASS: disposable-description-ci
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          p=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(p)==1 and hashlib.sha256(p[0].read_bytes()).hexdigest()=='5a06b32bcd58b5753f5839a85244c0253281562ace6c33a1b104ed0104bb0dfd'
+          with zipfile.ZipFile(p[0]) as z:
+              with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+                  assert w.testzip() is None and len(w.namelist())==619
+                  w.extractall(r/'local')
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_description setup 0088_historical_variant_order_snapshots
+      - name: Execute candidate on seeded catalog and prove description-only effects
+        env:
+          SOKNA_CI_DB_PASS: disposable-description-ci
+        run: |
+          set -euo pipefail
+          php <<'PHP'
+          <?php
+          declare(strict_types=1);
+          $pdo=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_description;charset=utf8mb4','root',getenv('SOKNA_CI_DB_PASS'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $sql=file_get_contents('qa/sokna-final-20261124/recipe-catalog/0090_recipe_based_item_descriptions.sql');
+          $assert=function($ok,$label){if(!$ok)throw new RuntimeException($label);};
+          $snapshot=function($table)use($pdo){return $pdo->query("SELECT * FROM ".$table." ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);};
+          $before=$snapshot('items');
+          $immutable=[];
+          foreach(['inventory_items','inventory_recipe_versions','inventory_recipe_components','inventory_movements','order_items','orders'] as $table)$immutable[$table]=$snapshot($table);
+          $beforeBalances=$pdo->query('SELECT * FROM inventory_balances ORDER BY inventory_item_id')->fetchAll(PDO::FETCH_ASSOC);
+          $pdo->beginTransaction();
+          try {
+              $changed=$pdo->exec($sql);
+              $after=$snapshot('items');
+              $assert(count($before)===count($after),'item count changed');
+              foreach($before as $n=>$row){
+                  $new=$after[$n];unset($new['description'],$new['updated_at'],$row['description'],$row['updated_at']);
+                  $assert($new===$row,'non-description item field changed '.$row['id']);
+              }
+              foreach($immutable as $table=>$rows)$assert($snapshot($table)===$rows,'immutable table changed '.$table);
+              $assert($pdo->query('SELECT * FROM inventory_balances ORDER BY inventory_item_id')->fetchAll(PDO::FETCH_ASSOC)===$beforeBalances,'balances changed');
+              $assert($changed>0,'no seeded descriptions updated');
+              $assert($pdo->exec($sql)===0,'non-idempotent description rewrite');
+              // Check actual existing current recipes, using an independent PHP formatter.
+              $q=$pdo->query("SELECT i.id,i.description,i.active,i.lifecycle_status,i.sellable_kind,i.preparation_station,cat.category_key,v.id version_id,rc.quantity_base,rc.quantity_status,inv.base_unit,inv.name FROM items i JOIN categories cat ON cat.id=i.category_id JOIN inventory_recipe_versions v ON v.menu_item_id=i.id AND v.status='active' JOIN inventory_recipe_components rc ON rc.recipe_version_id=v.id JOIN inventory_items inv ON inv.id=rc.inventory_item_id ORDER BY i.id,rc.id");
+              $groups=[];foreach($q->fetchAll(PDO::FETCH_ASSOC) as $r)$groups[$r['id']][]=$r;
+              $drinks=['coffee','cold-drinks','tea-herbal','herbal-tea','shakes-smoothies','smoothies','traditional-syrups','packaged-drinks'];
+              $foods=['food-snacks','finger-food','foods','main-dishes','pickles-sides'];
+              $units=['g'=>'گرم','ml'=>'میلی‌لیتر','count'=>'عدد'];$bar=0;$food=0;
+              foreach($groups as $id=>$rows){$r=$rows[0];
+                  if((int)$r['active']!==1||$r['lifecycle_status']!=='active'||$r['sellable_kind']!=='menu_item'||$r['category_key']==='internal-services')continue;
+                  if(count(array_unique(array_column($rows,'version_id')))!==1)continue;
+                  $isBar=in_array($r['category_key'],$drinks,true)||in_array($r['preparation_station'],['cold_bar','hot_bar'],true);
+                  $isFood=in_array($r['category_key'],$foods,true)||$r['preparation_station']==='kitchen';
+                  if(!$isBar&&!$isFood)continue;
+                  $parts=[];$valid=true;
+                  foreach($rows as $c){
+                      if(trim($c['name'])===''){$valid=false;break;}
+                      if(!$isBar&&($c['quantity_status']!=='known'||(int)$c['quantity_base']<=0||!isset($units[$c['base_unit']]))){$valid=false;break;}
+                      $parts[]=trim($c['name']).($isBar?'':' '.$c['quantity_base'].' '.$units[$c['base_unit']]);
+                  }
+                  if(!$valid)continue;
+                  $assert($r['description']===implode('، ',$parts),'recipe description mismatch '.$id);
+                  if($isBar)$bar++;else $food++;
+              }
+              $assert($bar>0,'no bar coverage');
+              echo json_encode(['changed'=>$changed,'bar_checked'=>$bar,'food_checked'=>$food,'unchanged_non_description_fields'=>true,'unchanged_inventory_history'=>true,'idempotent'=>true,'scope'=>'seeded catalog before new import; not operator authorization'],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
+          } finally {$pdo->rollBack();}
+          PHP
