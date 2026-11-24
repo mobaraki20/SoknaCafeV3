@@ -60,4 +60,39 @@ $case('multi-area claim and adjustment acknowledgement',function()use($core,$p,$
  $a(count($pending)===2&&count(array_unique(array_column($pending,'area_key')))===2,'both areas must independently receive acknowledgement');
  foreach($pending as $r)$a($core->preparation()->acknowledgeAdjustment(['adjustment_id'=>(int)$r['id']],['id'=>$prepId])['success'],'ack '.$r['area_key']);
 });
+
+$case('hall identities in Local and Public-bound projections',function()use($core,$table,$user,$aid,$bid2,$oid2,$a){
+ $local=$core->orderWorkspace()->tableAccount($table,$user);$remote=$core->orderWorkspace()->publicHallProjection()['accounts'][(string)$table];
+ foreach([$local,$remote] as $account){$lines=array_values(array_filter($account['lines'],fn($l)=>(int)$l['order_id']===$oid2));$a(count($lines)===3,'three separate physical rows');$groups=[];foreach($lines as $l){$key=(int)$l['bundle_group_id'];$a($key>0,'bundle group identity missing');$groups[$key]=($groups[$key]??0)+(int)$l['quantity'];}$a($groups[$aid]===3&&$groups[$bid2]===2&&count($groups)===2,'two independent logical groups');}
+ file_put_contents(getenv('RUNNER_TEMP').'/bundle-hall-account.json',json_encode(['account'=>$local,'first'=>$aid,'second'=>$bid2],JSON_THROW_ON_ERROR));
+});
+$case('single combined correction print and current claims',function()use($one,$rows,$core,$a,$item,$choiceA){
+ $order=(int)$one('SELECT id FROM orders WHERE client_token=?',['ci-distribution-multi-area-0001']);$a($order>0,'multi area order exists');
+ $primary=$rows("SELECT * FROM order_item_adjustments WHERE order_id=? AND parent_adjustment_id IS NULL ORDER BY id DESC",[$order]);$a(count($primary)===1,'one economic correction');
+ $job=$rows("SELECT payload_json FROM print_jobs WHERE job_type='preparation_adjustment' AND entity_id=?",[(string)$primary[0]['id']]);$a(count($job)===1,'one shared correction job');
+ $payload=json_decode($job[0]['payload_json'],true,512,JSON_THROW_ON_ERROR);$actual=[];foreach($payload['items'] as $v){$k=$v['item_name'].'|'.$v['fulfillment_mode'].'|'.$v['preparation_station'];$actual[$k]=($actual[$k]??0)+(int)$v['quantity'];}
+ $expected=[$item['name'].'|dine_in|hot_bar'=>4,$item['name'].'|takeaway|hot_bar'=>2,$choiceA['name'].'|dine_in|kitchen'=>2,$choiceA['name'].'|takeaway|kitchen'=>1];
+ $a(count($actual)===4,'only four intended component rows '.json_encode($actual,JSON_UNESCAPED_UNICODE));foreach($expected as $key=>$qty)$a(($actual[$key]??0)===$qty,'print component/mode mismatch '.$key);
+ $projection=$core->preparation()->publicProjection();$found=false;foreach($projection['orders'] as $o)if((int)$o['id']===$order){$found=true;$a(count($o['areas'])===2,'both areas visible');foreach($o['areas'] as $ar)$a($ar['claim']['current']===true&&$ar['adjustments']===[],'current claimed and ACKed '.$ar['area']);}$a($found,'preparation order projection');
+});
+$case('whole unpaid split cancellation restores inventory exactly',function()use($core,$p,$commit,$line,$ca,$adjust,$balances,$a,$one,$user){
+ $before=$balances();$o=$commit('ci-distribution-cancel-0001',[$line($ca,3)]);$order=(int)$o['order_id'];$id=(int)$o['lines'][0]['order_item_id'];$core->inventoryOrders()->processPending();
+ $a($adjust($id,2,1,'ci-distribution-cancel-split-0001')['success'],'split');$derived=(int)$one('SELECT id FROM order_items WHERE order_id=? AND bundle_distribution_origin_id=?',[$order,$id]);$a($derived>0,'derived exists');
+ $a($adjust($derived,2,2,'ci-distribution-cancel-increase-0001')['success'],'derived group increase');
+ $a($core->orderStaffActions()->adjustItemQuantity(['order_item_id'=>$derived,'quantity'=>1,'reason'=>'QA cancellation','request_id'=>'ci-distribution-cancel-single-0001'],$user)['success'],'single derived reduction');$core->inventoryOrders()->processPending();
+ $a($core->orderStaffActions()->cancelWholeOrder(['order_id'=>$order,'reason'=>'QA cancellation','request_id'=>'ci-distribution-cancel-whole-0001'],$user)['success'],'whole cancellation');$core->inventoryOrders()->processPending();
+ $a($balances()===$before,'every tracked ingredient returned');$a($one('SELECT status FROM orders WHERE id=?',[$order])==='cancelled','cancelled status');
+});
+$case('claimed multi-area reduction and increase use single stock ledger',function()use($core,$commit,$line,$ca,$adjust,$balances,$a,$one,$rows,$user,$per){
+ $before=$balances();$o=$commit('ci-distribution-claimed-stock-0001',[$line($ca,3)]);$order=(int)$o['order_id'];$id=(int)$o['lines'][0]['order_item_id'];$core->inventoryOrders()->processPending();$after=$balances();
+ $prep=(int)$one("SELECT id FROM users WHERE username='qa-distribution-prep'");$a($prep>0,'prep actor');
+ foreach(['bar','kitchen'] as $area)$a($core->preparation()->claim(['order_id'=>$order,'area'=>$area],['id'=>$prep])['success'],'claim '.$area);
+ $a($adjust($id,1,1,'ci-distribution-claimed-reduce-0001')['success'],'claimed reduction');$core->inventoryOrders()->processPending();$a($balances()===$after,'preserve consumption after claim');
+ $derived=(int)$one('SELECT id FROM order_items WHERE order_id=? AND bundle_distribution_origin_id=?',[$order,$id]);
+ $a($core->orderStaffActions()->adjustItemQuantity(['order_item_id'=>$derived,'quantity'=>2,'reason'=>'QA restore prepared unit','request_id'=>'ci-distribution-claimed-single-0001'],$user)['success'],'restore one unit');$core->inventoryOrders()->processPending();$a($balances()===$after,'restored already-consumed unit not charged twice');
+ $a($adjust($derived,2,2,'ci-distribution-claimed-grow-0001')['success'],'above prepared qty');$core->inventoryOrders()->processPending();$now=$balances();foreach($per as $i=>$q)$a($now[$i]===$after[$i]-$q,'one extra unit consumed '.$i);
+ $records=$rows("SELECT id,area_key,parent_adjustment_id,inventory_quantity_delta FROM order_item_adjustments WHERE order_id=? ORDER BY id",[$order]);$a(count($records)===6,'3 economic rows and 3 secondary ACK rows');$a(array_sum(array_column($records,'inventory_quantity_delta'))===1,'one economic stock delta');
+ $a($core->orderStaffActions()->cancelWholeOrder(['order_id'=>$order,'reason'=>'QA cancel claimed bundle','request_id'=>'ci-distribution-claimed-cancel-0001'],$user)['success'],'cancel after claim');$core->inventoryOrders()->processPending();$a($balances()===$before,'all consumed stock restored even after claims');
+});
 $a(!$failures,'extended lifecycle failures: '.implode('; ',$failures));
+
