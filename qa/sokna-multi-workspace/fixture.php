@@ -43,7 +43,8 @@ $commitOrder=fn($token)=>$core->orders()->commit(['source'=>'staff','table_id'=>
 $o1=$commitOrder('ci-workspace-pending-order-0001');$o2=$commitOrder('ci-workspace-received-order-0002');
 $core->inventoryOrders()->processPending();
 $area=\Sokna\Local\Domain\Preparation\PreparationService::areaForPreparationStation((string)$chosen['preparation_station']);
-$core->preparation()->claim(['order_id'=>$o2['order_id'],'area'=>$area],$user);
+$prepId=(int)$core->adminControls()->saveUser(['username'=>'qa-workspace-preparation','display_name'=>'QA prep','password'=>bin2hex(random_bytes(16)),'active'=>true,'capabilities'=>['preparation'],'preparation_areas'=>['bar','kitchen']],$user)['id'];
+$core->preparation()->claim(['order_id'=>$o2['order_id'],'area'=>$area],['id'=>$prepId]);
 $before=$core->settlements()->account($session);$a($before['remaining_total']>0,'real open account');
 // Fixture represents a clean, already-bound Local web tree; use normal application authentication and APIs.
 file_put_contents($tmp.'/install.lock',json_encode(['format'=>'sokna-install-lock-v3','installation_id'=>$pair['id']],JSON_THROW_ON_ERROR));
