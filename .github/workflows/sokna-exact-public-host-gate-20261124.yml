@@ -248,7 +248,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY' | tee "$RUNNER_TEMP/public-authenticated-emergency-receipt.jsonl"
+          sudo -u www-data python3 - <<'PY' | tee "$RUNNER_TEMP/public-authenticated-emergency-receipt.jsonl"
           import pathlib,hashlib,json,urllib.request,urllib.parse,urllib.error,http.cookiejar,re
           work=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
           pkg=work/'update-exact-qa.zip';sha=hashlib.sha256(pkg.read_bytes()).hexdigest()
