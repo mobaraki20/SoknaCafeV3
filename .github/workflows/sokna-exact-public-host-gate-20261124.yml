@@ -171,6 +171,7 @@ jobs:
           $core=sokna_public_bootstrap($cfg);
           $routine=$core->routinePublicUpdates();
           $health=fn():array=>(new \Sokna\PublicEdge\Health\PublicHealthService($core->database(),$root,$cfg['app']['storage_dir']))->status()['body'];
+          require_once $root.'/src/Update/IndependentEmergencyRoutineBridge.php';
           $bridge=new \Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge($routine,$cfg['app']['storage_dir'],fn():array=>$core->migrations()->pendingVersions(),$health);
           $op=$argv[1];
           if($op==='routine-stage') $result=$routine->stageUploadedDeltaZip($pkg,'disposable-ci',true);
