@@ -26,7 +26,16 @@ with sync_playwright() as p:
             page=ctx.new_page();page.set_default_timeout(15000);login(ctx,host)
             key=host+'-'+str(width)
             def change_range(start,end):
-                form=page.locator('[data-report-form]');form.locator('[name=from]').fill(start);form.locator('[name=to]').fill(end)
+                form=page.locator('[data-report-form]')
+                # Real visible Jalali widget; Gregorian inputs are intentionally hidden.
+                for name,iso in [('from',start),('to',end)]:
+                    visible=form.locator('[name='+name+'] + .sc-jalali-control .sc-jalali-date')
+                    expect(visible).to_be_visible()
+                    date=page.evaluate("""iso=>{const p=new Intl.DateTimeFormat('en-US-u-ca-persian-nu-latn',{year:'numeric',month:'2-digit',day:'2-digit',timeZone:'UTC'}).formatToParts(new Date(iso+'T12:00:00Z'));return ['year','month','day'].map(k=>p.find(x=>x.type===k).value).join('/')}""",iso)
+                    visible.fill(date)
+                    visible.press('Tab')
+                    expect(form.locator('[name='+name+']')).to_have_value(iso)
+
                 with page.expect_response(lambda r:'from='+start in r.url and 'to='+end in r.url and r.request.resource_type in ('fetch','xhr'),timeout=25000) as res:
                     form.locator('button[type=submit]').click()
                 r=res.value;assert r.ok,(r.status,r.url);body=r.json()
@@ -40,6 +49,15 @@ with sync_playwright() as p:
             def test():
                 r=page.goto(f[host]+('/reports/' if host=='local' else '/staff/reports/'),wait_until='domcontentloaded');assert r.ok
                 expect(page.locator('[data-summary] [data-report-kpi]').first).to_be_visible(timeout=25000)
+                # Verify actual Persian calendar controls and month navigation.
+                page.locator('[data-report-form] [name=from] + .sc-jalali-control .sc-jalali-trigger').click()
+                picker=page.locator('.sc-jalali-picker');expect(picker).to_be_visible()
+                title=picker.locator('[data-jalali-title]');before=title.inner_text()
+                assert picker.locator('[data-jalali-prev] svg').count()==1 and picker.locator('[data-jalali-next] svg').count()==1
+                picker.locator('[data-jalali-prev]').click();expect(title).not_to_have_text(before)
+                picker.locator('[data-jalali-next]').click();expect(title).to_have_text(before)
+                save(page,key+'-jalali-calendar')
+                picker.locator('[data-jalali-cancel]').click();expect(picker).not_to_be_visible()
                 # Full range: every visible tab must display its own heading/content.
                 change_range(f['base_range']['from'],f['base_range']['to'])
                 for name in headings:
