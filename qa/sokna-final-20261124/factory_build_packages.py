@@ -11,16 +11,18 @@ BASE = pathlib.Path(os.environ.get('SOKNA_RELEASE_BUILD_DIR', '/mnt/data/sokna_r
 SRC_ZIP = pathlib.Path(os.environ.get('SOKNA_SOURCE_ARCHIVE', '/mnt/data/SOKNA-CONSOLIDATED-SOURCE-20261124-QA-NOT-INSTALL.zip'))
 L306 = BASE/'r306/SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip'
 P306 = BASE/'r306/SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip'
+L307 = BASE/'r307/SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip'
 OUT = BASE/'preflight'; OUT.mkdir(exist_ok=True)
 
 PIN = {
   str(SRC_ZIP): 'c95dbb4a39c2b99b3cbb6072f45d5e435212f1ac6f94b4c0345a7512805a4013',
   str(L306): '1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209',
-  str(P306): 'e2d78030a7246103a1b4ae2b28409093ebf8e61d44abc3739d73d0ac10b9fe51'
+  str(P306): 'e2d78030a7246103a1b4ae2b28409093ebf8e61d44abc3739d73d0ac10b9fe51',
+  str(L307): '069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa'
 }
-LVER = '3.0.0-g6.2-workspace.231fw-consolidated-20261124-preflight'
+LVER = '3.0.0-g6.2-workspace.231ga-consolidated-20261124-preflight'
 PVER = '3.0.0-g3.6-workspace.35io-consolidated-20261124-preflight'
-REL = 'sokna-consolidated-release-preflight-20261124'
+REL = 'sokna-consolidated-release-preflight-20261124-r2'
 H = lambda b: hashlib.sha256(b).hexdigest()
 J = lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
 
@@ -60,7 +62,13 @@ assert len(local)==619 and len(public)==251,(len(local),len(public))
 assert local['VERSION.txt'].decode().strip()=='3.0.0-g6.2-workspace.231fv-r306-local-public-ui-parity'
 assert public['VERSION.txt'].decode().strip()=='3.0.0-g3.6-workspace.35in-r306-local-public-ui-parity'
 
-baseL=zread(L306.read_bytes());baseP=zread(P306.read_bytes())
+baseL=zread(L306.read_bytes());baseP=zread(P306.read_bytes());base307=zread(L307.read_bytes())
+assert set(base307)=={'release-set.json','artifacts/local/web.zip'}
+r307manifest=json.loads(base307['release-set.json']);r307_target=copy.deepcopy(r307manifest['targets']['local'])
+assert r307_target['version']=='3.0.0-g6.2-workspace.231fw-r307-dashboard-money-calendar-notify'
+assert r307_target['managed_tree_sha256']=='5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186'
+r307source=zread(base307['artifacts/local/web.zip'])
+assert len(r307source)==r307_target['managed_files']==608 and tree(r307source)==r307_target['managed_tree_sha256']
 assert set(baseL)=={'release-set.json','artifacts/local/web.zip'}
 assert 'manifest.json' in baseP
 oldlocal=zread(baseL['artifacts/local/web.zip'])
@@ -84,12 +92,12 @@ L['resources/local-managed-files-v1.json']=J(mi)
 ident=json.loads(L['resources/release-identity-v1.json'])
 assert ident['format']=='sokna-release-component-identity-v1'
 ident.update(version=LVER,release_set_id=REL)
-ident['baseline']['source_versions']=list(dict.fromkeys(ident['baseline']['source_versions']+[oldlocal['VERSION.txt'].decode().strip()]))
+ident['baseline']['source_versions']=list(dict.fromkeys(ident['baseline']['source_versions']+[oldlocal['VERSION.txt'].decode().strip(),r307_target['version']]))
 ident['source'].update(managed_file_count=len(L),canonical_file_count=len(L)-2,canonical_tree_sha256=canonical(L),source_ref='Immutable consolidated source b3aad22d + exact R306 production-format package 1050c045; qualification pending')
 ident['qualification']={'tier':'CONSOLIDATED_PACKAGE_PREFLIGHT_NOT_INSTALLABLE','claim_rule':'No install before exact MariaDB 0088, native Windows and Public root/subdir activation, and compatible installed baseline.'}
 L['resources/release-identity-v1.json']=J(ident)
 prov=json.loads(L['resources/build-provenance.json'])
-prov.update(version=LVER,release_set_id=REL,created_at='2026-11-24T00:00:00Z',classification='PREFLIGHT_NOT_INSTALLABLE',source='sha256:'+PIN[str(SRC_ZIP)],workspace_source_only=False,full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,r306_live_cafe='UNKNOWN',consolidated_source_sha256=PIN[str(SRC_ZIP)],r306_base_zip_sha256=PIN[str(L306)])
+prov.update(version=LVER,release_set_id=REL,created_at='2026-11-24T00:00:00Z',classification='PREFLIGHT_NOT_INSTALLABLE',source='sha256:'+PIN[str(SRC_ZIP)],workspace_source_only=False,full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,installed_cafe_baseline='R307_231fw_support_20261120',consolidated_source_sha256=PIN[str(SRC_ZIP)],r306_base_zip_sha256=PIN[str(L306)])
 L['resources/build-provenance.json']=J(prov)
 assert sorted(json.loads(L['resources/local-managed-files-v1.json'])['files'])==sorted(L)
 assert json.loads(L['resources/release-identity-v1.json'])['source']['canonical_tree_sha256']==canonical(L)
@@ -100,12 +108,13 @@ assert all(L[n]==local[n] for n in local if n not in lmetadata)
 lmanifest=copy.deepcopy(json.loads(baseL['release-set.json']))
 assert lmanifest['format']=='sokna-maintenance-release-set-v2.1'
 base_target=copy.deepcopy(lmanifest['targets']['local'])
-# Exactly observed R301/R304/R306 origins. DO NOT use wildcard or unverified old baselines.
+# Exact R301/R304/R306/R307 origins; R307 is installed at café according to 2026-11-20 support. Never wildcard.
 existing=lmanifest['supported_baselines']
 assert len(existing)==2 and all(x.get('local') for x in existing)
-lmanifest['supported_baselines'] = existing+[{'local':base_target}]
-assert len({(x['local']['version'],x['local']['managed_tree_sha256']) for x in lmanifest['supported_baselines']})==3
-lmanifest.update(release_set_id=REL,status='PREFLIGHT_NOT_INSTALLABLE_PENDING_NATIVE_GATES',created_at='2026-11-24T00:00:00Z',sequence=202611240001,for_install=False,production_pass=False)
+lmanifest['supported_baselines'] = existing+[{'local':base_target},{'local':r307_target}]
+assert len({(x['local']['version'],x['local']['managed_tree_sha256']) for x in lmanifest['supported_baselines']})==4
+assert all(x['local']['version']!=LVER for x in lmanifest['supported_baselines'])
+lmanifest.update(release_set_id=REL,status='PREFLIGHT_NOT_INSTALLABLE_PENDING_NATIVE_GATES',created_at='2026-11-24T00:00:00Z',sequence=202611240002,for_install=False,production_pass=False)
 for k in lmanifest['qualification']:
     if isinstance(lmanifest['qualification'][k],bool):lmanifest['qualification'][k]=False
 newhead='0088_historical_variant_order_snapshots'
@@ -183,7 +192,7 @@ assert not any(n.startswith('payload/src/Emergency/') for n in pub_out)
 
 result={
  'schema':'sokna-consolidated-offline-package-preflight-v1',
- 'date':'2026-11-24','source_sha256':PIN[str(SRC_ZIP)],'r306_local_sha256':PIN[str(L306)],'r306_public_sha256':PIN[str(P306)],
+ 'date':'2026-11-24','source_sha256':PIN[str(SRC_ZIP)],'r306_local_sha256':PIN[str(L306)],'r307_cafe_local_sha256':PIN[str(L307)],'r307_cafe_baseline_tree_sha256':r307_target['managed_tree_sha256'],'r306_public_sha256':PIN[str(P306)],
  'local':{'file':localpath.name,'sha256':H(localzip),'manifest_format':lm['format'],'target_version':LVER,'managed_files':len(L),'functional_drift_from_source':0,'changed_or_added_from_r306':len(changed_local),'new_migrations':newmigrations,'declared_exact_baselines':len(lm['supported_baselines']),'status':'STRUCTURAL_PASS_NOT_INSTALLABLE'},
  'public':{'file':publicpath.name,'sha256':H(publiczip),'manifest_format':pm['format'],'target_version':PVER,'managed_files':len(P),'functional_drift_from_source':0,'changed_or_added_from_r306':len(changed_public),'declared_exact_baselines':len(pmanifest['compatibility']['supported_baselines']),'status':'STRUCTURAL_PASS_NOT_INSTALLABLE'},
  'public_clean_source':{'file':cleanpath.name,'sha256':H(cleanpath.read_bytes()),'note':'Full web source only, not independently qualified clean installer'},
