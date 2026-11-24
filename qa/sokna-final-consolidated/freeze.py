@@ -106,6 +106,17 @@ for path,v in json.loads(bundle_raw).items():
  for a,b,s in reversed(v['edits']):lines[a:b]=[s]
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+H(bundle_raw)).encode())
+# Current guest/order report quantities and stable hall card width.
+for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7')]:
+ raw=zlib.decompress(base64.b64decode((pathlib.Path(__file__).parent.parent/filename).read_bytes(),validate=True))
+ assert H(raw)==sha
+ for path,v in json.loads(raw).items():
+  c,n=path.split('/',1); files=L if c=='local' else P
+  assert H(files[n])==v['before'],path
+  lines=files[n].decode().splitlines(keepends=True)
+  for a,b,s in reversed(v['edits']):lines[a:b]=[s]
+  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
+ source_sha=H((source_sha+':'+H(raw)).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)

@@ -90,8 +90,20 @@ with sync_playwright() as p:
                             detail['real_order_content']=True
                         elif name=='hall':
                             card=page.locator(f'[data-open-tables] [data-table-id="{f["table_id"]}"]');expect(card).to_be_visible(timeout=10000)
-                            for density in ('normal','compact','overview'):
-                                page.locator(f'button[data-hall-density="{density}"]').click();expect(page.locator(f'button[data-hall-density="{density}"]')).to_have_attribute('aria-pressed','true');save(page,key+'-'+density)
+                            if width==390:
+                                assert not page.locator('.sc-hall-density').is_visible(),'desktop control should not crowd mobile'
+                                cols=page.locator('.sc-hall-open-grid').evaluate("(e)=>getComputedStyle(e).gridTemplateColumns.split(' ').length")
+                                assert cols==2,('mobile columns',cols)
+                                save(page,key+'-two-columns')
+                            else:
+                                for density in ('normal','compact','overview'):
+                                    control=page.locator(f'button[data-hall-density="{density}"]')
+                                    control.click();expect(control).to_have_attribute('aria-pressed','true')
+                                    grid=page.locator('.sc-hall-open-grid')
+                                    widths=grid.evaluate("(e)=>({card:e.querySelector('.sc-hall-open-table').getBoundingClientRect().width,grid:e.getBoundingClientRect().width,cols:getComputedStyle(e).gridTemplateColumns.split(' ').filter(x=>parseFloat(x)>0).length})")
+                                    if widths['grid']>2*({ 'normal':245,'compact':190,'overview':155 }[density])+16:
+                                        assert widths['cols']>=2,('one card must not stretch',widths)
+                                    save(page,key+'-'+density)
                             card.click();expect(page.locator('[data-account-discount]')).to_be_enabled(timeout=12000)
                             assert f['product'] in page.locator('.sc-hall-bill-lines').inner_text();save(page,key+'-account')
                             detail['actual_account_content']=True

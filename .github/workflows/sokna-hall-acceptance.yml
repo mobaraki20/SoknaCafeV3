@@ -62,6 +62,20 @@ jobs:
               for a,c,s in reversed(v['edits']):lines[a:c]=[s]
               b=''.join(lines).encode();assert h(b)==v['after'],name
               if os.environ['SOKNA_BUNDLE_MODE']!='baseline':f.write_bytes(b)
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-read/delta.b64').read_bytes(),validate=True))
+          assert h(raw)=='9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name;f.write_bytes(b)
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-hall-acceptance/stable-width.b64').read_bytes(),validate=True))
+          assert h(raw)=='6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name;f.write_bytes(b)
           PY
           php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
           php qa/sokna-final-consolidated/auth-setup.php
