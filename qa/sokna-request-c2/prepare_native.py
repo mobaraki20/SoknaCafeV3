@@ -62,7 +62,7 @@ s=s[:a]+r"""
  $restoreProc=Start-Process -FilePath $mysql -ArgumentList @('--no-defaults','--protocol=tcp','--host=127.0.0.1',"--port=$dbPort",'--user=root','sokna_r3_independent_restore') -RedirectStandardInput $backup -Wait -PassThru -NoNewWindow
  Need ($restoreProc.ExitCode-eq0 -and (Get-FileHash $backup -Algorithm SHA256).Hash.ToLowerInvariant()-ceq$backupSha) 'BACKUP_RESTORE_FAILED'
  $restoredLedger=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r3_independent_restore.schema_migrations;'
- Need ($LASTEXITCODE-eq0 -and [string]$restoredLedger-eq'83') 'RESTORED_LEDGER_WRONG'
+ Need ($LASTEXITCODE-eq0 -and [string]$restoredLedger -eq $env:SOKNA_BASE_LEDGER) 'RESTORED_LEDGER_WRONG'
  Run $harness (@('prepare')+$args)
  Need ((Get-Content (Join-Path $root 'Web/VERSION.txt') -Raw).Trim() -ceq $oldVersion) 'STAGE_MUTATED_ACTIVE_VERSION'
  if($fault-eq'none'){
@@ -83,7 +83,7 @@ s=s[:a]+r"""
  $ledger=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r186_exact.schema_migrations;'
  Need ($LASTEXITCODE-eq0 -and [string]$ledger-eq$wantLedger) 'MIGRATION_LEDGER_WRONG'
  $restoredLedger=& $mysql --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$dbPort" --user=root --skip-column-names --execute='SELECT COUNT(*) FROM sokna_r3_independent_restore.schema_migrations;'
- Need ($LASTEXITCODE-eq0 -and [string]$restoredLedger-eq'83') 'RESTORE_SCHEMA_MUTATED'
+ Need ($LASTEXITCODE-eq0 -and [string]$restoredLedger -eq $env:SOKNA_BASE_LEDGER) 'RESTORE_SCHEMA_MUTATED'
  Need ((Get-FileHash (Join-Path $root 'config.php')).Hash-ceq$configHash -and (Get-FileHash (Join-Path $root 'install.lock')).Hash-ceq$lockHash) 'PERSISTENT_IDENTITY_CHANGED'
  @{status='PASS';origin=$env:SOKNA_ORIGIN;fault=$fault;candidate_sha256=(Get-FileHash $pack -Algorithm SHA256).Hash.ToLowerInvariant();origin_tree_sha256=$baselineInfo.managed_tree_sha256;target_tree_sha256=$targetInfo.managed_tree_sha256;phase=$routine.phase;backup_sha256=$backupSha;independent_restore=$true;migrations=[int]$ledger;disposable_only=$true;distribution_authorized=$false}|ConvertTo-Json -Depth 6|Set-Content (Join-Path $env:RUNNER_TEMP 'matrix-receipt.json') -Encoding utf8NoBOM
 """ +s[b:]

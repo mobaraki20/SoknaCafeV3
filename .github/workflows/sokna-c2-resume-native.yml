@@ -1,8 +1,8 @@
-name: SOKNA C2 resume R3 native qualification and publish exact bytes
+name: SOKNA C2 resume exact origin and recovery ledger qualification
 on:
   push:
     branches: [qa/sokna-consolidated-release-factory-20261124]
-    paths: ['.github/workflows/sokna-c2-resume-native.yml']
+    paths: ['.github/workflows/sokna-c2-resume-native.yml', 'qa/sokna-request-c2/prepare_native.py']
   workflow_dispatch:
 permissions:
   contents: read
