@@ -1,0 +1,80 @@
+name: SOKNA Batch B purchase migration and analytical reporting QA
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-request-b-mariadb-20261124.yml','qa/sokna-request-b/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-b-ci
+          MARIADB_DATABASE: sokna_ci_batch_b
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45351541555
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target
+      - name: Exact published Local payload and migration 90
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-b-ci
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          p=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(p)==1 and hashlib.sha256(p[0].read_bytes()).hexdigest()=='61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e'
+          with zipfile.ZipFile(p[0]) as z:
+              b=z.read('artifacts/local/web.zip')
+              assert hashlib.sha256(b).hexdigest()=='00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75'
+              with zipfile.ZipFile(io.BytesIO(b)) as w:
+                  assert w.testzip() is None and len(w.namelist())==621
+                  w.extractall(r/'local')
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_b setup 0090_recipe_based_item_descriptions
+      - name: Apply exact Batch B SQL and exercise actual reports
+        run: |
+          set -euo pipefail
+          echo 'a8c176379eacb8ad6ccd2b60ecd2a8b9b2e04eba3aa05ffd1613466a47defb39  qa/sokna-request-b/0091_verified_purchase_unit_reconciliation.sql' | sha256sum -c
+          cp qa/sokna-request-b/0091_verified_purchase_unit_reconciliation.sql "$RUNNER_TEMP/local/database/migrations/"
+          python3 - <<'PY'
+          import pathlib,os
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'local/src/Core/Migrations.php'
+          s=p.read_text();a="'0090_recipe_based_item_descriptions'], true)"
+          assert s.count(a)==1
+          p.write_text(s.replace(a,"'0090_recipe_based_item_descriptions','0091_verified_purchase_unit_reconciliation'], true)"))
+          PY
+          php qa/sokna-request-b/test_migration_report.php
+          python3 - <<'PY'
+          import pathlib,os,zipfile,xml.etree.ElementTree as E
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'analytical.xlsx'
+          ns={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              sheets=E.fromstring(z.read('xl/workbook.xml')).find('m:sheets',ns)
+              names=[s.attrib['name'] for s in sheets]
+              for n in ('Inventory_Catalog','Inventory_Purchase_Units','Inventory_Aliases'):
+                  assert n in names,n
+                  data=E.fromstring(z.read('xl/worksheets/sheet%d.xml'%(names.index(n)+1)))
+                  assert len(data.findall('.//m:row',ns))>1,n
+              print('PASS actual analytical XLSX inventory sheets',len(names))
+          PY
