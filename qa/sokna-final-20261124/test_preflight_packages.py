@@ -23,8 +23,10 @@ def structural_local(blob,require_installable=False):
  assert m['pre_update_backup_policy']['required'] and m['pre_update_backup_policy']['system_recovery_snapshot_required']
  assert m['pre_update_backup_policy']['on_failure']=='reject_pre_mutation'
  assert m['database']['local']['rollback_after_boundary']=='forbidden'
- assert len(m['supported_baselines'])==3
- assert len({(x['local']['version'],x['local']['managed_tree_sha256']) for x in m['supported_baselines']})==3
+ assert len(m['supported_baselines'])==4
+ assert len({(x['local']['version'],x['local']['managed_tree_sha256']) for x in m['supported_baselines']})==4
+ assert m['targets']['local']['version'].startswith('3.0.0-g6.2-workspace.231ga-')
+ assert any(x['local']['version']=='3.0.0-g6.2-workspace.231fw-r307-dashboard-money-calendar-notify' and x['local']['managed_tree_sha256']=='5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186' for x in m['supported_baselines'])
  files=zread(web);assert len(files)==m['targets']['local']['managed_files']==619
  assert files['VERSION.txt'].decode().strip()==m['targets']['local']['version']
  assert H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(files.items())).encode())==m['targets']['local']['managed_tree_sha256']
