@@ -13,9 +13,9 @@ HEX = re.compile(r"^[0-9a-f]{64}$")
 KINDS = ("local-update", "public-update", "local-clean", "public-clean")
 GATES = {
     "local-update": ("source", "structure", "native_windows", "db_forward", "backup_restore", "failure_recovery", "exact_operator_zip"),
-    "public-update": ("source", "structure", "routine", "emergency", "failure_recovery", "exact_operator_zip"),
+    "public-update": ("source", "structure", "routine", "emergency", "failure_recovery", "staff_authenticated_http", "exact_operator_zip"),
     "local-clean": ("source", "structure", "browser_setup", "db_seed"),
-    "public-clean": ("source", "structure", "root_setup", "subpath_setup", "protected_emergency"),
+    "public-clean": ("source", "structure", "root_setup", "subpath_setup", "protected_emergency", "staff_authenticated_http"),
 }
 INSTALL_ONLY = (
     "detect_installed_identity_and_engine_capabilities",
