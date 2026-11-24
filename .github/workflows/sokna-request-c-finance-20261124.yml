@@ -59,6 +59,7 @@ jobs:
           p=pathlib.Path(os.environ['RUNNER_TEMP'])/'local/src/Domain/Orders/OrderStaffActionService.php'
           s=p.read_text()
           pairs=[("source_id IN (SELECT CAST(id AS CHAR) FROM order_items WHERE order_id=?)","CAST(source_id AS BINARY) IN (SELECT CAST(CAST(id AS CHAR) AS BINARY) FROM order_items WHERE order_id=?)"),("e.idempotency_key=LEFT(CONCAT('quantity_adjusted:order-item:',a.order_item_id,':',a.request_id),190)","CAST(e.idempotency_key AS BINARY)=CAST(LEFT(CONCAT('quantity_adjusted:order-item:',a.order_item_id,':',a.request_id),190) AS BINARY)")]
+          pairs += [("source_id IN\n                        (SELECT CAST(id AS CHAR) FROM order_items WHERE order_id=?)","CAST(source_id AS BINARY) IN\n                        (SELECT CAST(CAST(id AS CHAR) AS BINARY) FROM order_items WHERE order_id=?)"),("source_id IN (SELECT request_id FROM order_item_adjustments WHERE order_id=?)","CAST(source_id AS BINARY) IN (SELECT CAST(request_id AS BINARY) FROM order_item_adjustments WHERE order_id=?)")]
           for a,b in pairs:
               assert a in s
               s=s.replace(a,b)
