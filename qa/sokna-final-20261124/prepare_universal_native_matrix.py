@@ -3,7 +3,7 @@
 CI only. Native manifest predicates are exercised with a quarantined candidate;
 no distribution authorization is issued by this builder or by an individual job.
 """
-import os,io,json,zipfile,pathlib,hashlib
+import os,io,json,zipfile,pathlib,hashlib,re
 P=pathlib.Path; H=lambda x:hashlib.sha256(x).hexdigest()
 tmp=P(os.environ["RUNNER_TEMP"])
 base=P(os.environ["SOKNA_BASELINE_ZIP"]); target=P(os.environ["SOKNA_CURRENT_QA_ZIP"])
@@ -52,8 +52,8 @@ subs={
 "$targetInfo.migration_head -ceq '0083_remaining_account_discount'":"$targetInfo.migration_head -ceq '0090_recipe_based_item_descriptions'",
 "\"R301_DB_MIGRATION_0083_NOT_APPLIED\"":"\"R3_DB_MIGRATION_0090_NOT_APPLIED\"",
 }
-for a,b in subs.items():
-    if a in s:s=s.replace(a,b)
+s=re.sub('|'.join(re.escape(k) for k in sorted(subs,key=len,reverse=True)),lambda match:subs[match.group(0)],s)
+assert bsha in s and btree in s and sha in s and current['managed_tree_sha256'] in s
 a=s.index(" $args=@($root,$baseline,$target,$engine,'none',$pack)")
 b=s.index("\n} finally {",a)
 s=s[:a]+r"""
