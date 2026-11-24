@@ -43,6 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-host-gate
           python3 - <<'PY'
           import pathlib,zipfile,hashlib,json,os,shutil
           r=pathlib.Path(os.environ['RUNNER_TEMP'])
@@ -87,7 +88,7 @@ jobs:
               assert set(z.namelist())==set(target) and all(z.read(n)==v for n,v in target.items())
           assert len(target)==251
           files=target|{n:b for n,(b,_) in protected.items()}
-          work=pathlib.Path('/tmp/sokna-public-host-gate'); work.mkdir()
+          work=pathlib.Path('/var/www/sokna-public-host-gate'); work.mkdir(exist_ok=True)
           clean_out=work/'clean-exact-qa.zip'
           with zipfile.ZipFile(clean_out,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
               for n,b in sorted(files.items()):
@@ -109,31 +110,31 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
           sudo a2enmod rewrite headers php8.3
-          sudo chown -R www-data:www-data /tmp/sokna-public-host-gate
+          sudo chown -R www-data:www-data /var/www/sokna-public-host-gate
           for row in '18080 root' '18081 sub' '18082 upgrade'; do
             read -r port name <<< "$row"
-            doc="/tmp/sokna-public-host-gate/$name/webroot"
-            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire all granted\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+            doc="/var/www/sokna-public-host-gate/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
           done
           sudo apache2ctl configtest
           sudo service apache2 restart
           sudo apache2ctl -S
-          curl --silent --show-error --include http://127.0.0.1:18080/__sokna_route_probe__
+          curl --fail --silent --show-error --include http://127.0.0.1:18080/__sokna_route_probe__
       - name: Actual Setup status, rewrite, install, pairing, MariaDB readback and duplicate-install rejection
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import urllib.request,urllib.error,http.cookiejar,json,pathlib
-          work=pathlib.Path('/tmp/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
+          work=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
           for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu'),(18082,'upgrade','')]:
               origin=f'http://127.0.0.1:{port}{base}'
               op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
               def get(path):
                   try:
-                  with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
-              except urllib.error.HTTPError as e:
-                  raise RuntimeError((name,path,e.code,e.read(1000).decode('utf-8','replace'))) from e
+                      with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+                  except urllib.error.HTTPError as e:
+                      raise RuntimeError((name,path,e.code,e.read(1000).decode('utf-8','replace'))) from e
               def post(action,body,want=200):
                   req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
                   try:
@@ -159,12 +160,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat >/tmp/sokna-public-host-gate/operate.php <<'PHP'
+          cat >/var/www/sokna-public-host-gate/operate.php <<'PHP'
           <?php
           declare(strict_types=1);
-          $root='/tmp/sokna-public-host-gate/upgrade/webroot';
-          $pkg='/tmp/sokna-public-host-gate/update-exact-qa.zip';
-          $contract=json_decode(file_get_contents('/tmp/sokna-public-host-gate/contract.json'),true,512,JSON_THROW_ON_ERROR);
+          $root='/var/www/sokna-public-host-gate/upgrade/webroot';
+          $pkg='/var/www/sokna-public-host-gate/update-exact-qa.zip';
+          $contract=json_decode(file_get_contents('/var/www/sokna-public-host-gate/contract.json'),true,512,JSON_THROW_ON_ERROR);
           require $root.'/bootstrap.php';
           $cfg=require $root.'/config.php';
           $core=sokna_public_bootstrap($cfg);
@@ -187,7 +188,7 @@ jobs:
           echo json_encode(['operation'=>$op,'version'=>$s['current_version'],'tree'=>$s['managed_tree_sha256'],'pending'=>is_array($s['pending_verification']),'health'=>$health()],JSON_THROW_ON_ERROR)."\n";
           PHP
           for op in routine-stage routine-activate routine-rollback emergency-stage emergency-activate emergency-commit; do
-            sudo -u www-data php /tmp/sokna-public-host-gate/operate.php "$op" | tee -a "$RUNNER_TEMP/public-lifecycle-receipt.jsonl"
+            sudo -u www-data php /var/www/sokna-public-host-gate/operate.php "$op" | tee -a "$RUNNER_TEMP/public-lifecycle-receipt.jsonl"
             curl --fail --silent --show-error http://127.0.0.1:18082/health | python3 -c "import json,sys; j=json.load(sys.stdin); assert j['ok'] and j['database']=='ready' and j['pending_migrations']==0 and j['applied_migrations']==11; print('HTTP_READBACK_PASS',j['version'])"
           done
           echo 'PASS isolated core lifecycle and bridge; authenticated Emergency browser route not claimed'
