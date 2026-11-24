@@ -97,7 +97,7 @@ jobs:
           r=pathlib.Path(os.environ['RUNNER_TEMP'])
           data=r/'sokna-disposable-data'
           (data/'guest-media').mkdir(parents=True,exist_ok=True)
-          (r/'config.php').write_text("<?php return ['app'=>['data_dir'=>'"+str(data)+"']];\\n")
+          (r/'config.php').write_text("<?php return ['app'=>['data_dir'=>'"+str(data)+"']];\n")
           PY
           php -r '
             require getenv("RUNNER_TEMP")."/local/src/Core/Migrations.php";
