@@ -1,0 +1,136 @@
+name: SOKNA Consolidated Exact Source Factory - Independent Preflight (NO INSTALL)
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths:
+      - 'qa/sokna-final-20261124/**'
+      - '.github/workflows/sokna-consolidated-factory-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-factory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306
+      - name: Rebuild SHA-pinned 619 Local + 251 Public files and deterministic package formats
+        shell: bash
+        run: |
+          set -euo pipefail
+          L=$(find "$RUNNER_TEMP/r306" -name 'SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip' -type f -print -quit)
+          P=$(find "$RUNNER_TEMP/r306" -name 'SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip' -type f -print -quit)
+          test -f "$L" && test -f "$P"
+          python3 qa/sokna-final-20261124/rebuild_factory_source.py --r306-local "$L" --r306-public "$P" --parts qa/sokna-final-20261124/overlay --out "$RUNNER_TEMP/rebuilt"
+          mkdir -p "$RUNNER_TEMP/build/r306"
+          cp "$L" "$P" "$RUNNER_TEMP/build/r306/"
+          export SOKNA_SOURCE_ARCHIVE="$RUNNER_TEMP/rebuilt/SOKNA-REBUILT-CURRENT-SOURCE-EXACT-TREE.zip"
+          export SOKNA_RELEASE_BUILD_DIR="$RUNNER_TEMP/build"
+          python3 qa/sokna-final-20261124/factory_build_packages.py
+          python3 qa/sokna-final-20261124/test_preflight_packages.py
+          python3 qa/sokna-final-20261124/test_public_setup_http.py "$RUNNER_TEMP/rebuilt/working/public"
+          php -l "$RUNNER_TEMP/rebuilt/working/local/src/Core/Migrations.php"
+          php -l "$RUNNER_TEMP/rebuilt/working/local/src/Domain/Reporting/ReportingService.php"
+          echo 'PASS_EXACT_SOURCE_AND_OFFLINE_PACKAGE_STRUCTURE__NOT_INSTALLABLE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: |
+            ${{ runner.temp }}/build/preflight/*.zip
+            ${{ runner.temp }}/build/preflight/*.json
+            ${{ runner.temp }}/rebuilt/SOKNA-REBUILT-SOURCE-RECEIPT.json
+          if-no-files-found: error
+          retention-days: 30
+  mariadb-migration:
+    needs: exact-factory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-consolidated-ci
+          MARIADB_DATABASE: sokna_consolidated_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/target
+      - name: Validate exact Local 0084-0088 migrations with production Migrations runner
+        shell: bash
+        env:
+          SOKNA_CI_DB_PASS: disposable-consolidated-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local"
+          python3 - <<'PY'
+          import zipfile,io,pathlib,os
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          a=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(a)==1
+          with zipfile.ZipFile(a[0]) as z:
+            with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+              for n in w.namelist():
+                if n.endswith('/'):continue
+                p=r/'local'/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(n))
+          PY
+          php -r '
+            require getenv("RUNNER_TEMP")."/local/src/Core/Migrations.php";
+            $pdo=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_consolidated_test;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $m=new \\Sokna\\Local\\Core\\Migrations($pdo,getenv("RUNNER_TEMP")."/local/database/migrations");
+            $applied=$m->migrate();
+            $rows=$pdo->query("SELECT version FROM schema_migrations ORDER BY version")->fetchAll(PDO::FETCH_COLUMN);
+            foreach(["0084_remaining_account_discount_revisions","0085_whole_order_cancellations","0086_order_cancellation_batches","0087_partial_order_payment_reversals","0088_historical_variant_order_snapshots"] as $v){if(!in_array($v,$rows,true))throw new RuntimeException("MISSING_MIGRATION_".$v);}
+            echo "PASS_LOCAL_MARIADB_MIGRATIONS count=".count($rows)." newly=".count($applied)."\\n";
+          '
+  windows-format:
+    needs: exact-factory
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/target
+      - name: Independently validate exact Maintenance ReleaseSet on Windows; forbid QA install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pkg=Get-ChildItem "$env:RUNNER_TEMP/target" -Recurse -Filter 'SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$pkg){ throw 'NO_LOCAL_RELEASE_SET' }
+          python -c "import zipfile,json,sys,hashlib;z=zipfile.ZipFile(sys.argv[1]);m=json.loads(z.read('release-set.json'));w=z.read('artifacts/local/web.zip');assert hashlib.sha256(w).hexdigest()==m['artifacts']['local-web']['sha256'];assert m['for_install'] is False;assert m['production_pass'] is False;assert zipfile.ZipFile(__import__('io').BytesIO(w)).testzip() is None;print('PASS_WINDOWS_PACKAGE_READBACK__NOT_INSTALLABLE')" "$($pkg.FullName)"
+          if($LASTEXITCODE -ne 0){throw 'WINDOWS_PKG_SHA_FAILURE'}
+  final-decision:
+    if: always()
+    needs: [exact-factory,mariadb-migration,windows-format]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record real independent gate conclusions without claiming operator release
+        env:
+          EXACT: ${{ needs.exact-factory.result }}
+          DB: ${{ needs.mariadb-migration.result }}
+          WINDOWS: ${{ needs.windows-format.result }}
+        run: |
+          printf 'Exact source/package: %s\nMariaDB: %s\nWindows package: %s\n' "$EXACT" "$DB" "$WINDOWS"
+          test "$EXACT" = success && test "$DB" = success && test "$WINDOWS" = success
+          echo 'PASS_DISPOSABLE_PREFLIGHT__OPERATOR_RELEASE_STILL_BLOCKED_PENDING_NATIVE_ACTIVATION'
