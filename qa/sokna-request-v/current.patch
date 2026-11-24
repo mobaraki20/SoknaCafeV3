@@ -1,0 +1,14 @@
+--- a/local/src/Domain/Orders/OrderStaffActionService.php
++++ b/local/src/Domain/Orders/OrderStaffActionService.php
+@@ -770,7 +770,10 @@
+     /** Existing receipts are immutable; credited quantities are netted before correction. */
+     private function adjustmentPaymentStateTx(int $sessionId): ?array
+     {
+-        $q=$this->pdo->prepare("SELECT 1 FROM settlement_records sr LEFT JOIN settlement_records rv ON rv.reverses_settlement_id=sr.id AND rv.status='reversal' WHERE sr.session_id=? AND sr.status='completed' AND rv.id IS NULL LIMIT 1");
++        // The actor lookup can establish a REPEATABLE READ snapshot before the
++        // session lock is acquired. Never use that stale snapshot to decide
++        // that there are no payments and bypass the paid-quantity floor.
++        $q=$this->pdo->prepare("SELECT 1 FROM settlement_records sr LEFT JOIN settlement_records rv ON rv.reverses_settlement_id=sr.id AND rv.status='reversal' WHERE sr.session_id=? AND sr.status='completed' AND rv.id IS NULL LIMIT 1 FOR UPDATE");
+         $q->execute([$sessionId]);if($q->fetchColumn()===false)return null;
+         if($this->settlement===null)throw new OrderStaffActionException('settlement_started','بررسی مالی اصلاح سفارش در دسترس نیست.',409);
+         try{return $this->settlement->orderAdjustmentStateTx($sessionId);}
