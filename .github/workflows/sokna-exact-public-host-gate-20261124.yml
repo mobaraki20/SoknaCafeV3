@@ -121,6 +121,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
           sudo a2enmod rewrite headers php8.3
+          printf 'upload_max_filesize=64M\npost_max_size=72M\n' | sudo tee /etc/php/8.3/apache2/conf.d/99-sokna-ci-upload.ini >/dev/null
           sudo chown -R www-data:www-data /var/www/sokna-public-host-gate
           for row in '18080 root' '18081 sub' '18082 upgrade' '18083 older' '18084 browser306'; do
             read -r port name <<< "$row"
@@ -237,7 +238,15 @@ jobs:
               assert 'دسترسی اضطراری' in get('/emergency.php').decode()
               post('login',{'emergency_password':'disposable-emergency-CI-only-20261124'})
               assert 'خروج امن' in get('/emergency.php').decode()
-              assert 'بسته با موفقیت اعتبارسنجی' in post('stage',upload=True),name
+              response=post('stage',upload=True)
+              if 'بسته با موفقیت اعتبارسنجی' not in response:
+                  import html
+                  safe=re.sub(r'<script.*?</script>|<style.*?</style>','',response,flags=re.S)
+                  print('STAGE_DIAGNOSTIC',name,html.unescape(re.sub(r'<[^>]+>',' ',safe))[-6000:])
+                  state=root/'storage/routine-update-v2/state.json'
+                  if state.is_file():
+                      q=json.loads(state.read_text());print('STATE', {k:q.get(k) for k in ('active_version','staged','pending_verification')})
+                  raise AssertionError('STAGE_REJECTED '+name)
               assert 'فایل‌ها فعال شدند' in post('activate',{'confirmation':'activate'}),name
               assert json.loads(get('/health'))['version']==c['target']
               assert 'نسخه جدید' in post('commit',{'confirmation':'commit'}),name
