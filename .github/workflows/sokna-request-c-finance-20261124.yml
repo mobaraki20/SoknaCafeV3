@@ -1,0 +1,57 @@
+name: SOKNA Batch C real finance and inventory transaction QA
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-request-c-finance-20261124.yml','qa/sokna-request-c/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-b-ci
+          MARIADB_DATABASE: sokna_ci_batch_b
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45351541555
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target
+      - name: Exact published Local payload and migration 90
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-b-ci
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          p=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(p)==1 and hashlib.sha256(p[0].read_bytes()).hexdigest()=='61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e'
+          with zipfile.ZipFile(p[0]) as z:
+              b=z.read('artifacts/local/web.zip')
+              assert hashlib.sha256(b).hexdigest()=='00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75'
+              with zipfile.ZipFile(io.BytesIO(b)) as w:
+                  assert w.testzip() is None and len(w.namelist())==621
+                  w.extractall(r/'local')
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_b setup 0090_recipe_based_item_descriptions
+      - name: Actual order, cancellation, inventory count, partial settlement, discounts and reports
+        run: |
+          set -euo pipefail
+          php qa/sokna-request-c/test_finance_inventory.php
