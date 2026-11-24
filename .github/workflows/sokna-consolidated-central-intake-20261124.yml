@@ -1,0 +1,115 @@
+name: SOKNA Current Consolidated Candidate through Existing Unified Release Factory (NO HOST INSTALL)
+on:
+  push:
+    branches: [qa/sokna-central-factory-intake-20261124]
+    paths:
+      - '.github/workflows/sokna-consolidated-central-intake-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-byte-producer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-consolidated-release-factory-20261124
+          path: checked-source
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306
+      - name: Exact SHA-pinned source build and split into independently auditable original ZIP artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          L=$(find "$RUNNER_TEMP/r306" -type f -name 'SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip' -print -quit)
+          P=$(find "$RUNNER_TEMP/r306" -type f -name 'SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip' -print -quit)
+          test -f "$L" && test -f "$P"
+          python3 checked-source/qa/sokna-final-20261124/rebuild_factory_source.py --r306-local "$L" --r306-public "$P" --parts checked-source/qa/sokna-final-20261124/overlay --out "$RUNNER_TEMP/rebuilt"
+          mkdir -p "$RUNNER_TEMP/build/r306"
+          cp "$L" "$P" "$RUNNER_TEMP/build/r306/"
+          export SOKNA_SOURCE_ARCHIVE="$RUNNER_TEMP/rebuilt/SOKNA-REBUILT-CURRENT-SOURCE-EXACT-TREE.zip"
+          export SOKNA_RELEASE_BUILD_DIR="$RUNNER_TEMP/build"
+          python3 checked-source/qa/sokna-final-20261124/factory_build_packages.py
+          python3 checked-source/qa/sokna-final-20261124/test_preflight_packages.py
+          python3 - <<'PY'
+          import json,hashlib,os,pathlib,shutil,zipfile,io
+          r=pathlib.Path(os.environ['RUNNER_TEMP']);pre=r/'build'/'preflight'
+          source='b3aad22db33a6217383f43ab7cd1a0aa24ba710650955a37142231988a1f9d84'
+          selections=[
+              ('local','SOKNA-CURRENT-LOCAL-FACTORY-INTAKE-QA-ONLY','SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip','local-update'),
+              ('public','SOKNA-CURRENT-PUBLIC-FACTORY-INTAKE-QA-ONLY','SOKNA-PUBLIC-CONSOLIDATED-ROUTINE-EMERGENCY-PREFLIGHT-DO-NOT-INSTALL.zip','public-update'),
+          ]
+          for comp,artifact,name,kind in selections:
+              out=r/(comp+'-candidate');out.mkdir()
+              b=(pre/name).read_bytes(); (out/name).write_bytes(b)
+              with zipfile.ZipFile(io.BytesIO(b)) as z:
+                  if comp=='local':version=json.loads(z.read('release-set.json'))['targets']['local']['version']
+                  else:version=json.loads(z.read('manifest.json'))['version']
+              contract={
+                  'schema':'sokna-candidate-contract-v1',
+                  'component':comp,
+                  'producer':{'run_id':'same_run','artifact':artifact},
+                  'source_authority':{'approved_checkpoint':'CONSOLIDATED-SOURCE-20261124-QA-INTAKE-NOT-PRODUCTION', 'source_sha256':source},
+                  'packages':[{'component':comp,'kind':kind,'file':name,'sha256':hashlib.sha256(b).hexdigest(),'version':version}],
+                  'supporting_files':[],
+                  'production_authorized':False,
+              }
+              (out/'candidate-contract.json').write_text(json.dumps(contract,sort_keys=True,ensure_ascii=False,indent=2)+'\n')
+              print('READY_FOR_SHARED_FACTORY_QA_ONLY',comp,name,hashlib.sha256(b).hexdigest())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CURRENT-LOCAL-FACTORY-INTAKE-QA-ONLY
+          path: ${{ runner.temp }}/local-candidate/*
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CURRENT-PUBLIC-FACTORY-INTAKE-QA-ONLY
+          path: ${{ runner.temp }}/public-candidate/*
+          if-no-files-found: error
+          retention-days: 30
+  local-unified-factory:
+    needs: original-byte-producer
+    uses: ./.github/workflows/sokna-release-factory.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-CURRENT-LOCAL-FACTORY-INTAKE-QA-ONLY
+  public-unified-factory:
+    needs: original-byte-producer
+    uses: ./.github/workflows/sokna-release-factory.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      track: registered-candidate
+      candidate_contract_path: 'artifact:candidate-contract.json'
+      candidate_run_id: ${{ github.run_id }}
+      candidate_artifact: SOKNA-CURRENT-PUBLIC-FACTORY-INTAKE-QA-ONLY
+  combined-decision:
+    if: always()
+    needs: [original-byte-producer,local-unified-factory,public-unified-factory]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Stop if either exact original candidate failed the existing central factory
+        env:
+          BUILD: ${{ needs.original-byte-producer.result }}
+          LOCAL: ${{ needs.local-unified-factory.result }}
+          PUBLIC: ${{ needs.public-unified-factory.result }}
+        run: |
+          echo "Producer=$BUILD Local shared factory=$LOCAL Public shared factory=$PUBLIC"
+          test "$BUILD" = success && test "$LOCAL" = success && test "$PUBLIC" = success
+          echo 'BOTH_COMPONENTS_EXACT_ZIP_VERIFIED_BY_EXISTING_UNIFIED_FACTORY__NOT_INSTALLABLE'
