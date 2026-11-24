@@ -108,10 +108,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo -u www-data php "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-fixture.php" missing
+          sudo install -m 0644 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-fixture.php" /tmp/sokna-public-35ip-staff-fixture.php
+          sudo -u www-data php /tmp/sokna-public-35ip-staff-fixture.php missing
           python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" regression
           python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" clean-missing
-          sudo -u www-data php "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-fixture.php" populated
+          sudo -u www-data php /tmp/sokna-public-35ip-staff-fixture.php populated
           python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" clean-populated
       - name: Real R306 to 35ip Routine recovery and independent Emergency bridge on disposable MariaDB
         shell: bash
