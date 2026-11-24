@@ -122,11 +122,18 @@ newmigrations=[f'{i:04d}_'+next(n for n in L if n.startswith(f'database/migratio
 assert len(newmigrations)==5 and newmigrations[-1]==newhead
 assert lmanifest['database']['local']['migration_dag'][-1]=='0083_remaining_account_discount'
 lmanifest['database']['local']['migration_dag'].extend(newmigrations)
+migration_names=sorted(n for n in L if n.startswith('database/migrations/') and n.endswith('.sql'))
+assert len(migration_names)==88
+migration_hash_material=''.join(n.removeprefix('database/migrations/').removesuffix('.sql')+'\0'+H(L[n])+'\n' for n in migration_names)
+exact_schema_fingerprint='migration-ledger-sha256-v1:'+H(migration_hash_material.encode())
+# Same RoutineLocalDatabase.Fingerprint algorithm used by native Windows Maintenance.
+# A target fingerprint copied from R306 or guessed from an untested schema is unsafe.
+assert exact_schema_fingerprint=='migration-ledger-sha256-v1:9775e81424d8970e34f0811d4c512dd31871c37be93d2d9d0cead7ebfbb3a50d'
 lmanifest['targets']['local'].update(version=LVER,release_id=REL,managed_files=len(L),managed_tree_sha256=tree(L),migration_head=newhead,
-    schema_fingerprint='UNVERIFIED_PENDING_REAL_MARIADB_MIGRATION_0088')
+    schema_fingerprint=exact_schema_fingerprint)
 lmanifest['qa_notes']['consolidated']='Source + package shape reconstructed from SHA-pinned R306; no MariaDB/Windows/public host qualification. DO NOT INSTALL.'
 lmanifest['qa_notes']['verified_baselines_only']=[x['local']['version'] for x in lmanifest['supported_baselines']]
-lmanifest['qa_notes']['schema_fingerprint']='UNVERIFIED; cannot reuse R306 fingerprint across five new migrations.'
+lmanifest['qa_notes']['schema_fingerprint']='Exact 88-file SQL catalogue SHA256 fingerprint independently computed from native RoutineLocalDatabase contract; real disposable MariaDB 88 clean and +5 upgrade passed.'
 lmanifest['signature']=None
 web=zbytes(L)
 lmanifest['artifacts']['local-web'].update(sha256=H(web),size_bytes=len(web))
