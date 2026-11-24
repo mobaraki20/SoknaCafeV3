@@ -52,6 +52,9 @@ def structural_public(blob,require_installable=False):
  assert len({(x['version'],x['managed_tree_sha256']) for x in m['compatibility']['supported_baselines']})==2
  files={n[8:]:b for n,b in outer.items() if n.startswith('payload/')}
  assert len(files)==251 and len(outer)==251
+ assert H(files['setup/index.php'])=='c2cf32d808469f13b1f73886782468c1f3a08448e0acb2b44ea7e5e888f19a71', 'SETUP_BOOTSTRAP_SOURCE_MISMATCH'
+ assert b'// Do not block first-run Setup on an outbound font request; browser font.php loads lazily.require_once' not in files['setup/index.php'], 'SETUP_BOOTSTRAP_COMMENT_STILL_SWALLOWED'
+ assert b'\nrequire_once' in files['setup/index.php'], 'SETUP_BOOTSTRAP_REQUIRE_NOT_EXECUTABLE'
  assert files['VERSION.txt'].decode().strip()==m['version']
  assert m['target_managed_tree_sha256']==H(''.join(n+'\0'+H(b)+'\n' for n,b in sorted(files.items())).encode())
  assert len(m['files'])==len(files)
