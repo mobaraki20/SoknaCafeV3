@@ -1,0 +1,41 @@
+--- a/local/src/Domain/Finance/SettlementService.php
++++ b/local/src/Domain/Finance/SettlementService.php
+@@ -328,6 +328,7 @@
+         foreach($plan['allocations'] as $line)$lineInsert->execute([$grantId,$line['order_item_id'],$line['quantity_snapshot'],
+             $line['paid_quantity_at_grant'],$line['original_discount_snapshot'],$line['discount_amount'],
+             $line['invoice_tax_after_grant'],$line['invoice_taxable_after_grant']]);
++        $this->invalidateRemainingDiscountProjectionTx($sessionId);
+         $this->audit('settlement.remaining_discount_granted','table_session',$sessionId,(int)$actor['id'],[
+             'grant_id'=>$grantId,'discount_type'=>$type,'discount_value'=>$value,
+             'discount_amount'=>$preview['discount_amount'],'unpaid_subtotal_before'=>$preview['subtotal'],
+@@ -437,6 +438,7 @@
+             $after=$this->accountTx($sessionId);
+             if((int)$after['remaining_total']!==(int)$preview['total'])
+                 throw new SettlementStateConflict('discount_readback_mismatch','اصلاحیه با مانده حساب مطابقت ندارد و برگشت داده شد.',409);
++            $this->invalidateRemainingDiscountProjectionTx($sessionId);
+             $this->audit('settlement.remaining_discount_corrected','table_session',$sessionId,(int)$actor['id'],[
+                 'grant_id'=>(int)$grant['id'],'revision_id'=>$revisionId,'revision_no'=>$revisionNo,
+                 'previous_amount'=>(int)$current['session']['remaining_discount_grant']['amount'],
+@@ -1829,6 +1831,7 @@
+             ->execute([$gid,(int)($rev['revision_no']??0)+1,$rid,$preview['discount_type'],$preview['discount_value'],$preview['subtotal'],$preview['discount_amount'],$preview['total'],json_encode(array_values($alloc),JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$reason,(int)$actor['id']]);
+         $after=$this->accountTx($sessionId);
+         if((int)$after['remaining_total']!==(int)$preview['total'])throw new SettlementStateConflict('discount_readback_mismatch','اصلاحیه تخفیف با مانده حساب مطابق نیست.',409);
++        $this->invalidateRemainingDiscountProjectionTx($sessionId);
+         $this->audit('settlement.remaining_discount_rebased','table_session',$sessionId,(int)$actor['id'],['grant_id'=>$gid,'request_id'=>$rid,'discount_amount'=>$preview['discount_amount'],'original_receipts_immutable'=>true]);
+     }
+ 
+@@ -2117,6 +2120,14 @@
+         return $fresh;
+     }
+ 
++    /** Publish the changed account atomically with its grant/revision; audit alone only invalidates reports. */
++    private function invalidateRemainingDiscountProjectionTx(int $sessionId): void
++    {
++        if(!$this->pdo->inTransaction())throw new \LogicException('Discount invalidation requires an open transaction.');
++        $this->pdo->prepare('INSERT INTO public_projection_outbox(event_type,aggregate_type,aggregate_id,model_keys) VALUES(?,?,?,?)')
++            ->execute(['settlement.remaining_discount_changed','session',(string)$sessionId,'operations,reports']);
++    }
++
+     private function audit(string $action,string $entityType,int $entityId,int $actorId,array $details): void
+     {
+         $display=$this->pdo->prepare('SELECT display_name FROM users WHERE id=? LIMIT 1');
