@@ -14,7 +14,7 @@ PIN={
 }
 EXPECTED={
 'local':{'files':619,'tree':'349c8385d8403fc7e453680058364144a50b0dd05f80d4a7f4dd327a7db51df5'},
-'public':{'files':251,'tree':'50801867f8d272c22a3a8d717043e31ea646d8ee78c9aae9123db109eedbfc99'},
+'public':{'files':251,'tree':'13a97efc6b3f259c22357d3c2a0a0276714561915bb87ed1efd3ccd2d10713c3'},
 }
 def extract_entries(archive,component):
  with zipfile.ZipFile(archive) as z:
@@ -68,6 +68,19 @@ def main():
   pp=args.out/(name+'.patch');pp.write_bytes(data)
   run(['git','apply','--check',str(pp)],root)
   run(['git','apply',str(pp)],root)
+ # Reviewable one-file source amendment: a // comment swallowed require_once on
+ # the minified Public Setup line. Pin both hashes to reject unexpected revisions.
+ setup_file=root/'public'/'setup'/'index.php'
+ old_bytes=setup_file.read_bytes()
+ if SHA(old_bytes)!='32138a15f07de965fabe60ae8e0f25dbe0abe97f1f291d6f4e8324156de98dd1':
+  raise RuntimeError('PUBLIC_SETUP_SOURCE_BASE_MISMATCH')
+ broken=b'// Do not block first-run Setup on an outbound font request; browser font.php loads lazily.require_once'
+ fixed=b'\n// Do not block first-run Setup on an outbound font request; browser font.php loads lazily.\nrequire_once'
+ if old_bytes.count(broken)!=1:raise RuntimeError('PUBLIC_SETUP_COMMENT_PATTERN_CHANGED')
+ corrected=old_bytes.replace(broken,fixed)
+ if SHA(corrected)!='c2cf32d808469f13b1f73886782468c1f3a08448e0acb2b44ea7e5e888f19a71':
+  raise RuntimeError('PUBLIC_SETUP_FIXED_SOURCE_SHA_MISMATCH')
+ setup_file.write_bytes(corrected)
  receipt={'schema':'sokna-final-factory-pinned-reconstruction-v1','component':{},'input_r306':{'local':PIN['R306_LOCAL'],'public':PIN['R306_PUBLIC']},'patch_sha':PIN['PATCH'],'new_files_patch_xz':PIN['ADDITIONS_XZ']}
  for comp in ('local','public'):
   d={p.relative_to(root/comp).as_posix():p.read_bytes() for p in (root/comp).rglob('*') if p.is_file()}
@@ -78,7 +91,8 @@ def main():
  zip_source(root,archive)
  receipt['rebuilt_source_archive_sha256']=SHA(archive.read_bytes())
  receipt['reference_library_source_sha256']='b3aad22db33a6217383f43ab7cd1a0aa24ba710650955a37142231988a1f9d84'
- receipt['same_file_tree_as_library']=True
+ receipt['same_file_tree_as_library']=False
+ receipt['one_additional_source_fix']='PUBLIC_SETUP_COMMENT_BOOTSTRAP_RESTORED_SHA_PINNED'
  receipt['operator_install_authorized']=False
  (args.out/'SOKNA-REBUILT-SOURCE-RECEIPT.json').write_text(json.dumps(receipt,ensure_ascii=False,indent=2,sort_keys=True)+'\n')
  print(json.dumps(receipt,ensure_ascii=False,indent=2))
