@@ -1,4 +1,4 @@
-name: SOKNA Unified Release Factory - QA ONLY / NO DEPLOY
+name: SOKNA Unified Release Factory - Universal Distribution / QA / NO DEPLOY
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       track:
         description: 'historical-r233 or registered-candidate or legacy-public-35ic'
         type: choice
-        options: [historical-r233, legacy-public-35ic, registered-candidate]
+        options: [historical-r233, legacy-public-35ic, registered-candidate, universal-release]
         default: historical-r233
         required: true
       checkpoint:
@@ -264,3 +264,14 @@ jobs:
           path: final-proof/release-decision.json
           if-no-files-found: ignore
           retention-days: 90
+
+  universal-distribution:
+    if: ${{ inputs.track == 'universal-release' }}
+    uses: ./.github/workflows/sokna-universal-distribution.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      contract_path: ${{ inputs.candidate_contract_path }}
+      producer_run_id: ${{ inputs.candidate_run_id }}
+      producer_artifact: ${{ inputs.candidate_artifact }}

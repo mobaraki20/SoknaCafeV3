@@ -1,0 +1,81 @@
+name: SOKNA universal distribution admission (no target host)
+on:
+  workflow_call:
+    inputs:
+      contract_path:
+        type: string
+        required: true
+      producer_run_id:
+        type: string
+        required: true
+      producer_artifact:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      contract_path:
+        type: string
+        required: true
+        default: release-ops/universal-r3-distribution-contract-20261124.json
+      producer_run_id:
+        type: string
+        required: true
+        default: '45351541555'
+      producer_artifact:
+        type: string
+        required: true
+        default: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+  push:
+    branches: [qa/sokna-central-factory-intake-20261124]
+    paths:
+      - 'release-ops/universal_release.py'
+      - 'release-ops/universal-r3-distribution-contract-20261124.json'
+      - '.github/workflows/sokna-universal-distribution.yml'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  admit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Policy tests
+        run: python3 -m unittest discover -s release-ops/tests -p test_universal_release.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.producer_artifact || 'SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL' }}
+          run-id: ${{ inputs.producer_run_id || '45351541555' }}
+          github-token: ${{ github.token }}
+          path: incoming
+      - uses: actions/download-artifact@v4
+        if: ${{ github.event_name == 'push' }}
+        with:
+          name: SOKNA-LOCAL-231GB-EXACT-CLEAN-QA-NOT-INSTALL
+          run-id: 45352318115
+          github-token: ${{ github.token }}
+          path: incoming-clean
+      - name: Collect original ZIPs without rewriting bytes
+        run: |
+          mkdir -p packages
+          find incoming -type f -name '*.zip' -exec cp -n {} packages/ \;
+          if test -d incoming-clean; then find incoming-clean -type f -name '*.zip' -exec cp -n {} packages/ \;; fi
+      - name: Independent distribution decision against verified GitHub evidence
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTRACT_PATH: ${{ inputs.contract_path || 'release-ops/universal-r3-distribution-contract-20261124.json' }}
+        run: python3 release-ops/universal_release.py --contract "$CONTRACT_PATH" --packages packages --repo "$GITHUB_REPOSITORY" --out decision
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-UNIVERSAL-DISTRIBUTION-DECISION
+          path: decision/release-decision.json
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: steps.admission.outputs.authorized == 'true'
+        with:
+          name: SOKNA-UNIVERSAL-OPERATOR-RELEASE
+          path: decision/operator/*
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,203 @@
+{
+  "schema": "sokna-universal-distribution-contract-v1",
+  "release": "R3-231gb-35io",
+  "source_sha256": "823180ddf7525d70af964b6348155a342ac72b282fdb58e3c9272f1c1bb5c878",
+  "runs": [
+    {
+      "id": 45351541555,
+      "head_sha": "b5bbf27b4964a2cc0851c09a2d224fcbaff3da1c",
+      "workflow": ".github/workflows/sokna-consolidated-factory-20261124.yml",
+      "jobs": [
+        "exact-factory",
+        "mariadb-migration",
+        "windows-format",
+        "windows-native-lifecycle",
+        "public-mariadb-clean"
+      ]
+    },
+    {
+      "id": 45351485598,
+      "head_sha": "ca793d5fe87299482cc826c6d0711b5443227ed6",
+      "workflow": ".github/workflows/sokna-exact-public-host-gate-20261124.yml",
+      "jobs": [
+        "public-host-gate"
+      ]
+    },
+    {
+      "id": 45352318115,
+      "head_sha": "65ac569e45fcfea5412d9af2ea64d54d0ac2ecea",
+      "workflow": ".github/workflows/sokna-r3-local-clean-20261124.yml",
+      "jobs": [
+        "local-clean"
+      ]
+    }
+  ],
+  "packages": {
+    "local-update": {
+      "file": "SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip",
+      "sha256": "61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e",
+      "proofs": [
+        {
+          "gate": "source",
+          "run_id": 45351541555,
+          "job": "exact-factory",
+          "scope": "exact_zip",
+          "sha256": "61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e"
+        },
+        {
+          "gate": "structure",
+          "run_id": 45351541555,
+          "job": "exact-factory",
+          "scope": "exact_zip",
+          "sha256": "61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e"
+        },
+        {
+          "gate": "db_forward",
+          "run_id": 45351541555,
+          "job": "mariadb-migration",
+          "scope": "exact_zip",
+          "sha256": "61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e"
+        },
+        {
+          "gate": "native_windows",
+          "run_id": 45351541555,
+          "job": "windows-native-lifecycle",
+          "scope": "payload_only",
+          "sha256": "61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e"
+        },
+        {
+          "gate": "origin_upgrade",
+          "run_id": 45351541555,
+          "job": "windows-native-lifecycle",
+          "scope": "payload_only",
+          "sha256": "61cac93a1412898d063a8d7e7efbee77cae3a6bd20eebc7b376a7808dc02cf6e",
+          "origin_tree_sha256": "5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186"
+        }
+      ]
+    },
+    "public-update": {
+      "file": "SOKNA-PUBLIC-CONSOLIDATED-ROUTINE-EMERGENCY-PREFLIGHT-DO-NOT-INSTALL.zip",
+      "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073",
+      "proofs": [
+        {
+          "gate": "source",
+          "run_id": 45351541555,
+          "job": "exact-factory",
+          "scope": "exact_zip",
+          "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073"
+        },
+        {
+          "gate": "structure",
+          "run_id": 45351541555,
+          "job": "exact-factory",
+          "scope": "exact_zip",
+          "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073"
+        },
+        {
+          "gate": "routine",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073"
+        },
+        {
+          "gate": "emergency",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "core_bridge_only",
+          "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073"
+        },
+        {
+          "gate": "failure_recovery",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073"
+        },
+        {
+          "gate": "origin_upgrade",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073",
+          "origin_tree_sha256": "7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce"
+        }
+      ]
+    },
+    "local-clean": {
+      "file": "SOKNA-LOCAL-231GB-WEB-CLEAN-QA-NOT-INSTALL.zip",
+      "sha256": "00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75",
+      "proofs": [
+        {
+          "gate": "source",
+          "run_id": 45351541555,
+          "job": "exact-factory",
+          "scope": "exact_zip",
+          "sha256": "00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75"
+        },
+        {
+          "gate": "structure",
+          "run_id": 45352318115,
+          "job": "local-clean",
+          "scope": "exact_zip",
+          "sha256": "00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75"
+        },
+        {
+          "gate": "browser_setup",
+          "run_id": 45352318115,
+          "job": "local-clean",
+          "scope": "exact_zip",
+          "sha256": "00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75"
+        },
+        {
+          "gate": "db_seed",
+          "run_id": 45352318115,
+          "job": "local-clean",
+          "scope": "exact_zip",
+          "sha256": "00500e35bed0f72e7ec5f50e21ca575365f995d280e6e909fa6f6173f2867e75"
+        }
+      ]
+    },
+    "public-clean": {
+      "file": "SOKNA-PUBLIC-35IO-CLEAN-EXACT-CURRENT-QA-NOT-INSTALL.zip",
+      "sha256": "121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1",
+      "proofs": [
+        {
+          "gate": "source",
+          "run_id": 45351541555,
+          "job": "exact-factory",
+          "scope": "exact_zip",
+          "sha256": "121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1"
+        },
+        {
+          "gate": "structure",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1"
+        },
+        {
+          "gate": "root_setup",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1"
+        },
+        {
+          "gate": "subpath_setup",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1"
+        },
+        {
+          "gate": "protected_emergency",
+          "run_id": 45351485598,
+          "job": "public-host-gate",
+          "scope": "exact_zip",
+          "sha256": "121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1"
+        }
+      ]
+    }
+  }
+}
