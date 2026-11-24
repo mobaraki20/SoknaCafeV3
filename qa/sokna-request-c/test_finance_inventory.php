@@ -40,7 +40,7 @@ $acc=$svc->account($session);$a($acc['subtotal']===(int)$item['price']*2 && $acc
 $line=$o['lines'][0]['order_item_id'];
 $req=function($ac,$mode,$id,$sel=[])use($session){return ['session_id'=>$session,'expected_session_id'=>$session,'expected_remaining_total'=>$ac['remaining_total'],'expected_signature'=>$ac['signature'],'mode'=>$mode,'destination'=>'direct','request_id'=>$id,'selection'=>$sel,'print_receipt'=>false];};
 $first=$req($acc,'itemized','ci-b-itemized-001',[['order_item_id'=>$line,'quantity'=>1]]);
-try{$svc->review($first,['id'=>$operator]);throw new LogicException('unauthorized operator succeeded');}catch(\Sokna\Local\Domain\Settlement\SettlementException $e){}
+try{$svc->review($first,['id'=>$operator]);throw new LogicException('unauthorized operator succeeded');}catch(\Sokna\Local\Domain\Finance\SettlementException $e){}
 $rv=$svc->review($first,$user);$part=(int)$rv['total'];$a($part>1,'invalid first total');
 $first['tenders']=['cash'=>intdiv($part,2),'pos'=>$part-intdiv($part,2)];
 $paid=$svc->settle($first,$user);$a($paid['total_amount']===$part&&!$paid['closes_session'],'partial settlement');
