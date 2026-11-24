@@ -21,6 +21,12 @@ jobs:
           run-id: 44723958829
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/r306
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          run-id: 44730988488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307
       - name: Rebuild SHA-pinned 619 Local + 251 Public files and deterministic package formats
         shell: bash
         run: |
@@ -31,6 +37,11 @@ jobs:
           python3 qa/sokna-final-20261124/rebuild_factory_source.py --r306-local "$L" --r306-public "$P" --parts qa/sokna-final-20261124/overlay --out "$RUNNER_TEMP/rebuilt"
           mkdir -p "$RUNNER_TEMP/build/r306"
           cp "$L" "$P" "$RUNNER_TEMP/build/r306/"
+          R307=$(find "$RUNNER_TEMP/r307" -type f -name 'SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip' -print -quit)
+          test -f "$R307"
+          echo '069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa  '"$R307" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/build/r307"
+          cp "$R307" "$RUNNER_TEMP/build/r307/"
           export SOKNA_SOURCE_ARCHIVE="$RUNNER_TEMP/rebuilt/SOKNA-REBUILT-CURRENT-SOURCE-EXACT-TREE.zip"
           export SOKNA_RELEASE_BUILD_DIR="$RUNNER_TEMP/build"
           python3 qa/sokna-final-20261124/factory_build_packages.py
