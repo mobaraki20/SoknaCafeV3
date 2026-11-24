@@ -2,7 +2,7 @@ name: SOKNA 35ip urgent Staff login hotfix exact operator release
 on:
   push:
     branches: [qa/sokna-consolidated-release-factory-20261124]
-    paths: ['.github/workflows/sokna-public-35ip-staff-hotfix.yml']
+    paths: ['.github/workflows/sokna-public-35ip-staff-hotfix.yml', 'release-ops/public-35ip-staff-http.py']
   workflow_dispatch:
 permissions:
   contents: read
@@ -232,6 +232,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Verify the on-disk target in a fresh process under the service identity
+          # before checking the existing Apache worker. Do not reset OPcache.
+          for root in /var/www/sokna-public-host-gate/current/webroot/public /var/www/sokna-public-host-gate/older/webroot/public/menu /var/www/sokna-public-host-gate/browser306/webroot /var/www/sokna-public-host-gate/upgrade/webroot; do
+            sudo -u www-data php -r 'require $argv[1]."/bootstrap.php"; foreach(["Sokna\\PublicEdge\\Auth\\UserUiPreferenceService","Sokna\\PublicEdge\\Remote\\PublicNotificationToday","Sokna\\PublicEdge\\Remote\\PublicDashboardOperationalActivity","Sokna\\PublicEdge\\Remote\\PublicItemSalesArchive","Sokna\\PublicEdge\\Remote\\PublicInvoiceHistoryArchive"] as $c) if(!class_exists($c,false)) throw new RuntimeException("MISSING ".$c); echo "PASS_FRESH_PROCESS_DEPENDENCIES\n";' "$root"
+          done
           python3 "$GITHUB_WORKSPACE/release-ops/public-35ip-staff-http.py" upgraded | tee "$RUNNER_TEMP/public-staff-receipt.txt"
       - name: Admit exact Public operator ZIP and clean Web only after all checks succeed
         shell: bash

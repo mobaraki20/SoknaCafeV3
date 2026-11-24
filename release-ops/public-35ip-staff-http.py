@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import urllib.request,urllib.parse,urllib.error,sys,pathlib,json,re
+import urllib.request,urllib.parse,urllib.error,sys,pathlib,json,re,time
 phase=sys.argv[1];w=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((w/'contract.json').read_text())
 hosts={'root':(18080,''),'sub':(18081,'/public/menu'),'upgrade':(18082,''),'older':(18083,'/public/menu'),'browser306':(18084,''),'current':(18085,'/public')}
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -23,6 +23,21 @@ def test(name,expect_error=False):
         status,body,h=req(base,'/staff/',cookie=cookie)
         assert 'public_internal_error' in body and '<!doctype html>' in body,(name,'expected original failure',status,body[-400:])
         print('REPRODUCED_35IO_MIXED_HTML_JSON',name);return
+    if phase=='upgraded':
+        # PHP OPcache can retain the previous compiled bootstrap for its
+        # normal timestamp revalidation interval. Never restart Apache or
+        # ignore a persistent 500. Verify actual Staff readiness on the
+        # existing worker and record any transient rejection.
+        start=time.monotonic(); retries=0
+        while True:
+            code,body,headers=req(base,'/api/staff/ui-preferences',cookie=cookie)
+            if code==200 and json.loads(body).get('success') is True:break
+            if code!=500 or time.monotonic()-start>=8:
+                raise AssertionError((name,'post-upgrade runtime did not converge',code,body[-800:]))
+            retries+=1
+            print('POST_UPGRADE_TRANSIENT_RUNTIME_READBACK',name,retries,body[-180:],flush=True)
+            time.sleep(.5)
+        print('PASS_POST_UPGRADE_RUNTIME_READY',name,'retry_count',retries,'elapsed',round(time.monotonic()-start,3))
     for path in ('/staff/','/staff/operator/','/staff/preparation/','/staff/operations/','/staff/subscribers/','/staff/reports/','/staff/notifications/','/staff/health/','/staff/account/'):
         status,body,h=req(base,path,cookie=cookie)
         assert status==200 and 'text/html' in h.get('Content-Type','') and body.lstrip().startswith('<!doctype html>') and body.rstrip().endswith('</html>') and 'public_internal_error' not in body,(name,path,status,h.get('Content-Type'),body[-600:])
@@ -39,5 +54,5 @@ if phase=='regression':test('current',True)
 elif phase.startswith('clean-'):
     for n in ('root','sub'):test(n)
 elif phase=='upgraded':
-    for n in ('upgrade','older','browser306','current'):test(n)
+    for n in ('current','older','browser306','upgrade'):test(n)
 else:raise ValueError(phase)
