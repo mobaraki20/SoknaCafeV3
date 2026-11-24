@@ -9,13 +9,24 @@
     "SOKNA-PURCHASES-LATE-ABAN-AZAR-RAW-20261123.md"
   ],
   "menu_policy": {
-    "existing": "match stable item code and verify identity; recipe changes only; never write existing menu prices, visibility, descriptions or ordering",
+    "existing": "match stable item code and verify identity; replace recipe and description only where authorized; never write existing menu prices, visibility, images or ordering",
     "new_only": {
       "name": "بلک موهیتو",
       "price_toman": 275000,
       "category_key": "cold-drinks",
       "preparation_station": "cold_bar",
       "placement": "adjacent to other mojitos; collision-safe new item code; no duplicate on repeat"
+    },
+    "description": {
+      "scope": "all active catalog food and bar items with an unambiguous current recipe, including the new Black Mojito; not only the 19 imported recipes",
+      "source": "active inventory recipe components joined to canonical inventory names, ordered by component id",
+      "food": "ingredient name plus stored base quantity and unit; do not publish uncertain quantity as exact",
+      "bar": "ingredient names only; no quantity, weight, volume or count from recipe",
+      "replace": "overwrite entire previous item description, not append",
+      "exclude": "no valid active recipe, ambiguous multiple active versions, services, or unsupported food quantity; preserve previous description and report exception",
+      "sequence": "after successful recipe import (0089 reserved) and before Public projection; one-time migration, not recurring automatic overwrite",
+      "public": "use existing Local-authoritative projection; do not directly edit host",
+      "migration_candidate": "qa/sokna-final-20261124/recipe-catalog/0090_recipe_based_item_descriptions.sql"
     }
   },
   "recipe_policy": {
@@ -819,6 +830,7 @@
     "repeat migration no duplicate or reactivation",
     "clean installation and real upgrade on disposable MariaDB",
     "one bottle vs carton conversion and export readback",
-    "release via central factory with new exact hashes"
+    "release via central factory with new exact hashes",
+    "description-only migration: food includes quantities, bar names only, historical/ambiguous/no recipe preserved; all other fields unchanged; public projection verified"
   ]
 }
