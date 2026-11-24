@@ -12,7 +12,7 @@ $worker=<<<'WORKER'
 $root=getenv('RUNNER_TEMP').'/local';require $root.'/bootstrap.php';$core=sokna_local_bootstrap(require dirname($root).'/config.php');$input=json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR);
 file_put_contents($argv[2],'ready');$limit=microtime(true)+30;
 while(!is_file($argv[3])){if(microtime(true)>$limit)throw new RuntimeException('barrier timeout');usleep(10000);}
-try{$r=$core->settlements()->settle($input['request'],['id'=>$input['actor']]);$out=['status'=>'ok','id'=>(int)$r['settlement_id'],'idempotent'=>(bool)$r['idempotent']];}
+try{$r=$core->settlements()->settle($input['request'],['id'=>$input['actor']]);$out=['status'=>'ok','id'=>(int)$r['settlement_id'],'idempotent'=>(bool)$r['idempotent'],'tenders'=>$r['tenders']];}
 catch(\Sokna\Local\Domain\Finance\SettlementException $e){$out=['status'=>'blocked','code'=>$e->errorCode];}
 echo json_encode($out,JSON_THROW_ON_ERROR)."\n";
 WORKER;
@@ -31,6 +31,7 @@ foreach($processes as $i=>$proc){$exit=proc_close($proc);$a($exit===0,'worker er
 $a((int)$one("SELECT COUNT(*) FROM settlement_records WHERE session_id=? AND status='completed'",[$session])===1,'one payment only '.json_encode($results));
 $a((int)$one("SELECT SUM(total) FROM settlement_records WHERE session_id=? AND status='completed'",[$session])===$amount,'exact ledger');
 $a((int)$one("SELECT SUM(t.amount) FROM settlement_tender_allocations t JOIN settlement_records r ON r.id=t.settlement_id WHERE r.session_id=?",[$session])===$amount,'exact tender');
+foreach($results as $r)if($r['status']==='ok')$a($r['tenders']===[['type'=>'pos','amount'=>$amount]],'exact returned tender '.json_encode($r));
 if($same){$a($results[0]['status']==='ok'&&$results[1]['status']==='ok'&&$results[0]['id']===$results[1]['id']&&$results[0]['idempotent']!==$results[1]['idempotent'],'same request must replay '.json_encode($results));}
 else{$ok=array_values(array_filter($results,fn($r)=>$r['status']==='ok'));$blocked=array_values(array_filter($results,fn($r)=>$r['status']==='blocked'));$a(count($ok)===1&&count($blocked)===1&&in_array($blocked[0]['code'],$full?['session_closed']:['account_changed'],true),'stale request must fail '.json_encode($results));}
 if($full)$a((string)$one('SELECT status FROM table_sessions WHERE id=?',[$session])==='closed','closed once');
