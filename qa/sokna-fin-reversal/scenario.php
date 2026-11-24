@@ -66,4 +66,25 @@ $case('active draft preserves table occupancy during unpaid cancellation',functi
  $draft=$core->tableDrafts()->save(['table_id'=>$t,'expected_session_id'=>$s,'expected_version'=>0,'items'=>[['id'=>$item['id'],'quantity'=>1]]],$user);$a($draft['success'],'real draft');
  $a($cancel($s,[$oid],'ci-fin-draft-cancel-0001')['success'],'cancel order');$core->inventoryOrders()->processPending();$a($balances()===$before,'stock restored');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='active','draft retains session');$a((int)$one("SELECT COUNT(*) FROM table_drafts WHERE table_id=? AND state='active'",[$t])===1,'draft unchanged');
 });
+
+$case('pending-only order releases pending table without inventory or receipt',function()use($newSession,$put,$a,$one,$core,$balances,$cancel){
+ [$t,$s]=$newSession('pendingonly',64992,'pending');$before=$balances();$g=$put($t,$s,'ci-fin-pendingonly-0001',1,'guest');$id=(int)$g['order_id'];
+ $a($cancel($s,[$id],'ci-fin-pendingonly-cancel-0001')['success'],'cancel pending');$core->inventoryOrders()->processPending();
+ $a($balances()===$before,'no phantom stock');$a($one('SELECT status FROM table_sessions WHERE id=?',[$s])==='closed','pending table closed');$a((int)$one('SELECT COUNT(*) FROM settlement_records WHERE session_id=?',[$s])===0,'no receipt');
+});
+$case('detached followup retains financial account and forbids Hall cancellation',function()use($newSession,$put,$svc,$a,$one,$core,$balances,$user,$cancel){
+ [$t,$s]=$newSession('followup',64991);$o=$put($t,$s,'ci-fin-followup-order-0001');$oid=(int)$o['order_id'];$core->inventoryOrders()->processPending();$before=$balances();
+ $a($svc->markRecoveryRequired(['session_id'=>$s,'destination'=>'direct','code'=>'network_failed','status'=>503],$user)['eligible'],'recovery marker');
+ $ac=$svc->account($s);$r=$svc->detachForFollowup(['session_id'=>$s,'expected_session_id'=>$s,'expected_signature'=>$ac['signature'],'expected_remaining_total'=>$ac['remaining_total'],'reason'=>'QA followup'],$user);$a($r['detached'],'detached');
+ try{$cancel($s,[$oid],'ci-fin-followup-cancel-0001');throw new RuntimeException('detached Hall cancel accepted');}catch(\Sokna\Local\Domain\Orders\OrderStaffActionException $e){$a($e->errorCode==='session_changed','unexpected conflict '.$e->errorCode);}
+ $a($svc->account($s)['remaining_total']===$ac['remaining_total'],'financial amount unchanged');$a($one('SELECT live_table_guard FROM table_sessions WHERE id=?',[$s])===null,'table remains released');$a($balances()===$before,'no stock change');
+});
+$case('late served line remains outside ordinary cancellation',function()use($newSession,$put,$core,$p,$item,$admin,$a,$one,$balances,$user,$svc,$actions){
+ [$t,$s]=$newSession('late',64990);$o=$put($t,$s,'ci-fin-late-normal-0001');$oid=(int)$o['order_id'];
+ $p->beginTransaction();try{$late=$core->orders()->commitLateServedTx(['source'=>'staff','table_id'=>$t,'session_id'=>$s,'client_token'=>'ci-fin-late-served-0001','actor_user_id'=>$admin,'items'=>[['id'=>$item['id'],'quantity'=>1]]]);$p->commit();}catch(Throwable $e){if($p->inTransaction())$p->rollBack();throw $e;}
+ $id=(int)$late['order_id'];$core->inventoryOrders()->processPending();$before=$balances();
+ $a($one('SELECT accounting_origin FROM orders WHERE id=?',[$id])==='late_served','late fixture');
+ try{$actions->cancelSelection(['session_id'=>$s,'scope'=>'round','order_id'=>$id,'request_id'=>'ci-fin-late-cancel-0001','reason'=>'QA late guard'],$user,fn($oid,$sid,$rid,$why,$actor)=>$svc->refundOrderPaymentsTx($oid,$sid,$rid,$why,$actor),fn($sid)=>$svc->accountTx($sid));throw new RuntimeException('late served cancellation accepted');}catch(\Sokna\Local\Domain\Orders\OrderStaffActionException $e){$a($e->errorCode==='order_changed','unexpected conflict '.$e->errorCode);}
+ $a($one('SELECT status FROM orders WHERE id=?',[$id])==='accounted','late still accounted');$a($balances()===$before,'no stock change');
+});
 $a(!$fail,'finance regression failures: '.implode('; ',$fail));
