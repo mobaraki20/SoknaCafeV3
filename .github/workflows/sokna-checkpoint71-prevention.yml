@@ -1,0 +1,52 @@
+name: SOKNA checkpoint71 Public lifecycle prevention exact delta QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint71-prevention.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prevention:
+    strategy:
+      fail-fast: false
+      matrix:
+        mariadb: ['10.6','11.4']
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-prevention-disposable-ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FACTORY-CURRENT-FOUR-EXACT-QA-NOT-INSTALL
+          run-id: 45715494853
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/factory
+      - name: Exact reconstruction and PHP integration tests on disposable MariaDB
+        run: |
+          set -euo pipefail
+          python3 qa/checkpoint71/reconstruct.py
+          sudo apt-get update -qq
+          sudo apt-get install -y php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
+          mkdir "$RUNNER_TEMP/receipt"
+          php8.3 -m | grep pdo_mysql
+          php8.3 "$RUNNER_TEMP/prevention-source/prevention-test.php" | tee "$RUNNER_TEMP/receipt/transport-lifecycle-fixture.log"
+          php8.3 "$RUNNER_TEMP/prevention-source/mariadb-test.php" | tee "$RUNNER_TEMP/receipt/real-mariadb.log"
+          test "$(grep -c '^PASS ' "$RUNNER_TEMP/receipt/transport-lifecycle-fixture.log")" = 14
+          test "$(grep -c '^PASS ' "$RUNNER_TEMP/receipt/real-mariadb.log")" = 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CHECKPOINT71-PREVENTION-MARIADB-${{ matrix.mariadb }}-QA
+          path: ${{ runner.temp }}/receipt/
+          if-no-files-found: warn
+          retention-days: 30
