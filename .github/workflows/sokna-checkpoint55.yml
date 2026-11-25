@@ -1,0 +1,51 @@
+name: SOKNA checkpoint55 exact artifact bridge and locked dependency QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint55.yml','qa/checkpoint55/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45565963138
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - run: python qa/checkpoint55/reconstruct.py "$RUNNER_TEMP/baseline" "$RUNNER_TEMP/exact"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          path: ${{ runner.temp }}/exact/packages/*
+          if-no-files-found: error
+          retention-days: 7
+  locked-apache:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate original locked Apache without relaxing hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $a=(Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json).artifacts|Where-Object dependency -eq apache
+          $urls=@($a.source_url,('https://apachelounge.com/download/VS18/binaries/'+$a.filename),('https://www.apachelounge.com/download/VS18/binaries/archive/'+$a.filename),('https://fossies.org/windows/www/'+$a.filename))
+          $p=Join-Path $env:RUNNER_TEMP $a.filename
+          foreach($url in $urls){
+            try{
+              Invoke-WebRequest -Uri $url -OutFile $p -TimeoutSec 35 -ErrorAction Stop
+              $hash=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
+              Write-Host "SOURCE=$url SIZE=$((Get-Item $p).Length) SHA256=$hash"
+              if((Get-Item $p).Length -eq $a.size -and $hash -eq $a.sha256){Write-Host 'PASS EXACT LOCKED APACHE';exit 0}
+            }catch{Write-Host "SOURCE=$url FAILURE=$($_.Exception.Message)"}
+          }
+          throw 'LOCKED_APACHE_NOT_RECOVERED__NO_UNVERIFIED_EXECUTION'
