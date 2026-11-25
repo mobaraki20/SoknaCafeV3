@@ -138,7 +138,18 @@ PidFile "$ar/logs/httpd.pid"
  $receipt|ConvertTo-Json|Set-Content (Join-Path $env:RUNNER_TEMP 'checkpoint57-web-windows-receipt.json') -Encoding utf8NoBOM
  Write-Host 'PASS EXACT LOCAL WEB ON DISPOSABLE WINDOWS HTTP AND MARIADB; NOT EXE OR LOCKED INFRA QUALIFICATION'
 } finally {
- if($apacheStarted -or (Get-Service SoknaApache -ErrorAction SilentlyContinue)){try{Stop-Service SoknaApache -ErrorAction SilentlyContinue}catch{};try{& $httpd -k uninstall -n SoknaApache|Out-Null}catch{};try{& sc.exe delete SoknaApache|Out-Null}catch{}}
+ if(Get-Service SoknaApache -ErrorAction SilentlyContinue){
+  Stop-Service SoknaApache -ErrorAction Stop
+  & $httpd -k uninstall -n SoknaApache
+  Need ($LASTEXITCODE -eq 0) 'APACHE_UNREGISTER_FAILED'
+ }
+ for($i=0;$i -lt 20 -and (Get-Service SoknaApache -ErrorAction SilentlyContinue);$i++){Start-Sleep -Milliseconds 500}
+ Need (-not (Get-Service SoknaApache -ErrorAction SilentlyContinue)) 'APACHE_SERVICE_REMAINS'
  if($null -ne $db -and -not $db.HasExited){$db.Kill($true);$db.WaitForExit()}
  if(Test-Path (Join-Path $lab 'apache-error.log')){Get-Content (Join-Path $lab 'apache-error.log') -Tail 25}
 }
+
+Need ($db.HasExited) 'DATABASE_PROCESS_REMAINS'
+Need (Test-Path (Join-Path $env:RUNNER_TEMP 'checkpoint57-web-windows-receipt.json')) 'RECEIPT_MISSING'
+$global:LASTEXITCODE=0
+Write-Host 'PASS VERIFIED DISPOSABLE CLEANUP'
