@@ -1,0 +1,36 @@
+name: SOKNA factory standard QA admission entrypoint
+on:
+  workflow_dispatch:
+    inputs:
+      contract:
+        description: 'Committed exact candidate contract under qa/factory/contracts/'
+        type: string
+        required: true
+        default: qa/factory/contracts/current-qa.json
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-standard-qa.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  receipt-gate:
+    uses: ./.github/workflows/sokna-factory-qa-gate.yml
+    with:
+      contract: ${{ inputs.contract || 'qa/factory/contracts/current-qa.json' }}
+  decision:
+    needs: receipt-gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-REUSABLE-FACTORY-QA-RECEIPT
+      - run: |
+          python3 - <<'PY'
+          import json
+          r=json.load(open('reusable-factory-receipt.json'))
+          assert r['status']=='QA_RECEIPTS_BOUND_RELEASE_HOLD'
+          assert r['distribution_authorized'] is False and r['deployment_authorized'] is False
+          print('STANDARD FACTORY ENTRYPOINT: QA ACCEPTANCE RECEIPT VERIFIED; RELEASE HOLD')
+          PY
