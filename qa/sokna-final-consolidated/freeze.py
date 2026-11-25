@@ -159,6 +159,16 @@ for path,v in json.loads(font_raw).items():
  for a,b,s in reversed(v['edits']):lines[a:b]=[s]
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+H(font_raw)).encode())
+# Account parity, both real authenticated browser routes 45520037121.
+account_raw=zlib.decompress(base64.b64decode((pathlib.Path(__file__).parent.parent/'sokna-account-parity/delta.b64').read_bytes(),validate=True))
+assert H(account_raw)=='70b033af06f399fc20275d21b97db92871d3a0c1812112741fff2fcbe714226f'
+for path,v in json.loads(account_raw).items():
+ c,n=path.split('/',1);files=L if c=='local' else P
+ assert H(files[n])==v['before'],path
+ lines=files[n].decode().splitlines(keepends=True)
+ for a,b,s in reversed(v['edits']):lines[a:b]=[s]
+ files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
+source_sha=H((source_sha+':'+H(account_raw)).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
