@@ -169,6 +169,20 @@ for path,v in json.loads(account_raw).items():
  for a,b,s in reversed(v['edits']):lines[a:b]=[s]
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+H(account_raw)).encode())
+# Exact tested print editor: Persian numeric input and intrinsic grid tracks.
+print_script=pathlib.Path(__file__).parent.parent/'sokna-print-acceptance/patch.py'
+print_pins={
+ 'public/assets/printing-workspace.js':'b3034a5258193b41ab50e674205e8e788d4d715f6a7dfceda92fc12fcc13ec5a',
+ 'public/assets/product-ui.css':'c5cfe233e02bfcdf090843d107c4063ff72af7d5e0455a209912a0dd958d5243'
+}
+with tempfile.TemporaryDirectory() as tmp:
+ root=pathlib.Path(tmp)
+ for n in print_pins:
+  target=root/'local'/n;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(L[n])
+ subprocess.run([sys.executable,str(print_script),str(root)],check=True)
+ for n,h in print_pins.items():
+  b=(root/'local'/n).read_bytes();assert H(b)==h,n;L[n]=b
+source_sha=H((source_sha+':'+H(print_script.read_bytes())).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
