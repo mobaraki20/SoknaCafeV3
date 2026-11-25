@@ -1,0 +1,92 @@
+name: SOKNA factory exact Public Home clean canary
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-public-clean-canary.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  clean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-disposable-public-clean-ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FACTORY-CURRENT-FOUR-EXACT-QA-NOT-INSTALL
+          run-id: 45715494853
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/factory
+      - name: Exact factory bytes and isolated Apache PHP
+        run: |
+          set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-clean-canary
+          python3 qa/factory/prepare_public_clean_canary.py
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring php8.3-curl
+          sudo a2enmod rewrite headers php8.3
+          sudo chown -R www-data:www-data /var/www/sokna-public-clean-canary
+          for row in '18080 root' '18081 sub'; do
+            read -r port name <<< "$row"
+            doc="/var/www/sokna-public-clean-canary/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+          done
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+      - name: Real HTTP fresh setup and pairing on exact 35it root and nested host
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/delivery"
+          python3 - <<'PY'
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib,hashlib,os
+          work=pathlib.Path('/var/www/sokna-public-clean-canary');c=json.loads((work/'contract.json').read_text());rows=[]
+          for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu')]:
+              origin=f'http://127.0.0.1:{port}{base}'
+              web=work/name/'webroot'/base.lstrip('/')
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+              def post(action,body,want=200):
+                  req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+                  try:
+                      with op.open(req,timeout=45) as r:code=r.status; data=json.load(r)
+                  except urllib.error.HTTPError as e:code=e.code;data=json.load(e)
+                  assert code==want,(name,action,code,data.get('code'))
+                  return data
+              code,_,hdr=get('/__sokna_route_probe__');assert code==204 and hdr.get('X-Sokna-Route-Probe')=='ok'
+              code,html,_=get('/setup/index.php');assert code==200 and b'<!doctype html>' in html.lower()
+              _,raw,_=get('/setup/api.php?action=status');j=json.loads(raw);assert j['success'] and not j['setup']['installed'] and j['setup']['base_path']==base and j['preflight']['ok']
+              body={'csrf':j['csrf'],'db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_'+name,'user':'root','pass':'sokna-disposable-public-clean-ci'},'create_database':True,'routing_probe_ok':True,'owner_password':'disposable-owner-CI-only-20261126','emergency_password':'disposable-emergency-CI-only-20261126','storage_dir':'storage'}
+              installed=post('install',body);assert installed['success'] and installed['installed'] and installed['owner_initialized'] and not installed['paired']
+              _,raw,_=get('/setup/api.php?action=status');s=json.loads(raw);assert s['setup']['installed'] and s['setup']['state']=='ready_to_pair'
+              assert post('install',body,409)['code']=='already_installed'
+              pair=post('pair',{'pairing_code':installed['pairing_code'],'installation_id':'sokna-ci-'+name,'shared_secret':'disposable-CI-pair-secret-only-0123456789','display_name':'QA only'})
+              assert pair['success'] and pair['paired']
+              _,raw,_=get('/health');h=json.loads(raw)
+              assert h['ok'] and h['database']=='ready' and h['applied_migrations']==h['catalog_migrations']==12 and h['pending_migrations']==0 and h['emergency_ready'] and h['version']==c['target'],(name,h)
+              assert all(hashlib.sha256((web/n).read_bytes()).hexdigest()==sha for n,sha in c['protected'].items())
+              assert get('/menu')[0]==200
+              rows.append({'layout':base or '/','setup':True,'pairing':True,'duplicate_install_rejected':True,'db_migrations':12,'menu_http_200':True,'emergency_ready':True,'protected_files_unchanged':6})
+              print('PASS actual Apache setup pairing and menu',name,base or '/')
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])
+          src=p/'factory/PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip'
+          b=src.read_bytes();assert hashlib.sha256(b).hexdigest()==c['clean_sha256']
+          (p/'delivery/SOKNA-PUBLIC-35IT-CLEAN-HOME-CANARY.zip').write_bytes(b)
+          (p/'delivery/public-clean-receipt.json').write_text(json.dumps({'status':'PASS_CONTROLLED_HOME_CLEAN_ONLY','sha256':c['clean_sha256'],'version':c['target'],'layouts':rows,'old_host_update_authorized':False,'production_cafe_authorized':False,'actual_home_install_verified':False,'requires_empty_separate_path_and_db':True},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-PUBLIC-35IT-CLEAN-HOME-CANARY
+          path: ${{ runner.temp }}/delivery/*
+          if-no-files-found: error
+          retention-days: 30
