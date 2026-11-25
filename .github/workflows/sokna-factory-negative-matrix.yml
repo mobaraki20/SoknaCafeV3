@@ -1,0 +1,40 @@
+name: SOKNA factory native negative verifier matrix QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-negative-matrix.yml','qa/factory/NativeNegativeMatrix.cs']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  matrix:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FACTORY-CURRENT-FOUR-EXACT-QA-NOT-INSTALL
+          run-id: 45715494853
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/packages
+      - name: Run actual native verifier on 80 new negative cases
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Copy-Item qa/factory/NativeNegativeMatrix.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          dotnet run --project native-src/qa/sokna-r186/R186Harness.csproj --configuration Release -- "$env:RUNNER_TEMP/packages/LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip" "$env:RUNNER_TEMP/negative-matrix-qa" "$env:RUNNER_TEMP/negative-matrix.json"
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_NEGATIVE_MATRIX_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-FACTORY-80-NATIVE-NEGATIVE-QA
+          path: ${{ runner.temp }}/negative-matrix.json
+          if-no-files-found: error
+          retention-days: 30
