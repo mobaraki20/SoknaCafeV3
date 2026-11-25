@@ -51,6 +51,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public" "$RUNNER_TEMP/browser-evidence"
           unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
           unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 qa/sokna-report-default/patch.py
+          php -l "$RUNNER_TEMP/local/public/reports/index.php"
           php -l "$RUNNER_TEMP/local/src/Domain/Orders/OrderWorkspaceService.php"
           node --check "$RUNNER_TEMP/public/assets/staff-app/hall-workspace.js"
           node --check "$RUNNER_TEMP/public/assets/hall-settlement-v32.js"
