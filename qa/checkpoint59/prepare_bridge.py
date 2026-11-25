@@ -99,9 +99,9 @@ runtime=rt[rt.index('# Exact candidate lock'):rt.index(" $web=Join-Path")]
 a=s.index('# Reuse the externally SHA-pinned'); b=s.index(" $infra=Join-Path",a)
 s=s[:a]+runtime+s[b:]
 s=s.replace(" $bootstrap=Join-Path $env:GITHUB_WORKSPACE 'r300/tests/windows_bootstrap_r299.php'"," $bootstrap=Join-Path $env:GITHUB_WORKSPACE 'qa/checkpoint59/bootstrap.php'")
-s=s.replace("LoadModule authz_core_module modules/mod_authz_core.so","LoadModule authz_core_module modules/mod_authz_core.so\\nLoadModule authz_host_module modules/mod_authz_host.so")
+s=s.replace("LoadModule authz_core_module modules/mod_authz_core.so","LoadModule authz_core_module modules/mod_authz_core.so\nLoadModule authz_host_module modules/mod_authz_host.so")
 s=s.replace("AllowOverride None","AllowOverride None")
-s=s.replace(" $php=Join-Path $infra 'PHP/php.exe'"," $php=Join-Path $infra 'PHP/php.exe'\\n $ini=Join-Path $infra 'PHP/php.ini'\\n (Get-Content $ini -Raw).Replace((P (Join-Path $phpRoot 'ext')),(P (Join-Path $infra 'PHP/ext')))|Set-Content $ini -Encoding utf8NoBOM")
+s=s.replace(" $php=Join-Path $infra 'PHP/php.exe'"," $php=Join-Path $infra 'PHP/php.exe'\n $ini=Join-Path $infra 'PHP/php.ini'\n (Get-Content $ini -Raw).Replace((P (Join-Path $phpRoot 'ext')),(P (Join-Path $infra 'PHP/ext')))|Set-Content $ini -Encoding utf8NoBOM")
 s=s.replace("$args=@($root,$baseline,$target,$engine,$fault,$pack)","$args=@($root,$baseline,$target,$engine,$fault,$pack)")
 (tmp/'native-matrix.ps1').write_text(s,encoding='utf8')
 print(json.dumps({'origin':origin,'fault':fault,'baseline_sha256':bsha,'candidate_sha256':sha,'inner_sha256':H(web),'candidate_is_quarantined':True}))
