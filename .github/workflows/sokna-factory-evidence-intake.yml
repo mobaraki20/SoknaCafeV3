@@ -1,0 +1,54 @@
+name: SOKNA factory exact candidate evidence intake (QA ONLY)
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-evidence-intake.yml','qa/sokna-final-20261124/factory_intake_checkpoint64.py']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT62-EXACT-COMPONENT-EVIDENCE-QA
+          run-id: 45714421467
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT63-EXACT-PACKAGE-QUARANTINE-QA
+          run-id: 45714663165
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/admission
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA2-CANDIDATE-NOT-INSTALL
+          run-id: 45710818450
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - name: Factory receipt intake and exact four-package composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qa/sokna-final-20261124/factory_intake_checkpoint64.py "$RUNNER_TEMP/packages" "$RUNNER_TEMP/evidence" "$RUNNER_TEMP/admission" "$RUNNER_TEMP/helper" "$RUNNER_TEMP/verified"
+          cat "$RUNNER_TEMP/verified/factory-evidence-decision.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-FACTORY-CURRENT-FOUR-EXACT-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/verified/*
+          if-no-files-found: error
+          retention-days: 30
