@@ -1,0 +1,34 @@
+name: SOKNA exact Local web clean Windows HTTP QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint55-windows-web.yml','qa/checkpoint55/windows-web-clean.ps1']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows-web:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact
+      - name: Actual browser setup HTTP and SQL on Windows
+        shell: pwsh
+        run: |
+          & ./qa/checkpoint55/windows-web-clean.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-CHECKPOINT55-EXACT-LOCAL-WEB-WINDOWS-RECEIPT-QA
+          path: ${{ runner.temp }}/checkpoint55-web-windows-receipt.json
+          if-no-files-found: error
+          retention-days: 7
