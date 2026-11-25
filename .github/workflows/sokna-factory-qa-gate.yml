@@ -13,7 +13,7 @@ on:
         default: qa/factory/contracts/current-qa.json
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
-    paths: ['.github/workflows/sokna-factory-qa-gate.yml','qa/factory/**']
+    paths: ['.github/workflows/sokna-factory-qa-gate.yml','qa/factory/verify_receipts.py','qa/factory/contracts/**']
 permissions:
   contents: read
   actions: read
