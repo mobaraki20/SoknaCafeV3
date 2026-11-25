@@ -11,7 +11,11 @@ foreach(['tax-reversed','revised-grant','change-after-reversal'] as $n=>$key){
  $o=$core->orders()->commit(['source'=>'staff','table_id'=>$t,'session_id'=>$s,'client_token'=>'ci-fin-reg-'.$key.'-order-0001','actor_user_id'=>$admin,'items'=>[['id'=>$item['id'],'quantity'=>4]]]);$oid=(int)$o['order_id'];$line=(int)$o['lines'][0]['order_item_id'];$core->inventoryOrders()->processPending();
  $r=$pay($s,'ci-fin-reg-'.$key.'-pay1-0001','itemized',[['order_item_id'=>$line,'quantity'=>1]]);$id=(int)$r['settlement_id'];$price=(int)$item['price'];
  $snap=$rows('SELECT * FROM settlement_record_lines WHERE settlement_id=? ORDER BY id',[$id]);$svc->setDiscount($s,'fixed',3000,$user,$svc->account($s)['signature']);
- if($key==='revised-grant')$svc->setDiscount($s,'fixed',6000,$user,$svc->account($s)['signature']);
+ if($key==='revised-grant'){
+ $preview=$svc->previewRemainingDiscountCorrection($s,'fixed',6000,$user);
+ $v=$svc->adjustRemainingDiscount($s,'fixed',6000,$preview['expected_signature'],'QA authorized correction','ci-fin-reg-revise-0001',$user);
+ $a($v['discount_amount']===6000,'manager revision committed');
+ }
  $beforeRefund=$svc->account($s);
  $svc->reverse($id,'QA full refund','ci-fin-reg-'.$key.'-reverse-0001',$user);
  $ac=$svc->account($s);$a($ac['paid_total']===0,'paid zero');$a($ac['total']===$beforeRefund['total'],'total preserved');
@@ -20,7 +24,11 @@ foreach(['tax-reversed','revised-grant','change-after-reversal'] as $n=>$key){
  $a($ac['discount']===3000&&$ac['tax']===$roundTax($price)+3*$roundTax($price-1000),'tax and discount preserved');
  }
  if($key==='change-after-reversal'){
- $svc->setDiscount($s,'fixed',4000,$user,$ac['signature']);$ac=$svc->account($s);$a($ac['discount']===4000,'explicit new discount');
+ // Existing supported correction route requires unchanged paid cohort. No direct
+ // change to original invoice discount while a remaining grant exists.
+ try{$svc->setDiscount($s,'fixed',4000,$user,$ac['signature']);throw new RuntimeException('unsafe direct discount accepted');}catch(\Sokna\Local\Domain\Finance\SettlementStateConflict $e){$a($e->errorCode==='remaining_discount_exists','explicit original grant protection '.$e->errorCode);}
+ try{$svc->previewRemainingDiscountCorrection($s,'fixed',4000,$user);throw new RuntimeException('changed payment cohort accepted');}catch(\Sokna\Local\Domain\Finance\SettlementStateConflict $e){$a($e->errorCode==='paid_after_discount_grant','explicit review '.$e->errorCode);}
+ $ac=$svc->account($s);$a($ac['discount']===3000&&$ac['total']===$beforeRefund['total'],'immutable discount after rejected attempts');
  }
  if($key==='revised-grant')$a($ac['discount']===6000,'revised grant preserved');
  $r=$pay($s,'ci-fin-reg-'.$key.'-pay2-0001');$a($r['closes_session'],'repaid closes');$svc->reverse((int)$r['settlement_id'],'QA refund again','ci-fin-reg-'.$key.'-reverse2-0001',$user);

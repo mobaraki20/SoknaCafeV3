@@ -64,6 +64,7 @@ jobs:
               for a,c,s in reversed(v['edits']):lines[a:c]=[s]
               b=''.join(lines).encode();assert h(b)==v['after'],name;f.write_bytes(b)
           PY
+          python3 qa/sokna-discount-regression/patch.py "$RUNNER_TEMP"
           php -l "$RUNNER_TEMP/local/src/Domain/Finance/SettlementService.php"
           php -l "$RUNNER_TEMP/local/src/Domain/Orders/OrderStaffActionService.php"
           php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0093_bundle_distribution_provenance
