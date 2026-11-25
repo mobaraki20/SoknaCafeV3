@@ -1,0 +1,92 @@
+name: SOKNA print editor real browser and native renderer acceptance
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-print-acceptance.yml','qa/sokna-print-acceptance/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [original, patched]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-print-ci
+          MARIADB_DATABASE: sokna_ci_print
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45516861268
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Exact source, isolated migrated database and browser
+        env:
+          SOKNA_CI_DB_PASS: disposable-print-ci
+          SOKNA_PRINT_QA_MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/print-evidence"
+          python3 -c "import pathlib,hashlib,os,json; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'frozen'; assert all(hashlib.sha256((p/k).read_bytes()).hexdigest()==v for k,v in json.loads((p/'freeze-receipt.json').read_text())['files'].items())"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          if [ "$SOKNA_PRINT_QA_MODE" = patched ]; then
+            python3 qa/sokna-print-acceptance/patch.py "$RUNNER_TEMP"
+          fi
+          node --check "$RUNNER_TEMP/local/public/assets/printing-workspace.js"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_print setup 0093_bundle_distribution_provenance
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          php qa/sokna-print-acceptance/fixture.php
+          php -S 127.0.0.1:18083 -t "$RUNNER_TEMP/local/public" > "$RUNNER_TEMP/print-server.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18083/login.php >/dev/null && break || sleep 1; done
+          python3 qa/sokna-print-acceptance/browser.py "$RUNNER_TEMP/print-fixture.json" "$RUNNER_TEMP/print-evidence"
+          php qa/sokna-print-acceptance/readback.php
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-PRINT-BROWSER-${{ matrix.mode }}-NOT-INSTALL
+          path: ${{ runner.temp }}/print-evidence/
+          retention-days: 90
+  windows-renderer:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: b7bfde3ba6f47d4942df8d8ffd38da5f89376cf0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exact source version and real GDI renderer and PDF sink
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          [xml]$props=Get-Content windows/print-agent/source/Directory.Build.props
+          if($props.Project.PropertyGroup.SoknaAgentVersion -ne '6.2.10'){throw 'UNEXPECTED_AGENT_VERSION'}
+          dotnet run --project windows/print-agent/source/tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'WORKER_REGRESSION_FAILED'}
+          dotnet run --project r295/agent_font_probe/FontProbe.csproj -c Release
+          if($LASTEXITCODE-ne0){throw 'FONT_FIELD_EFFECT_FAILED'}
+          Write-Host 'PASS 6.2.10 real Windows raster and PDF sink, not physical printer'
