@@ -28,7 +28,9 @@ with zipfile.ZipFile(target) as z:
     m=json.loads(z.read('release-set.json')); web=z.read('artifacts/local/web.zip')
 assert H(web)==m['artifacts']['local-web']['sha256']
 assert {t for _,t in origins.values()}=={x['local']['managed_tree_sha256'] for x in m['supported_baselines']}
-assert any(x['local']==parent for x in m['supported_baselines'])
+keys=('release_id','version','managed_tree_sha256','schema_fingerprint','migration_head','authority_epoch_policy')
+match=[x['local'] for x in m['supported_baselines'] if x['local']['version']==parent['version']]
+assert len(match)==1 and all(match[0].get(k)==parent.get(k) for k in keys),'EXACT_MAINTENANCE_IDENTITY_MISMATCH'
 assert H(web)=='45b671f0d9f9689223f8d899a2f7c9af7de9493e7d44ad5a9ed21553227a03b4'
 assert m['for_install'] and m['production_pass'] and m['status']=='CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING'
 out=target
