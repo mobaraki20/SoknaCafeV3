@@ -1,0 +1,94 @@
+"""Disposable Windows CI only: run the shipped prerequisites helper through its native UI."""
+import os,sys,json,time,secrets,subprocess,socket,re,shutil
+from pathlib import Path
+from pywinauto.application import Application
+assert os.environ.get('GITHUB_ACTIONS')=='true'
+exe=Path(sys.argv[1]).resolve(); root=Path(sys.argv[2]).resolve(); evidence=Path(sys.argv[3])
+assert root.drive.upper()!=os.environ['SystemDrive'].upper() and root.name.startswith('Sokna-Infra-QA-')
+assert not root.exists()
+password=secrets.token_hex(18)
+evidence.mkdir(parents=True,exist_ok=True)
+def capture(mode):
+ for p in (root/'Infrastructure'/'Logs').glob('prerequisites-*.log'):
+  raw=p.read_text(encoding='utf-8',errors='replace').replace(password,'<redacted>')
+  (evidence/(mode+'-'+p.name)).write_text(raw,encoding='utf-8')
+ if state.exists():shutil.copyfile(state,evidence/(mode+'-state.json'))
+def ps(script):
+ return subprocess.check_output(['powershell','-NoProfile','-NonInteractive','-Command',script],text=True).strip()
+def services():
+ return ps("Get-Service -ErrorAction Stop | Where-Object { $_.Name -in @('SoknaApache','SoknaMariaDB') } | ForEach-Object { $_.Name+':'+$_.Status }; if (-not $?) { exit 1 }")
+assert not services(),'existing infrastructure services; refusing to touch'
+with socket.socket() as s:assert s.connect_ex(('127.0.0.1',3306))!=0,'existing DB listener'
+state=root/'Infrastructure'/'infrastructure-state.json'
+def run_mode(mode,title):
+ app=Application(backend='win32').start(str(exe),wait_for_idle=False)
+ try:
+  dlg=app.window(title='آماده‌سازی زیرساخت SOKNA');dlg.wait('exists ready',timeout=40)
+  # Enumerate actual child classes rather than assume the WinForms class casing.
+  # Wait for child handles; the top-level form can be ready before these exist.
+  roots=[];pw=[]
+  for attempt in range(20):
+   controls=dlg.descendants()
+   fields=[w for w in controls if w.class_name().lower()=='edit' or '.edit.' in w.class_name().lower() or w.friendly_class_name()=='Edit']
+   pw=[w for w in fields if w.style() & 0x20]
+   roots=[w for w in fields if not (w.style() & 0x20) and re.search(r'[A-Za-z]:[\\/]',w.window_text())]
+   if len(roots)==1 and (mode!='install' or len(pw)==2):break
+   time.sleep(0.5)
+  print('UI control inventory:',[(w.class_name(),w.friendly_class_name(),hex(w.style()),bool(re.search(r'[A-Za-z]:[\\/]',w.window_text())) if not (w.style() & 0x20) else False) for w in fields],flush=True)
+  assert len(roots)==1,'cannot identify unique root edit'
+  roots[0].set_edit_text(str(root))
+  assert roots[0].window_text()==str(root),'root edit readback mismatch'
+  if mode=='install':
+   assert len(pw)==2,'password controls unavailable'
+   for w in pw:w.set_edit_text(password)
+  dlg.child_window(title=title).wrapper_object().post_message(0x00F5)
+  time.sleep(0.5)
+  started=time.time()-1
+  dlg.child_window(title='شروع').wrapper_object().post_message(0x00F5)
+  print('UI requested operation:',mode,flush=True)
+  deadline=time.monotonic()+180
+  while time.monotonic()<deadline:
+   if state.exists():
+    d=json.loads(state.read_text(encoding='utf-8-sig'))
+    if d.get('last_operation')==mode:
+     assert 'SoknaApache:Running' in services() and 'SoknaMariaDB:Running' in services()
+     assert d['safeguards']['existing_mariadb_data_reinitialized'] is False
+     print('PASS native operation',mode,flush=True)
+     return d
+   if not app.is_process_running():raise RuntimeError('helper exited before successful state')
+   for p in (root/'Infrastructure'/'Logs').glob('prerequisites-*.log'):
+    if p.stat().st_mtime>=started and 'ERROR: ' in p.read_text(encoding='utf-8',errors='replace'):
+     raise RuntimeError('helper reported error during '+mode)
+   time.sleep(3)
+  raise RuntimeError('infrastructure operation did not reach a successful state: '+mode)
+ finally:
+  capture(mode)
+  if app.is_process_running():app.kill()
+def query(sql):
+ candidates=list((root/'Infrastructure'/'MariaDB').rglob('mariadb.exe'))
+ assert candidates,'MariaDB client missing'
+ env=dict(os.environ,MYSQL_PWD=password)
+ return subprocess.check_output([str(candidates[0]),'--host=127.0.0.1','--user=root','--batch','--skip-column-names','-e',sql],env=env,text=True).strip()
+d=run_mode('install','نصب جدید')
+query('CREATE DATABASE sokna_qa_preserve; CREATE TABLE sokna_qa_preserve.marker (value INT NOT NULL); INSERT INTO sokna_qa_preserve.marker VALUES (20261125)')
+assert query('SELECT value FROM sokna_qa_preserve.marker')=='20261125'
+d=run_mode('repair','تعمیر نصب موجود')
+assert query('SELECT value FROM sokna_qa_preserve.marker')=='20261125'
+# Recover is tested only for services created on this fresh disposable runner.
+ps("Stop-Service SoknaApache,SoknaMariaDB -ErrorAction Stop; sc.exe delete SoknaApache | Out-Null; sc.exe delete SoknaMariaDB | Out-Null")
+for _ in range(30):
+ if not services():break
+ time.sleep(1)
+assert not services(),'service registration removal incomplete'
+d=run_mode('recover','بازیابی بعد از نصب مجدد ویندوز')
+assert query('SELECT value FROM sokna_qa_preserve.marker')=='20261125'
+port=int(d['endpoints']['local_web']['port'])
+import urllib.request
+web=root/'Web'/'public'
+probe=web/'sokna-qa-health.php'
+try:
+ probe.write_text('<?php echo "SOKNA-QA-PHP-OK";',encoding='utf-8')
+ assert urllib.request.urlopen(f'http://127.0.0.1:{port}/sokna-qa-health.php',timeout=10).read()==b'SOKNA-QA-PHP-OK'
+finally:probe.unlink(missing_ok=True)
+evidence.mkdir(parents=True,exist_ok=True)
+(evidence/'infra-receipt.json').write_text(json.dumps(dict(status='PASS',non_system_volume=root.drive,fresh=True,repair=True,recover_service_registration=True,real_db_marker_preserved=True,apache_php_http=True,local_web_installed=False,operator_authorized=False),indent=2))
