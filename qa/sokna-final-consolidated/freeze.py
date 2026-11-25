@@ -149,6 +149,16 @@ with tempfile.TemporaryDirectory() as tmp:
  for path,h in report_pins.items():
   c,n=path.split('/',1);d=L if c=='local' else P;b=(root/path).read_bytes();assert H(b)==h,path;d[n]=b
 source_sha=H((source_sha+':'+H(report_script.read_bytes())).encode())
+# Verified physical and rewrite route font acceptance 45518834697.
+font_raw=zlib.decompress(base64.b64decode((pathlib.Path(__file__).parent.parent/'sokna-font-inventory/delta.b64').read_bytes(),validate=True))
+assert H(font_raw)=='c300fd0198d5e5e3eff916cbfd1249580ff505c0af101e9c6d3a60058841e242'
+for path,v in json.loads(font_raw).items():
+ c,n=path.split('/',1);files=L if c=='local' else P
+ assert H(files[n])==v['before'],path
+ lines=files[n].decode().splitlines(keepends=True)
+ for a,b,s in reversed(v['edits']):lines[a:b]=[s]
+ files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
+source_sha=H((source_sha+':'+H(font_raw)).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
