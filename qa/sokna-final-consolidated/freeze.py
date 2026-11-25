@@ -183,6 +183,22 @@ with tempfile.TemporaryDirectory() as tmp:
  for n,h in print_pins.items():
   b=(root/'local'/n).read_bytes();assert H(b)==h,n;L[n]=b
 source_sha=H((source_sha+':'+H(print_script.read_bytes())).encode())
+# Inventory navigation parity: eight authenticated browser cases, run 45559389603.
+nav_script=pathlib.Path(__file__).parent.parent/'sokna-inventory-nav/patch.py'
+nav_pins={
+ 'public/assets/product-ui.css':('1d7acd26caae1ae2e5e3d3892cef4c21dce87c2bbea7f6e4697708dac4a4a966','0fa70a2e0228b845a502b2b0e01fb8a75a80e29c6f21403254869a68dde1a498'),
+ 'public/assets/operations-workspace.js':('32f23ab4f654a24cb1091aac85d95eae010359325220a9aca373a97c4a59b5cc','2bb2a4c3fc01af426f5e791ca616a776ca59aefe3d107a58a49ca9f04b8368ec')
+}
+with tempfile.TemporaryDirectory() as tmp:
+ root=pathlib.Path(tmp)
+ for path in list(nav_pins)+['local/public/assets/operations-daily.css']:
+  c,n=path.split('/',1);d=L if c=='local' else P
+  if path in nav_pins:assert H(d[n])==nav_pins[path][0],path
+  target=root/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(d[n])
+ subprocess.run([sys.executable,str(nav_script),str(root)],check=True)
+ for path,(_,h) in nav_pins.items():
+  c,n=path.split('/',1);b=(root/path).read_bytes();assert H(b)==h,path;P[n]=b
+source_sha=H((source_sha+':'+H(nav_script.read_bytes())).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
