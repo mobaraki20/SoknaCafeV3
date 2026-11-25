@@ -199,6 +199,17 @@ with tempfile.TemporaryDirectory() as tmp:
  for path,(_,h) in nav_pins.items():
   c,n=path.split('/',1);b=(root/path).read_bytes();assert H(b)==h,path;P[n]=b
 source_sha=H((source_sha+':'+H(nav_script.read_bytes())).encode())
+# Report date defaults: actual authenticated paired browser gate 45565577774, 16/16.
+report_path='public/reports/index.php'
+report_before='8dca39c6a2ea3c3a10fef1ed9bafe25f685e00f65ba324f5614aab39af01fd6f'
+report_after='cd380dd37b0906aeabf3f6701fa19a6ad9382f33651b9343184ec329acf56cb6'
+assert H(L[report_path])==report_before
+report_old=b"$from=(string)($_GET['from']??'');$to=(string)($_GET['to']??'');"
+report_new=b"$to=(string)(($_GET['to']??'')?:$core->time()->civilDate());$from=(string)(($_GET['from']??'')?:$to);"
+assert L[report_path].count(report_old)==1
+L[report_path]=L[report_path].replace(report_old,report_new)
+assert H(L[report_path])==report_after
+source_sha=H((source_sha+':'+report_after).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
