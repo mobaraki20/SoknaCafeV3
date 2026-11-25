@@ -75,18 +75,39 @@ jobs:
               _,raw,_=get('/health');h=json.loads(raw)
               assert h['ok'] and h['database']=='ready' and h['applied_migrations']==h['catalog_migrations']==12 and h['pending_migrations']==0 and h['emergency_ready'] and h['version']==c['target'],(name,h)
               assert all(hashlib.sha256((web/n).read_bytes()).hexdigest()==sha for n,sha in c['protected'].items())
-              assert get('/menu')[0]==200
-              rows.append({'layout':base or '/','setup':True,'pairing':True,'duplicate_install_rejected':True,'db_migrations':12,'menu_http_200':True,'emergency_ready':True,'protected_files_unchanged':6})
+              # Pairing alone deliberately does not publish a guest menu.
+              try:
+                  get('/menu')
+                  raise AssertionError('Unpublished menu unexpectedly available')
+              except urllib.error.HTTPError as e:
+                  assert e.code==503 and 'منوی عمومی هنوز منتشر نشده' in e.read().decode('utf-8'),(name,e.code)
+              # Exercise the real signed Local publish API with synthetic data only.
+              import time,hmac,secrets
+              snapshot={'format':'sokna-guest-snapshot-v1','cafe_name':'SOKNA-QA-CANARY','categories':[{'id':1,'name':'QA Category'}],'items':[{'id':1,'category_id':1,'name':'SOKNA-QA-ITEM','price':1000,'available':True}]}
+              envelope={'format':'sokna-guest-snapshot-v1','snapshot':snapshot,'media_manifest':[]}
+              digest=hashlib.sha256(json.dumps(envelope,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+              payload={'snapshot':snapshot,'media_manifest':[],'content_hash':digest,'revision_id':'guest-'+digest[:32],'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'authority_epoch':1}
+              raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode()
+              route='/api/v1/local/guest/publish';ts=str(int(time.time()));nonce=secrets.token_hex(16)
+              signing='\n'.join(['sokna-relay-v1','POST',route,ts,nonce,hashlib.sha256(raw).hexdigest()])
+              sig=hmac.new(b'disposable-CI-pair-secret-only-0123456789',signing.encode(),hashlib.sha256).hexdigest()
+              req=urllib.request.Request(origin+route,raw,{'Content-Type':'application/json','X-Sokna-Installation':'sokna-ci-'+name,'X-Sokna-Timestamp':ts,'X-Sokna-Nonce':nonce,'X-Sokna-Signature':sig})
+              try:
+                  with op.open(req,timeout=30) as response:
+                      p=json.load(response);assert response.status==200 and p['ok'] is True,(name,p)
+              except urllib.error.HTTPError as e:
+                  raise AssertionError((name,'signed publish',e.code,e.read().decode('utf-8')[:500]))
+              code,html,_=get('/menu');assert code==200 and b'SOKNA-QA-ITEM' in html,(name,code)
+              rows.append({'layout':base or '/','setup':True,'pairing':True,'duplicate_install_rejected':True,'db_migrations':12,'unpublished_menu_http_503':True,'signed_publish':True,'menu_http_200':True,'emergency_ready':True,'protected_files_unchanged':6})
               print('PASS actual Apache setup pairing and menu',name,base or '/')
           p=pathlib.Path(os.environ['RUNNER_TEMP'])
           src=p/'factory/PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip'
           b=src.read_bytes();assert hashlib.sha256(b).hexdigest()==c['clean_sha256']
-          (p/'delivery/SOKNA-PUBLIC-35IT-CLEAN-HOME-CANARY.zip').write_bytes(b)
-          (p/'delivery/public-clean-receipt.json').write_text(json.dumps({'status':'PASS_CONTROLLED_HOME_CLEAN_ONLY','sha256':c['clean_sha256'],'version':c['target'],'layouts':rows,'old_host_update_authorized':False,'production_cafe_authorized':False,'actual_home_install_verified':False,'requires_empty_separate_path_and_db':True},indent=2))
+          (p/'delivery/public-clean-receipt.json').write_text(json.dumps({'status':'PASS_HTTP_QA_ONLY_NOT_INSTALL','sha256':c['clean_sha256'],'version':c['target'],'layouts':rows,'old_host_update_authorized':False,'production_cafe_authorized':False,'actual_home_install_verified':False,'requires_empty_separate_path_and_db':True},indent=2))
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: SOKNA-PUBLIC-35IT-CLEAN-HOME-CANARY
+          name: SOKNA-PUBLIC-35IT-CLEAN-HTTP-RECEIPT-QA-ONLY
           path: ${{ runner.temp }}/delivery/*
           if-no-files-found: error
           retention-days: 30
