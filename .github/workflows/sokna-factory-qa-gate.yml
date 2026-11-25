@@ -1,0 +1,41 @@
+name: SOKNA reusable factory QA receipt gate
+on:
+  workflow_call:
+    inputs:
+      contract:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      contract:
+        required: true
+        type: string
+        default: qa/factory/contracts/current-qa.json
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-qa-gate.yml','qa/factory/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CONTRACT: ${{ inputs.contract || 'qa/factory/contracts/current-qa.json' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reuse immutable exact receipts; never deploy or promote
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$CONTRACT" in qa/factory/contracts/*.json) ;; *) exit 1;; esac
+          python3 -c 'import pathlib,sys;p=pathlib.Path(sys.argv[1]);assert p.resolve().is_relative_to(pathlib.Path("qa/factory/contracts").resolve()) and p.is_file()' "$CONTRACT"
+          python3 qa/factory/verify_receipts.py "$CONTRACT" "$RUNNER_TEMP/factory-archives" "$RUNNER_TEMP/reusable-factory-receipt.json" --download
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-REUSABLE-FACTORY-QA-RECEIPT
+          path: ${{ runner.temp }}/reusable-factory-receipt.json
+          if-no-files-found: error
+          retention-days: 30
