@@ -1,0 +1,77 @@
+name: SOKNA factory controlled Home delivery exact receipt gate
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-home-delivery.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  controlled-delivery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Require retry workflow to succeed before delivery
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch 45718490188 --repo mobaraki20/SoknaCafeV3 --exit-status --interval 10
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/current
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-WINDOWS-CANDIDATE-NO-CAFE-AUTO-DEPLOY
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/home
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-REUSABLE-FACTORY-QA-RECEIPT
+          run-id: 45716869600
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/evidence
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-HOME-CANARY-PANEL-*-QA
+          run-id: 45718226938
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/matrix
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-HOME-CANARY-PANEL-R301-QA
+          run-id: 45718490188
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/matrix
+      - name: Verify all eight actual positive panel receipts before Home delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOMEZIP=$(find "$RUNNER_TEMP/home" -name 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip' -type f -print -quit)
+          test -f "$HOMEZIP"
+          mkdir -p "$RUNNER_TEMP/delivery"
+          python3 qa/factory/build_home_canary.py "$RUNNER_TEMP/current/LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip" "$HOMEZIP" "$RUNNER_TEMP/evidence/reusable-factory-receipt.json" "$RUNNER_TEMP/delivery/SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip"
+          python3 - <<'PY'
+          import os,json,hashlib,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])
+          z=p/'delivery/SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'
+          h=hashlib.sha256(z.read_bytes()).hexdigest()
+          assert h=='5cbff0e01129ae2c3bc2d4c3b5d55e5a42157f036923c95bbdeafbcf4424ecda'
+          rows=[json.loads(f.read_text(encoding='utf-8-sig')) for f in (p/'matrix').rglob('matrix-receipt.json')]
+          assert len(rows)==8 and {r['origin'] for r in rows}=={'R204','R301','R304','R306','R307','R3','C2','GE'}
+          assert all(r['status']=='PASS' and r['fault']=='none' and r['candidate_sha256']==h and r['phase']=='COMMITTED' and r['migrations']==93 and r['independent_restore'] is True and r['package_admission_tested'] is True and r['panel_activation_tested'] is True and r['actual_field_host'] is False and r['distribution_authorized'] is False for r in rows)
+          receipt={'status':'CONTROLLED_HOME_CANARY_READY','package_sha256':h,'scope':'HOME_ONLY','cafe_production_approved':False,'actual_home_install_verified':False,'public_fence_resolved':False,'native_panel_cases':rows,'requires_on_host_preflight_and_backup':True}
+          (p/'delivery/home-canary-receipt.json').write_text(json.dumps(receipt,indent=2))
+          print('PASS ALL EIGHT POSITIVE PANEL CASES; HOME CONTROLLED DELIVERY ONLY',h)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY
+          path: ${{ runner.temp }}/delivery/*
+          if-no-files-found: error
+          retention-days: 30
