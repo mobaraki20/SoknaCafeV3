@@ -107,7 +107,7 @@ for path,v in json.loads(bundle_raw).items():
  files[n]=''.join(lines).encode();assert H(files[n])==v['after'],path
 source_sha=H((source_sha+':'+H(bundle_raw)).encode())
 # Current guest/order report quantities and stable hall card width.
-for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'),('sokna-bundle-distribution/candidate.b64','02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'),('sokna-bundle-distribution/candidate-v2.b64','f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'),('sokna-bundle-history/delta.b64','c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4'),('sokna-fin-reversal/delta.b64','73d4741e210bff9b1022a56780f7f7ffe7d95ddf31b9e00a646bf61f08629450'),('sokna-report-archive/delta.b64','d4b20acb460cf30b9115767f57f00abc3116f3723552fd7a1b851238731246ac')]:
+for filename,sha in [('sokna-bundle-read/delta.b64','9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'),('sokna-hall-acceptance/stable-width.b64','6f077c321765c3c0a6db29f45737adc2dc104d4f6acdbc5f44a285db770cbfc7'),('sokna-bundle-distribution/candidate.b64','02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'),('sokna-bundle-distribution/candidate-v2.b64','f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'),('sokna-bundle-history/delta.b64','c43069efa579a845e78fe078f951a9b9348298f85418fd24b4e7a383812a01e4'),('sokna-fin-reversal/delta.b64','73d4741e210bff9b1022a56780f7f7ffe7d95ddf31b9e00a646bf61f08629450'),('sokna-report-archive/delta.b64','d4b20acb460cf30b9115767f57f00abc3116f3723552fd7a1b851238731246ac'),('sokna-discount-reversal/delta.b64','18e647fb51f933dcd5c5e28731ebc935e938321a1b5496f2813a679a166110ba'),('sokna-discount-reversal/delta-v2.b64','1c241e8c041eda5f23371cdc082e369018c542b60625d1e6d2de48d87149dd21'),('sokna-discount-regression/delta-v3.b64','e7f56671700975f57696e12f3e0ac1478201fbab5127f981d1146f0dd0cd848d')]:
  raw=zlib.decompress(base64.b64decode((pathlib.Path(__file__).parent.parent/filename).read_bytes(),validate=True))
  assert H(raw)==sha
  for path,v in json.loads(raw).items():
@@ -131,6 +131,24 @@ tender['apply'](tender_files)
 for path in tender['pins']:
  c,n=path.split('/',1);files=L if c=='local' else P;files[n]=tender_files[path]
 source_sha=H((source_sha+':'+H(tender_script.read_bytes())).encode())
+# Exact tested report parity script 45516467038, scoped to six input files.
+import tempfile,subprocess
+report_script=pathlib.Path(__file__).parent.parent/'sokna-report-parity/patch.py'
+report_pins={
+ 'public/assets/product-ui.css':'1d7acd26caae1ae2e5e3d3892cef4c21dce87c2bbea7f6e4697708dac4a4a966',
+ 'public/assets/staff-app/data-panels.js':'62deac8ca4a0e683d3e6d90ae37a021cc1d8d06562cf8ee360c7eb0ad1784588',
+ 'local/public/assets/staff-app/data-panels.js':'34c6317b6dd3502026992c884ce3032ff122951f023efe5540931d09d7d8ab61',
+ 'public/assets/reports-workspace.js':'914905c0450311c9ac56ab71bdef678c908ff2b8cbb179b54f901fbe8b501b99'
+}
+with tempfile.TemporaryDirectory() as tmp:
+ root=pathlib.Path(tmp)
+ for path in list(report_pins)+['local/public/assets/product-ui.css','local/public/assets/reports-workspace.js']:
+  c,n=path.split('/',1);d=L if c=='local' else P
+  target=root/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(d[n])
+ subprocess.run([sys.executable,str(report_script),str(root)],check=True)
+ for path,h in report_pins.items():
+  c,n=path.split('/',1);d=L if c=='local' else P;b=(root/path).read_bytes();assert H(b)==h,path;d[n]=b
+source_sha=H((source_sha+':'+H(report_script.read_bytes())).encode())
 def identity(d,version,rel,origins):
  d['VERSION.txt']=(version+'\n').encode();i=json.loads(d['resources/release-identity-v1.json']);i.update(version=version,release_set_id=rel);i['baseline']['source_versions']=origins
  i['source'].update(managed_file_count=len(d),canonical_file_count=len(d)-2,canonical_tree_sha256=canonical(d),source_ref='Exact consolidated source delta SHA256 '+source_sha)
