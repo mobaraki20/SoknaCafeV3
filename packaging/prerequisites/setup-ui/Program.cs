@@ -1255,7 +1255,7 @@ DirectoryIndex index.php index.html
         if (ServiceExists("SoknaMariaDB")) return;
         var server = FindMariaServer() ?? throw new InvalidOperationException("mariadbd.exe پیدا نشد.");
         var ini = Path.Combine(DataPath(), "my.ini");
-        var r = RunProcess(server, $"--defaults-file=\"{ini}\" --install SoknaMariaDB", $"--defaults-file=\"{ini}\" --install SoknaMariaDB");
+        var r = RunProcess(server, $"--install SoknaMariaDB --defaults-file=\"{ini}\"", $"--install SoknaMariaDB --defaults-file=\"{ini}\"");
         if (r.ExitCode != 0) throw new InvalidOperationException("ثبت مجدد سرویس MariaDB ناموفق بود: " + r.Error + r.Output);
         Log("Existing MariaDB data reattached to Windows service without reinitialization.");
     }
