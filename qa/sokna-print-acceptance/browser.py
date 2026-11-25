@@ -63,7 +63,7 @@ with sync_playwright() as p:
   else:
    assert submitted['title_font_size'] is None and not response.ok,(response.status,submitted)
    print('PASS original defect reproduced: Persian title font NaN and invalid exact preview '+kind,flush=True)
-  page.locator('[data-preview-close]').click();expect(d).to_be_visible()
+  page.locator('[data-preview-close]:visible').first.click();expect(d).to_be_visible()
   # Save actual browser form; capture server response and independent readback.
   with page.expect_response(lambda r:r.url==api and r.request.method=='POST' and 'print_template_version_save' in (r.request.post_data or '')) as sr:
    form.locator('button[type=submit][value=submit]').click()
