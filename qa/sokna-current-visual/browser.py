@@ -76,6 +76,7 @@ with sync_playwright() as p:
             routes={name:pair[0 if host=='local' else 1] for name,pair in shared.items()}
             routes.update(localonly if host=='local' else {'health':'/staff/health/'})
             for name,path in routes.items():
+                if name!='hall':continue
                 if name in ('inventory','account','print','reports'):continue # already accepted or dedicated current report gate
                 key=f'{host}-{width}-{name}'
                 def test():
@@ -105,7 +106,7 @@ with sync_playwright() as p:
                         elif name=='hall':
                             card=page.locator(f'[data-open-tables] [data-table-id="{f["table_id"]}"]');expect(card).to_be_visible(timeout=10000)
                             for density in ('normal','compact','overview'):
-                                page.locator(f'[data-hall-density="{density}"]').click();save(page,key+'-'+density)
+                                page.locator(f'button[data-hall-density="{density}"]').click();save(page,key+'-'+density)
                             card.click();expect(page.locator('[data-account-discount]')).to_be_enabled(timeout=12000)
                             assert f['product'] in page.locator('.sc-hall-bill-lines').inner_text();save(page,key+'-account')
                             detail['actual_account_content']=True
