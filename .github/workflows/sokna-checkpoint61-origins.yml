@@ -1,0 +1,83 @@
+name: SOKNA checkpoint61 Home archived and code-only native bridge QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint61-origins.yml','qa/checkpoint61/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - {origin: R204, fault: none, ledger: '81', run: '43513196061', artifact: R204-EXACT-WINDOWS-CANDIDATE-NO-CAFE-AUTO-DEPLOY, file: SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip}
+          - {origin: GE, fault: none, ledger: '93', run: '45565963138', artifact: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL, file: LOCAL-FINAL-FROZEN.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/current
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Exercise actual Windows bridge without granting package admission
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'|Select-Object -First 1
+          $target=Get-ChildItem "$env:RUNNER_TEMP/current" -Recurse -File -Filter 'LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip'|Select-Object -First 1
+          if(!$base -or !$target){throw 'PINNED_ARCHIVES_MISSING'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $env:SOKNA_CURRENT_QA_ZIP=$target.FullName
+          $env:SOKNA_MATRIX_TARGET_ZIP=$target.FullName
+          python qa/checkpoint61/prepare_bridge.py
+          if($LASTEXITCODE -ne 0){throw 'BRIDGE_PREPARATION_FAILED'}
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'BRIDGE_TEST_FAILED'}
+          }finally{Pop-Location}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-CHECKPOINT61-${{ matrix.origin }}-BRIDGE-${{ matrix.fault }}-QA
+          path: ${{ runner.temp }}/matrix-receipt.json
+          if-no-files-found: error
+          retention-days: 7
