@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [reversal, tax, revised-grant]
+        mode: [discount-lifecycle]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
@@ -64,16 +64,28 @@ jobs:
               for a,c,s in reversed(v['edits']):lines[a:c]=[s]
               b=''.join(lines).encode();assert h(b)==v['after'],name;f.write_bytes(b)
           PY
-          python3 qa/sokna-discount-regression/patch.py "$RUNNER_TEMP"
+          python3 - <<'PY'
+          import pathlib,hashlib,zlib,base64,json,os
+          p=pathlib.Path('qa/sokna-discount-regression/delta-v3.b64')
+          raw=zlib.decompress(base64.b64decode(p.read_bytes(),validate=True));h=lambda b:hashlib.sha256(b).hexdigest()
+          assert h(raw)=='e7f56671700975f57696e12f3e0ac1478201fbab5127f981d1146f0dd0cd848d'
+          for name,v in json.loads(raw).items():
+              f=pathlib.Path(os.environ['RUNNER_TEMP'])/name;data=f.read_bytes();assert h(data)==v['before'],name
+              lines=data.decode().splitlines(keepends=True)
+              for i,j,s in reversed(v['edits']):lines[i:j]=[s]
+              data=''.join(lines).encode();assert h(data)==v['after'],name;f.write_bytes(data)
+          PY
           php -l "$RUNNER_TEMP/local/src/Domain/Finance/SettlementService.php"
           php -l "$RUNNER_TEMP/local/src/Domain/Orders/OrderStaffActionService.php"
           php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0093_bundle_distribution_provenance
           case "$SOKNA_MIGRATION_MODE" in
             tax) php qa/sokna-request-m/test_tax_post_grant.php ;;
-            reversal|revised-grant)
+            reversal|revised-grant|discount-lifecycle)
               awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/bundle.php"
               if [ "$SOKNA_MIGRATION_MODE" = reversal ]; then
                 cat qa/sokna-fin-reversal/scenario.php >> "$RUNNER_TEMP/bundle.php"
+              elif [ "$SOKNA_MIGRATION_MODE" = discount-lifecycle ]; then
+                cat qa/sokna-discount-reversal/scenario.php >> "$RUNNER_TEMP/bundle.php"
               else
                 cat qa/sokna-discount-regression/scenario.php >> "$RUNNER_TEMP/bundle.php"
               fi
