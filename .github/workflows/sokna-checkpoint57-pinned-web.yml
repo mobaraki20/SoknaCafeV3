@@ -1,0 +1,46 @@
+name: SOKNA checkpoint57 exact Local web with pinned replacement runtime QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint57-pinned-web.yml','qa/checkpoint57/windows-web-pinned.ps1']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  web:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Exact Windows HTTP setup and real SQL using pinned runtime
+        shell: pwsh
+        run: |
+          & ./qa/checkpoint57/windows-web-pinned.ps1
+          if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-CHECKPOINT57-PINNED-WEB-WINDOWS-QA-RECEIPT
+          path: ${{ runner.temp }}/checkpoint57-web-windows-receipt.json
+          if-no-files-found: error
+          retention-days: 7
