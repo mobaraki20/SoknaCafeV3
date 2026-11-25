@@ -48,7 +48,7 @@ foreach([[$d1,$d1],[$d2,$d2],[$d3,$d3],[$today,$today],[$d1,$today]] as [$from,$
  }
  $want['cash_net_payment_day']=$want['completed_amount']-$want['reversed_amount'];
  foreach($want as $key=>$value)$a($r['summary'][$key]===$value&&$public['summary'][$key]===$value,'independent amount '.$from.' '.$to.' '.$key);
- $a($public['daily']===$r['daily'],'daily parity '.$from.' '.$to);
+ $a(count($public['daily'])===count($r['daily']),'daily count');foreach($r['daily'] as $i=>$dailyRow)foreach($dailyRow as $key=>$value)$a($public['daily'][$i][$key]===$value,'daily parity '.$from.' '.$to.' '.$i.' '.$key);
  $a($public['summary']['invoice_count']===$r['summary']['invoice_count'],'invoice count parity');
  $proof[]=['from'=>$from,'to'=>$to,'expected'=>$want,'daily'=>$r['daily']];
 }
