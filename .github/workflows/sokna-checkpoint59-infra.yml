@@ -1,0 +1,125 @@
+name: SOKNA checkpoint59 corrected MariaDB recovery installer native QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint59-infra.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Materialize separate QA lock and version without changing committed lock
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='platform/windows/release-lock.json'
+          $original=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
+          $lock=Get-Content $p -Raw|ConvertFrom-Json
+          $a=$lock.artifacts|Where-Object dependency -eq apache
+          if($a.sha256 -ne 'f6dcf17d08aa32721ae418cd818c157e4c521c9e889b758646fb64287f1d56e3'){throw 'ORIGINAL_LOCK_DRIFT'}
+          $a.id='apache-2.4.71-vs18-x64'
+          $a.version='2.4.71-261112-vs18-x64'
+          $a.filename='httpd-2.4.71-261112-Win64-VS18.zip'
+          $a.source_url='https://www.apachelounge.com/download/VS18/binaries/'+$a.filename
+          $a.sha256='44961a929dff16b767b3adbcea55760a942a00239b2891dc55806be34029e1fc'
+          $a.size=14518924
+          $lock|ConvertTo-Json -Depth 15|Set-Content $p -Encoding utf8NoBOM
+          Set-Content packaging/prerequisites/VERSION.txt '1.0.5-qa.2' -Encoding utf8NoBOM
+          $cs='packaging/prerequisites/setup-ui/Sokna.Prerequisites.Setup.csproj'
+          (Get-Content $cs -Raw).Replace('<Version>1.0.4</Version>','<Version>1.0.5-qa.2</Version>').Replace('1.0.4.0','1.0.5.0')|Set-Content $cs -Encoding utf8NoBOM
+          python tests/g7-infrastructure-prerequisites-gate.py
+          if($LASTEXITCODE -ne 0){throw 'G7_GATE_FAILED'}
+          Write-Host "Original lock SHA256=$original"
+      - name: Build candidate helper with original factory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          choco install innosetup --yes --no-progress
+          if($LASTEXITCODE -ne 0){throw 'INNO_UNAVAILABLE'}
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot (Resolve-Path .).Path -OutputRoot "$env:RUNNER_TEMP/build"
+          Copy-Item platform/windows/release-lock.json "$env:RUNNER_TEMP/build/installer/QA-release-lock.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA2-CANDIDATE-NOT-INSTALL
+          path: ${{ runner.temp }}/build/installer/*
+          if-no-files-found: error
+          retention-days: 14
+  native:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA2-CANDIDATE-NOT-INSTALL
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Acquire and verify all exact dependencies, install candidate on disposable volume
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $dir=Join-Path $env:RUNNER_TEMP 'helper'
+          $index=Get-Content "$dir/artifact-index.json" -Raw|ConvertFrom-Json
+          $setup=Join-Path $dir $index.file
+          if((Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant() -ne $index.sha256){throw 'HELPER_HASH_MISMATCH'}
+          $lock=Get-Content "$dir/QA-release-lock.json" -Raw|ConvertFrom-Json
+          $cache=Join-Path $env:ProgramData 'SOKNA/PrerequisiteCache'
+          New-Item -ItemType Directory -Force $cache|Out-Null
+          foreach($a in $lock.artifacts|Where-Object dependency -in @('php','apache','mariadb')){
+            $target=Join-Path $cache $a.filename
+            if($a.dependency -eq 'apache'){
+              Copy-Item (Join-Path "$env:RUNNER_TEMP/apache" $a.filename) $target
+            }else{
+              $urls=@($a.source_url)+@($a.fallback_urls)
+              if($a.dependency -eq 'php'){$urls=@('https://downloads.php.net/~windows/releases/archives/'+$a.filename)+$urls}
+              if($a.dependency -eq 'mariadb'){$urls=@($a.fallback_urls)+@($a.source_url)}
+              $ok=$false
+              foreach($url in $urls){
+                Remove-Item $target -ErrorAction SilentlyContinue
+                & curl.exe --location --fail --silent --show-error --max-time 90 --output $target $url
+                if($LASTEXITCODE -eq 0 -and (Test-Path $target) -and (Get-Item $target).Length -eq $a.size -and (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -eq $a.sha256){$ok=$true;break}
+              }
+              if(-not $ok){throw "DEPENDENCY_UNAVAILABLE_$($a.dependency)"}
+            }
+            if((Get-Item $target).Length -ne $a.size -or (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -ne $a.sha256){throw "DEPENDENCY_HASH_WRONG_$($a.dependency)"}
+            Write-Host "VERIFIED $($a.dependency) $($a.version)"
+          }
+          $vol=Get-CimInstance Win32_LogicalDisk|Where-Object { $_.DriveType -eq 3 -and $_.DeviceID -ne $env:SystemDrive -and $_.FreeSpace -gt 3GB }|Select-Object -First 1
+          if(-not $vol){throw 'NO_REAL_NON_SYSTEM_VOLUME'}
+          $root=Join-Path ($vol.DeviceID+'\') ("Sokna-Infra-QA-"+$env:GITHUB_RUN_ID)
+          $app=Join-Path ($vol.DeviceID+'\') ("Sokna-Helper-QA-"+$env:GITHUB_RUN_ID)
+          if((Test-Path $root) -or (Test-Path $app)){throw 'QA_PATH_EXISTS'}
+          $p=Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$app+'"')) -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'INSTALL_CANDIDATE_FAILED'}
+          "SOKNA_QA_INFRA_ROOT=$root"|Out-File $env:GITHUB_ENV -Append
+          "SOKNA_QA_INFRA_EXE=$(Join-Path $app 'SoknaPrerequisitesSetup.exe')"|Out-File $env:GITHUB_ENV -Append
+      - name: Real native UI installation repair and recovery
+        shell: pwsh
+        run: |
+          pip install pywinauto
+          if($LASTEXITCODE -ne 0){throw 'UI_AUTOMATION_UNAVAILABLE'}
+          python qa/checkpoint59/windows-ui.py "$env:SOKNA_QA_INFRA_EXE" "$env:SOKNA_QA_INFRA_ROOT" "$env:RUNNER_TEMP/infra-evidence"
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_INFRA_QA_FAILED'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-PREREQUISITES-105-QA2-REAL-INFRA-RECEIPT
+          path: ${{ runner.temp }}/infra-evidence/
+          if-no-files-found: warn
+          retention-days: 14
