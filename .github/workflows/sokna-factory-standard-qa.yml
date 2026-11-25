@@ -9,7 +9,7 @@ on:
         default: qa/factory/contracts/current-qa.json
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
-    paths: ['.github/workflows/sokna-factory-standard-qa.yml']
+    paths: ['.github/workflows/sokna-factory-standard-qa.yml','.github/workflows/sokna-factory-qa-gate.yml','qa/factory/verify_receipts.py','qa/factory/contracts/**']
 permissions:
   contents: read
   actions: read
@@ -31,6 +31,7 @@ jobs:
           import json
           r=json.load(open('reusable-factory-receipt.json'))
           assert r['status']=='QA_RECEIPTS_BOUND_RELEASE_HOLD'
+          assert r['native_negative_cases']>=80 and r['production_qualification_proven'] is False
           assert r['distribution_authorized'] is False and r['deployment_authorized'] is False
           print('STANDARD FACTORY ENTRYPOINT: QA ACCEPTANCE RECEIPT VERIFIED; RELEASE HOLD')
           PY
