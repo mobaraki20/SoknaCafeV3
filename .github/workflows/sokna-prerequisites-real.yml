@@ -34,7 +34,9 @@ jobs:
           foreach($a in $lock.artifacts | Where-Object { $_.dependency -in @('php','apache','mariadb') }){
             $target=Join-Path $cache $a.filename
             $ok=$false
-            foreach($url in @($a.source_url)+@($a.fallback_urls)){
+            $urls=@($a.source_url)+@($a.fallback_urls)
+            if($a.dependency -eq 'php'){$urls+=('https://downloads.php.net/~windows/releases/archives/'+$a.filename)}
+            foreach($url in $urls){
               try {
                 Invoke-WebRequest -Uri $url -OutFile $target -TimeoutSec 180 -ErrorAction Stop
                 if((Get-Item $target).Length -eq $a.size -and (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -eq $a.sha256){$ok=$true;break}
