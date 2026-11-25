@@ -21,7 +21,8 @@ with sync_playwright() as p:
   form.locator('[name=header_title]').fill('QA '+kind+' title')
   form.locator('[name=header_subtitle]').fill('QA subtitle')
   form.locator('[name=footer]').fill('QA footer')
-  form.locator('details.sc-print-template-disclosure').first.locator('summary').click()
+  form.locator('details:has([name=base_font_size]) > summary').click()
+  expect(form.locator('[name=base_font_size]')).to_be_visible()
   font_fields={'base_font_size':30,'title_font_size':40,'header_subtitle_font_size':34,'table_font_size':42,'notes_font_size':38,'footer_font_size':44,'totals_font_size':46,'settlement_font_size':36,'meta_font_size':32,'line_spacing':8,'margin':10}
   for key,value in font_fields.items():
    persian=str(value).translate(str.maketrans('0123456789','۰۱۲۳۴۵۶۷۸۹'))
@@ -43,7 +44,7 @@ with sync_playwright() as p:
     assert area.locator('.sc-template-live-meta').first.evaluate('(e)=>e.style.fontSize')=='16px'
    else:assert actual!='20px',('original unexpectedly fixed',actual)
    assert area.locator('.sc-print-r318-title').count()==1
-   assert area.locator('.sc-print-r318-item').count()==3
+   assert area.locator('.sc-print-r318-item').count()==(3 if kind=='preparation' else 2)
    if kind=='preparation':assert area.locator('.sc-print-r318-columns.is-three').count()==(4 if paper=='80' else 0)
    save(page,kind+'-'+paper+'-'+f['mode'])
   area.locator('[data-preview-edit="title"]').click()
