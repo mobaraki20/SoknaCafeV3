@@ -68,7 +68,7 @@ jobs:
               'R306':(83,'63df287e865ac0503fd21dea275a4714c1138f0c11ee53834522b7cb3d060d7c'),
               'R307':(83,'5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186'),
               'R3':(90,'dd9789e783273944e17fa31b8dad283463678c526daa59f914849dea9f1e9889'),
-              'C2':(91,'984f685043172eb3ccfe9c2178bc2ad1e69eaf1c9da7007cba03769d35'),
+              'C2':(91,'984f685043172eb3ccfe9dbe6e9c2178bc2ad1e69eaf1c9da7007cba03769d35'),
               'GE':(93,'47a022037744e5389042ef1616b34dcee1ce9fa0bc8cb56af07d51e419225bdc'),
               'R204':(81,'f6edff0b649bf06209ac262808c402ffc13079100686359b8b06398a610054f6')}
           assert {v[1] for k,v in origins.items() if k!='R204'}=={x['local']['managed_tree_sha256'] for x in m['supported_baselines']}
