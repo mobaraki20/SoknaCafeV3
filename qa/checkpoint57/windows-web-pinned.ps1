@@ -28,7 +28,7 @@ function Get-Pinned($dep,[string[]]$urls){
  }
  throw "PINNED_DEPENDENCY_UNAVAILABLE_$($dep.dependency)"
 }
-$phpZip=Get-Pinned $phpDep (@('https://downloads.php.net/~windows/releases/archives/'+$phpDep.filename,$phpDep.source_url)+@($phpDep.fallback_urls))
+$phpZip=Get-Pinned $phpDep (@(('https://downloads.php.net/~windows/releases/archives/'+$phpDep.filename),$phpDep.source_url)+@($phpDep.fallback_urls))
 $phpRoot=Join-Path $lab 'php-ts'
 Expand-Archive $phpZip $phpRoot
 Copy-Item (Join-Path $phpRoot 'php.ini-development') (Join-Path $phpRoot 'php.ini')
