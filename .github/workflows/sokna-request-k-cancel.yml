@@ -1,0 +1,117 @@
+name: SOKNA Batch K cancellation after item credit QA
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-request-k-cancel.yml','qa/sokna-request-k/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  actual-db:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: C2-FROZEN-DO-NOT-INSTALL
+          run-id: 45388554736
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Apply exact source correction on immutable C2 payload (QA only)
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          echo '3f5860ffbc30fa718b68709d89780ae56d3898fb9cc100157580d98d9ca2b2f9  frozen/LOCAL-C2-WEB.zip' | sha256sum -c
+          echo '8afa590187f37f8d1ebad66c4764731e5e169f2e47e4c9a3e31f62caaa652aa4  frozen/PUBLIC-C2-WEB.zip' | sha256sum -c
+          mkdir local public
+          unzip -q frozen/LOCAL-C2-WEB.zip -d local
+          unzip -q frozen/PUBLIC-C2-WEB.zip -d public
+          python3 - <<'PY'
+          import base64,zlib,hashlib,os,pathlib
+          b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-d/partial-adjustment.b64').read_bytes()))
+          assert hashlib.sha256(b).hexdigest()=='747b837517fd17666d84de76f0fcff354b68f4321d26fa4c82dbcd040237cba5'
+          pathlib.Path('d.patch').write_bytes(b)
+          PY
+          patch -p1 --fuzz=0 < d.patch
+          python3 - <<'PY'
+          import base64,zlib,hashlib,os,pathlib
+          b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-e/closure.b64').read_bytes()))
+          assert hashlib.sha256(b).hexdigest()=='cfdce68e2b482b34bb87210d928a0f21d81a60ebd35b2c96654f1251ab63c148'
+          pathlib.Path('e.patch').write_bytes(b)
+          PY
+          patch -p1 --fuzz=0 < e.patch
+          python3 - <<'PY'
+          import base64,zlib,hashlib,os,pathlib
+          b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-f/refund.b64').read_bytes()))
+          assert hashlib.sha256(b).hexdigest()=='9146c7ec6229e7e99cbceb5507714a102d789b0d77ee5afd45b6b71eb8fc9d8a'
+          pathlib.Path('f.patch').write_bytes(b)
+          PY
+          patch -p1 --fuzz=0 < f.patch
+          python3 - <<'PY'
+          import base64,zlib,hashlib,os,pathlib
+          b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-f2/closure.b64').read_bytes()))
+          assert hashlib.sha256(b).hexdigest()=='5e8764089a9e9a162f341ebc45922c73e6fd8a1139a1b9f24736d5dd10927fcf'
+          pathlib.Path('f2.patch').write_bytes(b)
+          PY
+          patch -p1 --fuzz=0 < f2.patch
+          python3 - <<'PY'
+          import pathlib
+          p=pathlib.Path('local/bootstrap.php')
+          s=p.read_text()
+          a="require_once __DIR__ . '/src/Domain/Reporting/ReportingService.php';"
+          assert s.count(a)==1
+          for n in ['Reporting/ActivityFilterInput','Reporting/PublicItemSalesSnapshot','Reporting/PublicInvoiceHistorySnapshot','PublicEdge/PublicOperationalActivityProjector']:
+              assert n+'.php' not in s
+              s=s.replace(a,"require_once __DIR__ . '/src/Domain/"+n+".php';\n"+a)
+          p.write_text(s)
+          PY
+          php -l local/bootstrap.php
+          python3 - <<'PY'
+          import base64,zlib,hashlib,os,pathlib
+          b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-g/discount-credit.b64').read_bytes()))
+          assert hashlib.sha256(b).hexdigest()=='fff57d644744cd32b22920840729fc9e9f947ba36b6e85c0bdbf5f8a9a3bbe76'
+          pathlib.Path('g.patch').write_bytes(b)
+          PY
+          patch -p1 --fuzz=0 < g.patch
+          python3 - <<'PY'
+          import base64,zlib,hashlib,os,pathlib
+          b=zlib.decompress(base64.b64decode((pathlib.Path(os.environ['GITHUB_WORKSPACE'])/'qa/sokna-request-i/auth.b64').read_bytes()))
+          assert hashlib.sha256(b).hexdigest()=='daa053da2168536aeb2359a7980e48643c78865904a54d187a7bf39d5cf7ea30'
+          pathlib.Path('i.patch').write_bytes(b)
+          PY
+          patch -p1 --fuzz=0 < i.patch
+          php -l local/src/Domain/Admin/AdminControlService.php
+          node --check local/public/assets/admin-workspace.js
+          php -l local/src/Domain/Finance/FinanceWorkspaceService.php
+          node --check public/assets/staff-app/public-invoice-history.js
+          node --check local/public/assets/finance-workspace.js
+          node --check public/assets/hall-settlement-v32.js
+          node --check local/public/assets/hall-settlement-v32.js
+          php -l local/src/Domain/Orders/OrderStaffActionService.php
+          php -l local/src/Domain/Finance/SettlementService.php
+          php -l local/src/Core/Bootstrap.php
+          node --check local/public/assets/staff-app/hall-workspace.js
+          node --check public/assets/staff-app/hall-workspace.js
+      - name: Whole order cancellation after prior partial credit
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+        run: |
+          set -euo pipefail
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0091_verified_purchase_unit_reconciliation
+          php qa/sokna-request-k/test_cancel_credit.php

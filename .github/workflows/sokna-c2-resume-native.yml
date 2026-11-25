@@ -1,0 +1,144 @@
+name: SOKNA C2 resume exact origin and recovery ledger qualification
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-c2-resume-native.yml', 'qa/sokna-request-c2/prepare_native.py']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    name: native-${{ matrix.origin }}-${{ matrix.fault }}
+    runs-on: windows-2022
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {origin: R3, fault: none, run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+          - {origin: R3, fault: APACHE_STOPPED, run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+          - {origin: R3, fault: DATABASE_BACKUP_VERIFIED, run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+          - {origin: R3, fault: DATABASE_FORWARD_INTENT, run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+          - {origin: R3, fault: POINTER_SWITCHED, run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+          - {origin: R3, fault: COMMITTED, run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.origin == 'R3' && '90' || '83' }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: C2-FROZEN-DO-NOT-INSTALL
+          run-id: 45388554736
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/current
+      - name: Build byte-identical quarantined candidate and test real native engine
+        shell: pwsh
+        env:
+          BASE_NAME: ${{ matrix.file }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -Filter $env:BASE_NAME | Select-Object -First 1
+          $target=Get-ChildItem "$env:RUNNER_TEMP/current" -Recurse -Filter 'LOCAL-C2-FROZEN.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'PINNED_ARCHIVE_NOT_PRESENT'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $env:SOKNA_CURRENT_QA_ZIP=$target.FullName
+          if((Get-FileHash $target.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f864a42fb82124e4f16c9b9437464256ef3b59d79d26518232cf05cbc9393f42'){throw 'FROZEN_TARGET_DRIFT'}
+          python qa/sokna-request-c2/prepare_native.py
+          if($LASTEXITCODE-ne0){throw 'NATIVE_MATRIX_PREPARATION_FAILED'}
+          $env:SOKNA_MATRIX_TARGET_ZIP=$target.FullName
+          python packaging/windows/release-gates/check_local_release_set.py $env:SOKNA_MATRIX_TARGET_ZIP --require-installable
+          if($LASTEXITCODE-ne0){throw 'NATIVE_MATRIX_FORMAT_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE-ne0){throw 'NATIVE_MATRIX_EXECUTION_FAILED'}
+          } finally {Pop-Location}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-C2-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-RECEIPT
+          path: ${{ runner.temp }}/matrix-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+  publish:
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: C2-FROZEN-DO-NOT-INSTALL
+          run-id: 45388554736
+          github-token: ${{ github.token }}
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-C2-NATIVE-*-RECEIPT
+          path: native
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-C2-NATIVE-R30*-RECEIPT
+          run-id: 45388554736
+          github-token: ${{ github.token }}
+          path: native
+      - uses: actions/download-artifact@v4
+        with:
+          name: C2-PUBLIC-RECEIPT
+          run-id: 45388554736
+          github-token: ${{ github.token }}
+          path: public
+      - name: Verify successful original jobs and preserve qualified bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request,os
+          u='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']
+          def get(p):
+              with urllib.request.urlopen(urllib.request.Request(u+p,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})) as r:return json.load(r)
+          d=get('/actions/runs/45388554736')
+          assert d['head_sha']=='974d9e619fb1ec37e4dc59c2d54d16cc16214326'
+          jobs={x['name']:x['conclusion'] for x in get('/actions/runs/45388554736/jobs?per_page=100')['jobs']}
+          assert all(jobs.get(n)=='success' for n in ['freeze','integration','public-host-gate','native-R301-none','native-R304-none','native-R306-none','native-R307-none'])
+          PY
+      - name: Admit unchanged exact bytes
+        run: |
+          python3 - <<'PY'
+          import pathlib,hashlib,json,shutil,zipfile,os
+          H=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          p=pathlib.Path('frozen');out=pathlib.Path('operator');out.mkdir()
+          rows=[json.loads(q.read_text()) for q in pathlib.Path('native').rglob('matrix-receipt.json')]
+          expected={(o,'none') for o in ('R301','R304','R306','R307','R3')}|{('R3',f) for f in ('APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')}
+          assert len(rows)==len(expected) and {(x['origin'],x['fault']) for x in rows}==expected
+          assert H(p/'LOCAL-C2-FROZEN.zip')=='f864a42fb82124e4f16c9b9437464256ef3b59d79d26518232cf05cbc9393f42'
+          assert H(p/'PUBLIC-C2-FROZEN.zip')=='1d93994d3a013f470eba34c769cb5e3ac595a6724c5558f18bc596684bba9c98'
+          assert all(x['status']=='PASS' and x['candidate_sha256']==H(p/'LOCAL-C2-FROZEN.zip') for x in rows)
+          q=json.loads(pathlib.Path('public/public-gate.json').read_text());assert q['status']=='PASS' and q['sha256']==H(p/'PUBLIC-C2-FROZEN.zip')
+          for src,dst in [('LOCAL-C2-FROZEN.zip','SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip'),('PUBLIC-C2-FROZEN.zip','SOKNA-PUBLIC-35IQ-UNIVERSAL-UPDATE.zip')]:shutil.copyfile(p/src,out/dst)
+          (out/'RELEASE-RECEIPT.json').write_text(json.dumps({'release':'231gc/35iq','source_sha256':'96e7e8bead29f26fab06c69d95c4ff7172e5f619a51edd3e9de266f5bc24e54f','distribution_authorized':True,'deployment_authorized':False,'run':os.environ['GITHUB_RUN_ID'],'reused_qualified_run':45388554736,'files':{f.name:H(f) for f in out.glob('*.zip')},'native':rows,'public':q,'remaining_business_acceptance':True},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE
+          path: operator/*
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,96 @@
+name: SOKNA final Local clean receipt correction exact frozen bytes
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-final-clean-receipt.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  local-clean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-local-clean-ci
+          MARIADB_DATABASE: sokna_ci_clean_browser
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45475526346
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target
+      - name: Exact Local clean payload
+        run: |
+          mkdir -p "$RUNNER_TEMP/package/Web" "$RUNNER_TEMP/clean"
+          unzip -q "$RUNNER_TEMP/target/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/package/Web"
+          cp "$RUNNER_TEMP/target/freeze-receipt.json" "$RUNNER_TEMP/clean/"
+          python3 -c "import hashlib,pathlib,json,os; p=pathlib.Path(os.environ['RUNNER_TEMP'])/'target'; assert hashlib.sha256((p/'LOCAL-FINAL-WEB.zip').read_bytes()).hexdigest()==json.loads((p/'freeze-receipt.json').read_text())['files']['LOCAL-FINAL-WEB.zip']"
+      - name: Real disposable Apache and PHP on loopback
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-mysql php8.3-mbstring php8.3-zip php8.3-curl php8.3-gd
+          sudo a2enmod rewrite headers
+          sudo mkdir -p /var/www/sokna-local-ci
+          sudo cp -a "$RUNNER_TEMP/package/Web" /var/www/sokna-local-ci/
+          sudo chown -R www-data:www-data /var/www/sokna-local-ci
+          printf 'Listen 127.0.0.1:18080\n<VirtualHost 127.0.0.1:18080>\nDocumentRoot /var/www/sokna-local-ci/Web/public\n<Directory /var/www/sokna-local-ci/Web/public>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' | sudo tee /etc/apache2/conf-enabled/sokna-local-ci.conf >/dev/null
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+      - name: Actual browser installation, identity, recipes and duplicate-install denial
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.request,urllib.error,http.cookiejar
+          origin='http://127.0.0.1:18080'
+          op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+          def get(path):
+              with op.open(origin+path,timeout=90) as r:return r.status,r.read()
+          def post(action,body,want=200):
+              req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+              try:
+                  with op.open(req,timeout=660) as r: code=r.status; data=json.load(r)
+              except urllib.error.HTTPError as e: code=e.code;data=json.load(e)
+              assert code==want,(action,code,data.get('code'),data.get('details'))
+              return data
+          code,body=get('/setup/index.php');assert code==200 and b'<!doctype html>' in body.lower()
+          _,raw=get('/setup/api.php?action=status');j=json.loads(raw)
+          assert j['success'] and j['preflight']['ok'] and j['setup']['state']=='new',j
+          body={'csrf':j['csrf'],'data_dir':'/var/www/sokna-local-ci/PrivateData','db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_clean_browser','user':'root','pass':'disposable-local-clean-ci'},'create_database':True,'admin_user':'ci-admin','admin_password':'disposable-admin-only-20261124','cafe_name':'DISPOSABLE CI','table_count':5}
+          ins=post('install_new',body)
+          assert ins['success'] and ins['state']=='installed' and ins['health']['migrations_applied']==92 and ins['health']['migration_files']==92,ins
+          _,raw=get('/setup/api.php?action=status');s=json.loads(raw)
+          assert s['setup']['installed'] and s['setup']['binding_current'],s
+          assert post('install_new',body,423)['code']=='setup_locked'
+          code,body=get('/login.php');assert code==200 and len(body)>0
+          print('PASS actual Local Browser Setup, 92 migrations, installation binding, duplicate-install denial, login page')
+          PY
+          sudo -u www-data php -r '
+            $cfg=require "/var/www/sokna-local-ci/config.php";
+            $db=$cfg["db"];
+            $pdo=new PDO("mysql:host=".$db["host"].";port=".$db["port"].";dbname=".$db["name"].";charset=utf8mb4",$db["user"],$db["pass"],[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $n=(int)$pdo->query("SELECT COUNT(*) FROM inventory_recipe_versions WHERE source_ref='\''owner_approved_bar_recipes_20261124'\'' AND status='\''active'\'' AND review_status='\''ready'\''")->fetchColumn();
+            if($n!==19)throw new RuntimeException("approved recipe count ".$n);
+            $n=(int)$pdo->query("SELECT COUNT(*) FROM items WHERE item_code='\''SOKNA-BLACK-MOJITO-20261124'\'' AND price=275000")->fetchColumn();
+            if($n!==1)throw new RuntimeException("Black Mojito count ".$n);
+            echo "PASS clean catalog data readback: 19 approved recipes, one Black Mojito\n";
+          '
+          printf '{"browser_setup":"PASS","migrations":92,"recipe_count":19,"black_mojito":1,"duplicate_install_denial":"PASS","disposable_only":true,"operator_authorized":false}\n' > "$RUNNER_TEMP/clean/browser-setup-receipt.json"
+      - name: Diagnostics
+        if: failure()
+        run: sudo tail -n 100 /var/log/apache2/error.log || true
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-LOCAL-231GD-EXACT-CLEAN-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/clean/*
+          retention-days: 30

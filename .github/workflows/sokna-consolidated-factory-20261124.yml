@@ -1,0 +1,296 @@
+name: SOKNA Consolidated Exact Source Factory - Independent Preflight (NO INSTALL)
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths:
+      - 'qa/sokna-final-20261124/**'
+      - '.github/workflows/sokna-consolidated-factory-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact-factory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          run-id: 44730988488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307
+      - name: Rebuild SHA-pinned 621 Local + 251 Public files and deterministic package formats
+        shell: bash
+        run: |
+          set -euo pipefail
+          L=$(find "$RUNNER_TEMP/r306" -name 'SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip' -type f -print -quit)
+          P=$(find "$RUNNER_TEMP/r306" -name 'SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip' -type f -print -quit)
+          test -f "$L" && test -f "$P"
+          python3 qa/sokna-final-20261124/rebuild_factory_source.py --r306-local "$L" --r306-public "$P" --parts qa/sokna-final-20261124/overlay --out "$RUNNER_TEMP/rebuilt"
+          mkdir -p "$RUNNER_TEMP/build/r306"
+          cp "$L" "$P" "$RUNNER_TEMP/build/r306/"
+          R307=$(find "$RUNNER_TEMP/r307" -type f -name 'SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip' -print -quit)
+          test -f "$R307"
+          echo '069a267f920b2d0614ca61443851b4f385994dca379d2bbbb3e1c42aba8047fa  '"$R307" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/build/r307"
+          cp "$R307" "$RUNNER_TEMP/build/r307/"
+          export SOKNA_SOURCE_ARCHIVE="$RUNNER_TEMP/rebuilt/SOKNA-REBUILT-CURRENT-SOURCE-EXACT-TREE.zip"
+          export SOKNA_RELEASE_BUILD_DIR="$RUNNER_TEMP/build"
+          python3 qa/sokna-final-20261124/factory_build_packages.py
+          python3 qa/sokna-final-20261124/test_preflight_packages.py
+          # Clean installation requires six protected Emergency files not present in managed updates.\n          # That independent clean composition is tested separately against the immutable Library reference.\n          echo 'CLEAN_INSTALL_EXCLUDED_FROM_MANAGED_ONLY_SOURCE_SMOKE'
+          python3 - <<'PY'
+          import pathlib,os,zipfile,subprocess
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          with zipfile.ZipFile(r/'build/preflight/SOKNA-CONSOLIDATED-R3-SOURCE-QA-NOT-INSTALL.zip') as z:
+              for name in ['src/Core/Migrations.php','src/Domain/Reporting/ReportingService.php']:
+                  p=r/pathlib.Path(name).name;p.write_bytes(z.read('source-working/local/'+name));subprocess.run(['php','-l',str(p)],check=True)
+          PY
+          echo 'PASS_EXACT_SOURCE_AND_OFFLINE_PACKAGE_STRUCTURE__NOT_INSTALLABLE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: |
+            ${{ runner.temp }}/build/preflight/*.zip
+            ${{ runner.temp }}/build/preflight/*.json
+            ${{ runner.temp }}/rebuilt/SOKNA-REBUILT-SOURCE-RECEIPT.json
+          if-no-files-found: error
+          retention-days: 30
+  mariadb-migration:
+    needs: exact-factory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-consolidated-ci
+          MARIADB_DATABASE: sokna_consolidated_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/target
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r306-original
+      - name: Exact production-sequenced clean Local MariaDB and R306-to-current upgrade
+        shell: bash
+        env:
+          SOKNA_CI_DB_PASS: disposable-consolidated-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/r306-local"
+          python3 - <<'PY'
+          import zipfile,io,pathlib,hashlib,os
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          original=list((r/'r306-original').rglob('SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip'))
+          target=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(original)==len(target)==1
+          assert hashlib.sha256(original[0].read_bytes()).hexdigest()=='1050c045b3da28f19a726109ef487d6e9940f01120cba35c6a41273b1e709209'
+          for archive,dest,want in [(target[0],r/'local',621),(original[0],r/'r306-local',608)]:
+            with zipfile.ZipFile(archive) as z:
+              with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+                assert len(w.namelist())==want and w.testzip() is None
+                for name in w.namelist():
+                  if name.endswith('/'):continue
+                  p=dest/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(w.read(name))
+          PY
+          php -r '
+          $p=new PDO("mysql:host=127.0.0.1;port=3306;charset=utf8mb4","root",getenv("SOKNA_CI_DB_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $p->exec("CREATE DATABASE IF NOT EXISTS sokna_ci_clean CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          $p->exec("CREATE DATABASE IF NOT EXISTS sokna_ci_upgrade CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          '
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_clean setup 0090_recipe_based_item_descriptions | tee "$RUNNER_TEMP/clean-mariadb-receipt.json"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/r306-local" sokna_ci_upgrade setup 0083_remaining_account_discount | tee "$RUNNER_TEMP/r306-mariadb-receipt.json"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_upgrade upgrade 0090_recipe_based_item_descriptions | tee "$RUNNER_TEMP/upgrade-mariadb-receipt.json"
+          echo 'PASS_REAL_MARIADB_CLEAN_AND_R306_UPGRADE__DISPOSABLE_ONLY'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CONSOLIDATED-MARIADB-CLEAN-AND-UPGRADE-RECEIPTS
+          path: ${{ runner.temp }}/*-mariadb-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
+  public-mariadb-clean:
+    needs: exact-factory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-public-schema-test
+          MARIADB_DATABASE: sokna_public_clean_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, sodium
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/target
+      - name: Actual Public MariaDB 11 migrations + second-run idempotency
+        shell: bash
+        env:
+          SOKNA_PUBLIC_CI_PASS: disposable-public-schema-test
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/public"
+          python3 - <<'PYSETUP'
+          import os,pathlib,zipfile,hashlib,json
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          candidates=list((r/'target').rglob('SOKNA-PUBLIC-CONSOLIDATED-ROUTINE-EMERGENCY-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(candidates)==1
+          with zipfile.ZipFile(candidates[0]) as z:
+            assert z.testzip() is None
+            m=json.loads(z.read('manifest.json'))
+            assert len(m['files'])==251
+            for row in m['files']:
+              body=z.read('payload/'+row['path'])
+              assert hashlib.sha256(body).hexdigest()==row['sha256']
+              p=r/'public'/row['path'];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(body)
+          print('PASS_PUBLIC_SOURCE_EXACT_251')
+          PYSETUP
+          php -r '
+            require getenv("RUNNER_TEMP")."/public/src/Core/Migrations.php";
+            $pdo=new PDO("mysql:host=127.0.0.1;port=3306;dbname=sokna_public_clean_test;charset=utf8mb4","root",getenv("SOKNA_PUBLIC_CI_PASS"),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+            $m=new \Sokna\PublicEdge\Core\Migrations($pdo,getenv("RUNNER_TEMP")."/public/database/migrations");
+            $first=$m->migrate();
+            if(count($first)!==11)throw new RuntimeException("PUBLIC_MIGRATION_EXPECTED_11_".count($first));
+            $second=$m->migrate();if(count($second)!==0)throw new RuntimeException("PUBLIC_MIGRATIONS_NOT_IDEMPOTENT");
+            $needed=["public_move_owner_slots","public_move_owner_accounts","public_move_owner_receipts"];
+            foreach($needed as $table){$stmt=$pdo->prepare("SELECT 1 FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=?");$stmt->execute([$table]);if(!$stmt->fetchColumn())throw new RuntimeException("MISSING_PUBLIC_TABLE_".$table);}
+            echo "PASS_REAL_PUBLIC_MARIADB_11_IDEMPOTENT\n";
+          '
+  windows-format:
+    needs: exact-factory
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/target
+      - name: Independently validate exact Maintenance ReleaseSet on Windows; forbid QA install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $pkg=Get-ChildItem "$env:RUNNER_TEMP/target" -Recurse -Filter 'SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$pkg){ throw 'NO_LOCAL_RELEASE_SET' }
+          python -c "import zipfile,json,sys,hashlib;z=zipfile.ZipFile(sys.argv[1]);m=json.loads(z.read('release-set.json'));w=z.read('artifacts/local/web.zip');assert hashlib.sha256(w).hexdigest()==m['artifacts']['local-web']['sha256'];assert m['for_install'] is False;assert m['production_pass'] is False;assert zipfile.ZipFile(__import__('io').BytesIO(w)).testzip() is None;print('PASS_WINDOWS_PACKAGE_READBACK__NOT_INSTALLABLE')" "$($pkg.FullName)"
+          if($LASTEXITCODE -ne 0){throw 'WINDOWS_PKG_SHA_FAILURE'}
+  windows-native-lifecycle:
+    needs: exact-factory
+    runs-on: windows-2022
+    timeout-minutes: 110
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r307-231fv-dashboard-ui-20261120
+          path: r307-fixtures
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE
+          run-id: 44730988488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r307-baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          path: ${{ runner.temp }}/current-qa
+      - name: Native Windows R307 to 231gb exact-source stage and HTTP readback (DISPOSABLE ONLY)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/r307-baseline" -Recurse -Filter 'SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip' | Select-Object -First 1
+          $target=Get-ChildItem "$env:RUNNER_TEMP/current-qa" -Recurse -Filter 'SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'SOKNA_EXACT_R307_OR_CURRENT_PACKAGE_MISSING'}
+          $env:SOKNA_R307_ORIGINAL_ZIP=$base.FullName
+          $env:SOKNA_CURRENT_QA_ZIP=$target.FullName
+          Push-Location r307-fixtures
+          try {
+            python r307/qa/prepare_native_r307.py
+            if($LASTEXITCODE -ne 0){throw 'R307_HISTORICAL_NATIVE_ADAPTER_FAILED'}
+          } finally {Pop-Location}
+          python qa/sokna-final-20261124/prepare_native_ci_current.py
+          if($LASTEXITCODE -ne 0){throw 'SOKNA_NATIVE_CI_REBASE_FAILED'}
+          $env:SOKNA_CURRENT_CI_STAGE_ZIP=Join-Path $env:RUNNER_TEMP 'SOKNA-NATIVE-CI-ONLY-DO-NOT-PUBLISH.zip'
+          # CI-only rewrite of an outer manifest is NOT an operator release.
+          # Verify temporary structural stage and NEVER upload the stage ZIP.
+          python r307-fixtures/packaging/windows/release-gates/check_local_release_set.py $env:SOKNA_CURRENT_CI_STAGE_ZIP --require-installable
+          if($LASTEXITCODE -ne 0){throw 'SOKNA_DISPOSABLE_STAGE_SHAPE_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'sokna-current-r307-to-r2-native.ps1')
+            if($LASTEXITCODE -ne 0){throw 'SOKNA_NATIVE_WINDOWS_REAL_LIFECYCLE_FAILED'}
+          } finally {Pop-Location}
+          'PASS_EXACT_R307_TO_231GB_NATIVE_STAGE_ACTIVATE_HTTP_DB90_DISPOSABLE_ONLY' | Out-File (Join-Path $env:RUNNER_TEMP 'sokna-current-native-lifecycle-receipt.txt')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CURRENT-WINDOWS-NATIVE-LIFECYCLE-RECEIPT-ONLY
+          path: |
+            ${{ runner.temp }}/sokna-current-native-lifecycle-receipt.txt
+            ${{ runner.temp }}/sokna-current-native-adapter.json
+          if-no-files-found: ignore
+          retention-days: 30
+  final-decision:
+    if: always()
+    needs: [exact-factory,mariadb-migration,public-mariadb-clean,windows-format,windows-native-lifecycle]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record real independent gate conclusions without claiming operator release
+        env:
+          EXACT: ${{ needs.exact-factory.result }}
+          DB: ${{ needs.mariadb-migration.result }}
+          PUBLIC_DB: ${{ needs.public-mariadb-clean.result }}
+          WINDOWS: ${{ needs.windows-format.result }}
+          NATIVE: ${{ needs.windows-native-lifecycle.result }}
+        run: |
+          printf 'Exact source/package: %s\nMariaDB: %s\nWindows package: %s\n' "$EXACT" "$DB" "$WINDOWS"
+          test "$EXACT" = success && test "$DB" = success && test "$PUBLIC_DB" = success && test "$WINDOWS" = success && test "$NATIVE" = success
+          echo 'PASS_DISPOSABLE_PREFLIGHT__OPERATOR_RELEASE_STILL_BLOCKED_PENDING_NATIVE_ACTIVATION'

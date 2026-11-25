@@ -25,5 +25,10 @@ if (($s['installed']??false)!==true || ($s['binding_current']??false)!==true)
     throw new RuntimeException('R300_R299_BASELINE_231FL_BROWSER_INSTALL_NOT_BOUND');
 $db=new PDO('mysql:host=127.0.0.1;port='.$port.';dbname=sokna_r186_exact;charset=utf8mb4','root','',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
 $n=(int)$db->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn();
-if ($n!==83) throw new RuntimeException('R300_R299_BASELINE_EXPECTED_83_MIGRATIONS_ACTUAL_'.$n);
-echo "R300_R299_BASELINE_NATIVE_WINDOWS_EXACT_R275_INSTALL_83_MIGRATIONS_PASS\n";
+$expected=(int)getenv('SOKNA_BASE_LEDGER');
+$files=glob($old.'/database/migrations/*.sql');
+if ($expected<1 || count($files)!==$expected) throw new RuntimeException('PINNED_ORIGIN_MIGRATION_CATALOG_MISMATCH');
+$versions=array_map(static fn($f)=>basename($f,'.sql'),$files);sort($versions,SORT_STRING);
+$applied=$db->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN);
+if ($n!==$expected || $versions!==$applied) throw new RuntimeException('BASELINE_LEDGER_MISMATCH_EXPECTED_'.$expected.'_ACTUAL_'.$n);
+echo "PASS EXACT BASELINE BROWSER INSTALL ".$expected." MIGRATIONS\n";

@@ -1,0 +1,108 @@
+name: SOKNA R3 universal Local exact native candidate matrix
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-r3-universal-native-matrix.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    name: native-${{ matrix.origin }}-${{ matrix.fault }}
+    runs-on: windows-2022
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {origin: R301, fault: none, run: '44561325048', artifact: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT, file: SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip}
+          - {origin: R304, fault: none, run: '44639218881', artifact: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT, file: SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip}
+          - {origin: R306, fault: none, run: '44723958829', artifact: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT, file: SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: none, run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: APACHE_STOPPED, run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: DATABASE_BACKUP_VERIFIED, run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: DATABASE_FORWARD_INTENT, run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: POINTER_SWITCHED, run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: COMMITTED, run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/sokna-r278-rial-persistent-settings-20261118
+          path: native-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45351541555
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/current
+      - name: Build byte-identical quarantined candidate and test real native engine
+        shell: pwsh
+        env:
+          BASE_NAME: ${{ matrix.file }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -Filter $env:BASE_NAME | Select-Object -First 1
+          $target=Get-ChildItem "$env:RUNNER_TEMP/current" -Recurse -Filter 'SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip' | Select-Object -First 1
+          if(!$base -or !$target){throw 'PINNED_ARCHIVE_NOT_PRESENT'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $env:SOKNA_CURRENT_QA_ZIP=$target.FullName
+          python qa/sokna-final-20261124/prepare_universal_native_matrix.py
+          if($LASTEXITCODE-ne0){throw 'NATIVE_MATRIX_PREPARATION_FAILED'}
+          $env:SOKNA_MATRIX_TARGET_ZIP=Join-Path $env:RUNNER_TEMP 'SOKNA-LOCAL-231GB-QUARANTINED-RELEASE-CANDIDATE.zip'
+          python packaging/windows/release-gates/check_local_release_set.py $env:SOKNA_MATRIX_TARGET_ZIP --require-installable
+          if($LASTEXITCODE-ne0){throw 'NATIVE_MATRIX_FORMAT_FAILED'}
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE-ne0){throw 'NATIVE_MATRIX_EXECUTION_FAILED'}
+          } finally {Pop-Location}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-R3-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-RECEIPT
+          path: ${{ runner.temp }}/matrix-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+  matrix-decision:
+    needs: native
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-R3-NATIVE-*-RECEIPT
+          path: receipts
+      - name: Validate coverage and bind receipts to one exact candidate SHA
+        run: |
+          python3 - <<'PY'
+          import pathlib,json
+          rows=[json.loads(x.read_text()) for x in pathlib.Path('receipts').rglob('matrix-receipt.json')]
+          expected={('R301','none'),('R304','none'),('R306','none'),('R307','none')}|{('R307',f) for f in ('APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')}
+          assert len(rows)==len(expected) and {(r['origin'],r['fault']) for r in rows}==expected
+          assert len({r['candidate_sha256'] for r in rows})==1 and all(r['status']=='PASS' and r['independent_restore'] and not r['distribution_authorized'] for r in rows)
+          d={'native_matrix':'PASS','candidate_sha256':rows[0]['candidate_sha256'],'origins':4,'fault_cases':5,'receipts':rows,'distribution_authorized':False}
+          pathlib.Path('matrix-decision.json').write_text(json.dumps(d,indent=2))
+          print(json.dumps(d,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-R3-NATIVE-ALL-ORIGINS-RECOVERY-DECISION
+          path: matrix-decision.json
+          retention-days: 90

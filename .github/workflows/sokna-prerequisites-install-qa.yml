@@ -1,0 +1,77 @@
+name: SOKNA independent Windows installer shell acceptance (QA only)
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-prerequisites-install-qa.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  installed-shell:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '10.0.x'}
+      - name: Architecture contract
+        run: python tests/g7-infrastructure-prerequisites-gate.py
+      - name: Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+      - name: Build independent helper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & packaging/prerequisites/scripts/build-installer.ps1 -RepoRoot (Resolve-Path .).Path -OutputRoot "$env:RUNNER_TEMP/sokna-prerequisites-build"
+      - name: Verify installed helper on non-system volume, repair and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $build="$env:RUNNER_TEMP/sokna-prerequisites-build"
+          $index=Get-Content "$build/installer/artifact-index.json" -Raw | ConvertFrom-Json
+          $setup=Join-Path "$build/installer" $index.file
+          if((Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant() -ne $index.sha256){throw 'installer hash mismatch'}
+          $vol=Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 -and $_.DeviceID -ne $env:SystemDrive -and $_.FreeSpace -gt 1GB } | Select-Object -First 1
+          if(-not $vol){throw 'No real non-system volume: acceptance not proven'}
+          $root=Join-Path ($vol.DeviceID+'\') ("Sokna-QA-"+$env:GITHUB_RUN_ID)
+          if(Test-Path $root){throw 'QA directory already exists'}
+          $app=Join-Path $root 'Helper'
+          $data=Join-Path $root 'PreservedData'
+          New-Item -ItemType Directory -Path $data | Out-Null
+          $marker=Join-Path $data 'preservation-marker.txt'
+          Set-Content $marker 'SOKNA disposable QA preservation marker'
+          $original=(Get-FileHash $marker).Hash
+          $evidence=Join-Path $env:RUNNER_TEMP 'sokna-install-evidence'
+          New-Item -ItemType Directory -Path $evidence | Out-Null
+          function ServiceSnapshot { @(Get-Service -Name SoknaApache,SoknaMariaDB -ErrorAction SilentlyContinue | Sort-Object Name | Select-Object Name,Status) | ConvertTo-Json -Compress }
+          $services=ServiceSnapshot
+          function Assert-Preserved {
+            if((Get-FileHash $marker).Hash -ne $original){throw 'preservation marker changed'}
+            if((ServiceSnapshot) -ne $services){throw 'shell unexpectedly changed infrastructure services'}
+          }
+          foreach($phase in @('fresh','same-version-reinstall')){
+            $args=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$app+'"'),('/LOG="'+$evidence+'/'+$phase+'.log"'))
+            $p=Start-Process -FilePath $setup -ArgumentList $args -Wait -PassThru
+            if($p.ExitCode -ne 0){throw "$phase installer exit $($p.ExitCode)"}
+            $exe=Join-Path $app 'SoknaPrerequisitesSetup.exe'
+            if((Get-FileHash $exe).Hash -ne (Get-FileHash "$build/publish/SoknaPrerequisitesSetup.exe").Hash){throw 'installed executable differs'}
+            $p=Start-Process -FilePath $exe -ArgumentList '--self-test-endpoint-port' -Wait -PassThru
+            if($p.ExitCode -ne 0){throw 'installed endpoint self-test failed'}
+            Assert-Preserved
+          }
+          $uninstall=Get-ChildItem $app -Filter 'unins*.exe' | Select-Object -First 1
+          if(-not $uninstall){throw 'uninstaller missing'}
+          $p=Start-Process -FilePath $uninstall.FullName -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'uninstall failed'}
+          if(Test-Path (Join-Path $app 'SoknaPrerequisitesSetup.exe')){throw 'helper remains installed'}
+          Assert-Preserved
+          [ordered]@{status='PASS';version=$index.version;installer_sha256=$index.sha256;non_system_volume=$vol.DeviceID;fresh=$true;reinstall=$true;uninstall=$true;installed_port_selftest=$true;preserved_marker=$true;services_unchanged=$true;infra_provisioned=$false;operator_authorized=$false} | ConvertTo-Json | Set-Content "$evidence/receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-PREREQUISITES-INSTALLED-SHELL-QA-ONLY
+          path: |
+            ${{ runner.temp }}/sokna-install-evidence/
+            ${{ runner.temp }}/sokna-prerequisites-build/installer/
+          if-no-files-found: warn
+          retention-days: 30

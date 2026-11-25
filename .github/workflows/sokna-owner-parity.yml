@@ -1,0 +1,78 @@
+name: SOKNA focused owner financial parity on frozen source plus verified fix
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-owner-parity.yml','qa/sokna-owner-parity/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [root, subfolder]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45487833274
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Extract exact candidate and validate migration
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          cd "$RUNNER_TEMP"
+          echo '0f9e2231880e589be959a47b9416a1ec6d06f814b83b1dd39bb7b3e104844a10  '"$GITHUB_WORKSPACE/qa/sokna-owner-parity/discount-invalidation.patch" | sha256sum -c
+          patch -p1 --fuzz=0 < "$GITHUB_WORKSPACE/qa/sokna-owner-parity/discount-invalidation.patch"
+          echo 'c82cdc68b960552fbbfbccfd389ec44cfa04886ab9ffc4735a05165bb4b9a385  local/src/Domain/Finance/SettlementService.php' | sha256sum -c
+          cd "$GITHUB_WORKSPACE"
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
+          python3 - <<'PY'
+          import os,pathlib,base64,zlib,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          for k,h in [('q','2e9a964ef24f861101409e8cc5558e9b3c95d03ea26cc78a929d7b198dd00421'),('r','459314b2a25a9cba4a63f9cdcb9d37a0c1748dd83d8a97bdd4359aac2ed0a248'),('y','1037eb87de539186ed44cba1adc2f311b5950075c888f462481af3787d5e61ca')]:
+              b=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-request-'+k+'/scenario.b64').read_bytes()))
+              assert hashlib.sha256(b).hexdigest()==h
+              (t/('scenario-'+k+'.php')).write_bytes(b)
+          PY
+      - name: Business and auth acceptance on same frozen bytes
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_Z_MODE: ${{ matrix.test }}
+          SOKNA_Z_ROUTER: ${{ github.workspace }}/qa/sokna-request-z/router.php
+        run: |
+          set -euo pipefail
+          awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/test-o.php"
+          case '${{ matrix.test }}' in
+            root|subfolder) php qa/sokna-final-consolidated/auth-setup.php; cat qa/sokna-owner-parity/acceptance.php >> "$RUNNER_TEMP/test-o.php"; php "$RUNNER_TEMP/test-o.php" ;;
+            cancel) php qa/sokna-request-k/test_cancel_credit.php ;;
+            mixed) tail -n +2 "$RUNNER_TEMP/scenario-q.php" >> "$RUNNER_TEMP/test-o.php"; SOKNA_Q_MODE=mixed SOKNA_P_SCOPE=all SOKNA_O_GRANT_TYPE=fixed php "$RUNNER_TEMP/test-o.php" ;;
+            tax) php qa/sokna-request-m/test_tax_post_grant.php ;;
+            report) php qa/sokna-request-h/test_report_ledger.php ;;
+            subscriber|accommodation) tail -n +2 "$RUNNER_TEMP/scenario-r.php" >> "$RUNNER_TEMP/test-o.php"; SOKNA_R_MODE='${{ matrix.test }}' php "$RUNNER_TEMP/test-o.php" ;;
+            *) tail -n +2 "$RUNNER_TEMP/scenario-y.php" >> "$RUNNER_TEMP/test-o.php"; SOKNA_X_MODE='${{ matrix.test }}' php "$RUNNER_TEMP/test-o.php" ;;
+          esac

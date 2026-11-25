@@ -1,0 +1,68 @@
+name: SOKNA candidate mixed fulfillment bundle provenance acceptance
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-bundle-distribution.yml','qa/sokna-bundle-distribution/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  bundle-read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45495988657
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Exact bundle lifecycle
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib,base64,zlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP']); h=lambda b:hashlib.sha256(b).hexdigest()
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-distribution/candidate.b64').read_bytes(),validate=True))
+          assert h(raw)=='02514624ced0eec8d63c7db544f04d8122d64061048c2ee5c7513c44a52b205b'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name
+              f.write_bytes(b)
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-distribution/candidate-v2.b64').read_bytes(),validate=True))
+          assert h(raw)=='f83b71e8abc8483bf29a3577c7da83df17dc7c76e678cdd8925d2cda509e2d66'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name
+              f.write_bytes(b)
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
+          awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/bundle.php"
+          printf '%s\n' '$p->exec("ALTER TABLE order_items ADD COLUMN bundle_distribution_origin_id BIGINT UNSIGNED NULL, ADD INDEX idx_qa_bundle_origin(bundle_distribution_origin_id)");$p->exec("ALTER TABLE order_item_adjustments ADD COLUMN parent_adjustment_id BIGINT UNSIGNED NULL, ADD INDEX idx_qa_adjustment_parent(parent_adjustment_id)");' >> "$RUNNER_TEMP/bundle.php"
+          cat qa/sokna-bundle-distribution/scenario.php >> "$RUNNER_TEMP/bundle.php"
+          php "$RUNNER_TEMP/bundle.php"

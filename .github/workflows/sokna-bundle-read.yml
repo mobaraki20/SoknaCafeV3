@@ -1,0 +1,72 @@
+name: SOKNA real guest bundle and current component report parity
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-bundle-read.yml','qa/sokna-bundle-read/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  bundle-read:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [baseline, patched]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-batch-f-ci
+          MARIADB_DATABASE: sokna_ci_batch_f2
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL
+          run-id: 45491334880
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/frozen
+      - name: Exact bundle lifecycle
+        env:
+          SOKNA_CI_DB_PASS: disposable-batch-f-ci
+          SOKNA_BUNDLE_MODE: ${{ matrix.mode }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/local" "$RUNNER_TEMP/public"
+          unzip -q "$RUNNER_TEMP/frozen/LOCAL-FINAL-WEB.zip" -d "$RUNNER_TEMP/local"
+          unzip -q "$RUNNER_TEMP/frozen/PUBLIC-FINAL-WEB.zip" -d "$RUNNER_TEMP/public"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib,base64,zlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP']); h=lambda b:hashlib.sha256(b).hexdigest()
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-report/delta.b64').read_bytes(),validate=True))
+          assert h(raw)=='02daec6598c20460b7bd6e684977611a7eacfe006ee62ba97a735937a774057b'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name
+              f.write_bytes(b)
+          raw=zlib.decompress(base64.b64decode(pathlib.Path('qa/sokna-bundle-read/delta.b64').read_bytes(),validate=True))
+          assert h(raw)=='9f1e6d76cb4767678753a04eee332e91027766f9d2cb6af993b4d7c89cc57d64'
+          for name,v in json.loads(raw).items():
+              f=r/name;b=f.read_bytes();assert h(b)==v['before'],name
+              lines=b.decode().splitlines(keepends=True)
+              for a,c,s in reversed(v['edits']):lines[a:c]=[s]
+              b=''.join(lines).encode();assert h(b)==v['after'],name
+              if os.environ['SOKNA_BUNDLE_MODE']!='baseline':f.write_bytes(b)
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_batch_f2 setup 0092_public_auth_snapshot_clock
+          awk '/^\$tax=/{exit}{print}' qa/sokna-request-m/test_tax_post_grant.php > "$RUNNER_TEMP/bundle.php"
+          cat qa/sokna-bundle-read/scenario.php >> "$RUNNER_TEMP/bundle.php"
+          php "$RUNNER_TEMP/bundle.php"

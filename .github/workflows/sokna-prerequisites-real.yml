@@ -1,0 +1,70 @@
+name: SOKNA real independent infrastructure acceptance
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-prerequisites-real.yml','qa/sokna-prerequisites-real/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  infrastructure:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-INSTALLED-SHELL-QA-ONLY
+          run-id: 45564552734
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact-helper
+      - name: Verify exact previously accepted helper and lock official dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Get-ChildItem "$env:RUNNER_TEMP/exact-helper" -Recurse -Filter SOKNA-Prerequisites-Setup-1.0.4.exe | Select-Object -First 1
+          if(-not $setup){throw 'Exact helper missing'}
+          if((Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne '6080d6ea5d356ea089580f0861c145cd9c0ce8dce274ef8ff73422650e9529a1'){throw 'Exact helper hash mismatch'}
+          $cache=Join-Path $env:ProgramData 'SOKNA/PrerequisiteCache'
+          New-Item -ItemType Directory -Force -Path $cache | Out-Null
+          $lock=Get-Content platform/windows/release-lock.json -Raw | ConvertFrom-Json
+          foreach($a in $lock.artifacts | Where-Object { $_.dependency -in @('php','apache','mariadb') }){
+            $target=Join-Path $cache $a.filename
+            $ok=$false
+            $urls=@($a.source_url)+@($a.fallback_urls)
+            if($a.dependency -eq 'php'){$urls+=('https://downloads.php.net/~windows/releases/archives/'+$a.filename)}
+            foreach($url in $urls){
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $target -TimeoutSec 180 -ErrorAction Stop
+                if((Get-Item $target).Length -eq $a.size -and (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -eq $a.sha256){$ok=$true;break}
+              } catch { Write-Warning "Official dependency acquisition failed: $($a.dependency)" }
+            }
+            if(-not $ok){throw "Locked official bytes unavailable: $($a.dependency)"}
+            Write-Host "Verified locked dependency: $($a.dependency)"
+          }
+          $vol=Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 3 -and $_.DeviceID -ne $env:SystemDrive -and $_.FreeSpace -gt 3GB } | Select-Object -First 1
+          if(-not $vol){throw 'No actual non-system volume'}
+          $root=Join-Path ($vol.DeviceID+'\') ("Sokna-Infra-QA-"+$env:GITHUB_RUN_ID)
+          $app=Join-Path ($vol.DeviceID+'\') ("Sokna-Helper-QA-"+$env:GITHUB_RUN_ID)
+          if(Test-Path $root){throw 'QA root already exists'}
+          $p=Start-Process -FilePath $setup.FullName -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$app+'"')) -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'Install exact helper failed'}
+          "SOKNA_QA_INFRA_ROOT=$root" | Out-File $env:GITHUB_ENV -Append
+          "SOKNA_QA_INFRA_EXE=$(Join-Path $app 'SoknaPrerequisitesSetup.exe')" | Out-File $env:GITHUB_ENV -Append
+      - name: Actual native UI installation repair and recovery
+        shell: pwsh
+        run: |
+          pip install pywinauto
+          if($LASTEXITCODE -ne 0){throw 'UI automation dependency failed'}
+          python qa/sokna-prerequisites-real/windows-ui.py "$env:SOKNA_QA_INFRA_EXE" "$env:SOKNA_QA_INFRA_ROOT" "$env:RUNNER_TEMP/infra-evidence"
+          if($LASTEXITCODE -ne 0){throw 'Actual infrastructure acceptance failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-REAL-INFRASTRUCTURE-QA-ONLY
+          path: ${{ runner.temp }}/infra-evidence/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,62 @@
+--- a/local/src/Domain/Orders/OrderStaffActionService.php
++++ b/local/src/Domain/Orders/OrderStaffActionService.php
+@@ -180,15 +180,15 @@
+             // Only this order's paid lines matter. Other rounds in the same bill may be paid.
+             // For legacy receipts without allocation rows, fail closed (unknown allocation).
+             $paid=$this->pdo->prepare("SELECT sr.id FROM settlement_records sr WHERE sr.session_id=? AND sr.status='completed'
+-                AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal')
+-                AND (NOT EXISTS(SELECT 1 FROM settlement_record_lines srl WHERE srl.settlement_id=sr.id)
++                AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal' FOR UPDATE)
++                AND (NOT EXISTS(SELECT 1 FROM settlement_record_lines srl WHERE srl.settlement_id=sr.id FOR UPDATE)
+                      OR EXISTS(SELECT 1 FROM settlement_record_lines srl LEFT JOIN order_items oi ON oi.id=srl.order_item_id
+-                               WHERE srl.settlement_id=sr.id AND srl.quantity>0 AND (srl.order_id=? OR oi.order_id=? OR (srl.order_id IS NULL AND srl.order_item_id IS NULL)))) LIMIT 1");
++                               WHERE srl.settlement_id=sr.id AND srl.quantity>0 AND (srl.order_id=? OR oi.order_id=? OR (srl.order_id IS NULL AND srl.order_item_id IS NULL)) FOR UPDATE)) LIMIT 1 FOR UPDATE");
+             $paid->execute([$sessionId,$orderId,$orderId]);
+             if($paid->fetchColumn()!==false&&!$financialRefundVerified)throw new OrderStaffActionException('order_has_payment','برای اقلام این سفارش وجه دریافت شده است؛ لغو باید همراه سند برگشت مالی انجام شود.',409);
+             // Existing grant allocation belongs to the unpaid cohort. Avoid silently
+             // invalidating it before the accounting correction is applied.
+-            $grant=$this->pdo->prepare('SELECT id FROM remaining_account_discount_grants WHERE session_id=? LIMIT 1');
++            $grant=$this->pdo->prepare('SELECT id FROM remaining_account_discount_grants WHERE session_id=? LIMIT 1 FOR UPDATE');
+             $grant->execute([$sessionId]);if($grant->fetchColumn()!==false&&(!$grantRebaseScheduled||!$financialRefundVerified||$ownsTransaction))
+                 throw new OrderStaffActionException('discount_grant_present','این حساب تخفیف مانده ثبت‌شده دارد؛ لغو باید با اصلاح سند مالی آن انجام شود.',409);
+ 
+@@ -503,7 +503,7 @@
+                 $this->closeCancelledUnpaidAccountTx($sessionId,$tableId,$requestId,$actor);
+             }
+             if($financeValidate!==null){
+-                $remaining=$this->pdo->prepare("SELECT 1 FROM orders WHERE session_id=? AND status='accounted' LIMIT 1");
++                $remaining=$this->pdo->prepare("SELECT 1 FROM orders WHERE session_id=? AND status='accounted' LIMIT 1 FOR UPDATE");
+                 $remaining->execute([$sessionId]);
+                 if($remaining->fetchColumn()!==false)$financeValidate($sessionId);
+             }
+--- a/local/src/Domain/Finance/SettlementService.php
++++ b/local/src/Domain/Finance/SettlementService.php
+@@ -778,7 +778,7 @@
+         $actorId=(int)($actor['id']??0);
+         if($actorId<1||$orderId<1||$sessionId<1)throw new SettlementException('invalid_order_refund','مشخصات برگشت مالی معتبر نیست.',422);
+         $stmt=$this->pdo->prepare("SELECT sr.* FROM settlement_records sr WHERE sr.session_id=? AND sr.status='completed'
+-            AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal') ORDER BY sr.id FOR UPDATE");
++            AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal' FOR UPDATE) ORDER BY sr.id FOR UPDATE");
+         $stmt->execute([$sessionId]);$parents=$stmt->fetchAll(PDO::FETCH_ASSOC)?:[];
+         $refunds=[];$plan=[];$delta=['paid_quantities'=>[],'paid_subtotal'=>0,'paid_discount'=>0,'paid_taxable'=>0,'paid_tax'=>0,'paid_total'=>0];
+         if($quantities!==null){$actor=$this->assertCashier($actor);foreach($quantities as $id=>$q)if((int)$id<1||!is_int($q)||$q<1)throw new SettlementStateConflict('refund_quantity_invalid','تعداد برگشت نامعتبر است.',409);}
+@@ -1632,8 +1632,8 @@
+         // The same immutable receipt set must reconcile by tender, not merely total.
+         $q=$this->pdo->prepare("SELECT t.tender_type,SUM(CASE WHEN r.status='completed' THEN t.amount ELSE -t.amount END) balance
+             FROM settlement_tender_allocations t JOIN settlement_records r ON r.id=t.settlement_id
+-            WHERE r.session_id=? AND ((r.status='completed' AND NOT EXISTS(SELECT 1 FROM settlement_records v WHERE v.reverses_settlement_id=r.id AND v.status='reversal'))
+-              OR (r.status='reversal' AND r.partial_reversal_source_id IS NOT NULL)) GROUP BY t.tender_type");
++            WHERE r.session_id=? AND ((r.status='completed' AND NOT EXISTS(SELECT 1 FROM settlement_records v WHERE v.reverses_settlement_id=r.id AND v.status='reversal' FOR UPDATE))
++              OR (r.status='reversal' AND r.partial_reversal_source_id IS NOT NULL)) GROUP BY t.tender_type FOR UPDATE");
+         $q->execute([$sessionId]);
+         foreach($q->fetchAll(PDO::FETCH_ASSOC) as $t)if((int)$t['balance']!==0)
+             throw new SettlementStateConflict('cancel_closure_tender_mismatch','گردش روش‌های پرداخت حساب لغوشده صفر نیست.',409);
+@@ -1651,7 +1651,7 @@
+     {
+         if(!$this->pdo->inTransaction())throw new \LogicException('Order adjustment requires an open transaction.');
+         $account=$this->accountTx($sessionId);
+-        $legacy=$this->pdo->prepare("SELECT 1 FROM settlement_records sr WHERE sr.session_id=? AND sr.status='completed' AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal') AND NOT EXISTS(SELECT 1 FROM settlement_record_lines sl WHERE sl.settlement_id=sr.id) LIMIT 1");
++        $legacy=$this->pdo->prepare("SELECT 1 FROM settlement_records sr WHERE sr.session_id=? AND sr.status='completed' AND NOT EXISTS(SELECT 1 FROM settlement_records rv WHERE rv.reverses_settlement_id=sr.id AND rv.status='reversal' FOR UPDATE) AND NOT EXISTS(SELECT 1 FROM settlement_record_lines sl WHERE sl.settlement_id=sr.id FOR UPDATE) LIMIT 1 FOR UPDATE");
+         $legacy->execute([$sessionId]);if($legacy->fetchColumn()!==false)throw new SettlementStateConflict('paid_allocation_unknown','جزئیات تخصیص پرداخت قبلی در دسترس نیست.',409);
+         // Do not close an account implicitly; a zero remaining quantity needs an explicit financial closure workflow.
+         $review=$this->reviewAllRemaining($account);

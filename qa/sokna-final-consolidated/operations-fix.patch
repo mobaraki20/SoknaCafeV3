@@ -1,0 +1,15 @@
+--- a/local/src/Domain/Orders/OrderStaffActionService.php
++++ b/local/src/Domain/Orders/OrderStaffActionService.php
+@@ -30,6 +30,12 @@
+     public function printQuickPreferences(array $user): array
+     {
+         $this->actorAny($user,['orders_floor','cashier_accounts','shift_supervision']);
++        return $this->printQuickPreferencesSnapshot();
++    }
++
++    /** Internal read-only settings projection; authenticated actions retain their role checks. */
++    public function printQuickPreferencesSnapshot(): array
++    {
+         $keys=[
+             'preparation'=>'printing.quick.auto_preparation',
+             'direct'=>'printing.quick.receipt_direct',

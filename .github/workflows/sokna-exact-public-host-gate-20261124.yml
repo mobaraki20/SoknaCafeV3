@@ -1,0 +1,345 @@
+name: SOKNA exact Public setup and lifecycle gate (QA only)
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths: ['.github/workflows/sokna-exact-public-host-gate-20261124.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  public-host-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-disposable-public-host-ci
+          MARIADB_DATABASE: sokna_ci_host
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 75940d66aeb28de129641daea5753963504b9dca
+          path: emergency-reference
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45351541555
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT
+          run-id: 44723958829
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT
+          run-id: 44639218881
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/r304
+      - name: Reconstruct exact protected source and require byte-pinned clean ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-host-gate
+          python3 - <<'PY'
+          import pathlib,zipfile,hashlib,json,os,shutil
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          h=lambda x:hashlib.sha256(x).hexdigest()
+          ref=pathlib.Path('emergency-reference')
+          # Restore historical canonical bytes in the disposable fixture only.
+          # These are not product code edits; all six must match the 23 Nov reference.
+          old=(ref/'apps/public/src/Emergency/PublicUpdateService.php').read_text().splitlines()
+          assert len(old)==48
+          old[12]="    private const STABLE_PREFIXES=['emergency.php','src/Emergency/','resources/update-trust-v1.json'];"
+          old[28]="    private function healthCheck(): void{foreach(['bootstrap.php','index.php','emergency.php','setup/index.php','setup/api.php'] as $rel)if(!is_file($this->componentRoot.'/'.$rel))throw new PublicUpdateException('health_failed','Critical Public file is missing.',500,['file'=>$rel]);if(is_callable($this->health)){$ok=(bool)($this->health)();if(!$ok)throw new PublicUpdateException('health_failed','Public health callback failed.',500);} }"
+          old[31]="    private function runtimeExcluded(string $rel): bool{return in_array($rel,['config.php','install.lock'],true)||str_starts_with($rel,'storage/');}"
+          old[36]=r"    private function copyTree(string $src,string $dst,bool $clear=true): void{if($clear)$this->removeTree($dst);$this->mkdirPublic($dst);$it=new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($src,\FilesystemIterator::SKIP_DOTS),\RecursiveIteratorIterator::SELF_FIRST);foreach($it as $f){$rel=substr($f->getPathname(),strlen($src)+1);$to=$dst.'/'.$rel;if($f->isDir())$this->mkdirPublic($to);elseif($f->isFile()){ $this->mkdirPublic(dirname($to));if(!copy($f->getPathname(),$to))throw new PublicUpdateException('copy_failed','Lifecycle copy failed.',500);@chmod($to,0644);}}}"
+          old.insert(37,"    private function mkdirPublic(string $p): void{if(!is_dir($p)&&!@mkdir($p,0755,true)&&!is_dir($p))throw new PublicUpdateException('deploy_unavailable','Public deployment directory is unavailable.',500);@chmod($p,0755);}")
+          protected={'emergency.php':((ref/'r247/source/emergency.php').read_bytes(),'b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce'),
+          'src/Emergency/EmergencyAccessService.php':((ref/'r247/source/EmergencyAccessService.php').read_bytes(),'65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb'),
+          'src/Emergency/PairingSecretStore.php':((ref/'apps/public/src/Emergency/PairingSecretStore.php').read_bytes(),'f80ae57516b365780d9830310b2921a690f7f243c97863372934272fad4f5482'),
+          'src/Emergency/PublicTakeoverService.php':((ref/'apps/public/src/Emergency/PublicTakeoverService.php').read_bytes(),'100b9cd37384eea6828ed64ddfba9dac968e5912d6b62dafec2a66c55849e986'),
+          'src/Emergency/PublicUpdateException.php':((ref/'apps/public/src/Emergency/PublicUpdateException.php').read_bytes(),'220d3808bcd2685beb27a9d520671b97f959256dc1cbbb10616383086952c306'),
+          'src/Emergency/PublicUpdateService.php':(('\n'.join(old)+'\n').encode(),'2722c10cc2367ba055dc9ecf3f1320e8bbbc7ae2381abe3c0a8ad2f48e570267')}
+          for n,(b,sha) in protected.items(): assert h(b)==sha, n
+          def locate(base,name,sha):
+              hits=list((r/base).rglob(name)); assert len(hits)==1, hits
+              assert h(hits[0].read_bytes())==sha,name
+              return hits[0]
+          update=locate('target','SOKNA-PUBLIC-CONSOLIDATED-ROUTINE-EMERGENCY-PREFLIGHT-DO-NOT-INSTALL.zip','65b13b57c7ae7593b76e6e0ae315538b99711d8ff5339f2921e8b0adaa2b0073')
+          clean=locate('target','SOKNA-PUBLIC-CONSOLIDATED-CLEAN-SOURCE-PREFLIGHT-DO-NOT-INSTALL.zip','9b6814b6a451a26f68b9eb6eada38d7bb11fe35ebbc6a5a7f348795e360a2fd7')
+          baseline=locate('baseline','SOKNA-R306-PUBLIC-35IN-EMERGENCY-PREFLIGHT.zip','e2d78030a7246103a1b4ae2b28409093ebf8e61d44abc3739d73d0ac10b9fe51')
+          def payload(path):
+              with zipfile.ZipFile(path) as z:
+                  assert z.testzip() is None
+                  m=json.loads(z.read('manifest.json')); files={}
+                  for row in m['files']:
+                      n=row['path']; p=pathlib.PurePosixPath(n)
+                      assert not p.is_absolute() and '..' not in p.parts and n not in protected
+                      b=z.read('payload/'+n); assert h(b)==row['sha256']
+                      files[n]=b
+                  assert len(files)==len(m['files'])
+                  return files,m
+          target,tm=payload(update); prior,bm=payload(baseline)
+          r304=locate('r304','SOKNA-R304-PUBLIC-35IM-EMERGENCY-CANDIDATE-NOT-FIELD.zip','d7f702322de0890e5483cd987b46860441aba2612d9f4fdc763735b68951721c')
+          older,om=payload(r304)
+          assert {bm['target_managed_tree_sha256'],om['target_managed_tree_sha256']}=={x['managed_tree_sha256'] for x in tm['compatibility']['supported_baselines']}
+          with zipfile.ZipFile(clean) as z:
+              assert set(z.namelist())==set(target) and all(z.read(n)==v for n,v in target.items())
+          assert len(target)==251
+          files=target|{n:b for n,(b,_) in protected.items()}
+          work=pathlib.Path('/var/www/sokna-public-host-gate'); work.mkdir(exist_ok=True)
+          clean_out=work/'clean-exact-qa.zip'
+          with zipfile.ZipFile(clean_out,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for n,b in sorted(files.items()):
+                  i=zipfile.ZipInfo(n,(2026,11,24,0,0,0));i.external_attr=0o100644<<16
+                  z.writestr(i,b,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          assert h(clean_out.read_bytes())=='121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1'
+          for name,data,sub in [('root',files,''),('sub',files,'public/menu'),('upgrade',prior|{n:b for n,(b,_) in protected.items()},''),('older',older|{n:b for n,(b,_) in protected.items()},'public/menu'),('browser306',prior|{n:b for n,(b,_) in protected.items()},'')]:
+              root=work/name/'webroot'/sub;root.mkdir(parents=True)
+              for n,b in data.items():
+                  p=root/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b)
+          shutil.copyfile(update,work/'update-exact-qa.zip')
+          # Freeze a distribution-format candidate before testing. Payload bytes remain identical.
+          with zipfile.ZipFile(update) as z:
+              rows={n:z.read(n) for n in z.namelist()}
+          final=json.loads(rows['manifest.json']); final['provenance'].update(installation_authorized=True,release_qualification='CONTROLLED_OPERATOR_DISTRIBUTION_PENDING_EXACT_GATE',offline_qualified=False,production_host_qualified=False,qualification_qa_run='EXTERNAL_EXACT_GATE_RECEIPT_REQUIRED',host_operator_note='Installer must check exact supported origin, backup, health and recovery; no automatic deployment. Distribution requires matching external gate receipt.')
+          rows['manifest.json']=(json.dumps(final,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          candidate=work/'update-exact-qa.zip'
+          with zipfile.ZipFile(candidate,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for n,b in sorted(rows.items()):
+                  i=zipfile.ZipInfo(n,(2026,11,24,0,0,0));i.create_system=3;i.external_attr=0o100644<<16
+                  z.writestr(i,b,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+          assert payload(candidate)[0]==target
+          final_sha=h(candidate.read_bytes())
+          print('FROZEN_PUBLIC_OPERATOR_CANDIDATE_SHA',final_sha)
+          (r/'verified-clean').mkdir(exist_ok=True)
+          shutil.copyfile(clean_out,r/'verified-clean'/'SOKNA-PUBLIC-35IO-CLEAN-EXACT-CURRENT-QA-NOT-INSTALL.zip')
+          (work/'contract.json').write_text(json.dumps({'candidate_sha256':final_sha,'target':tm['version'],'baseline':bm['version'],'older':om['version'],'older_tree':om['target_managed_tree_sha256'],'target_tree':tm['target_managed_tree_sha256'],'protected':{n:s for n,(_,s) in protected.items()}}))
+          print('PASS exact original candidate + 6 canonical files + exact clean ZIP SHA256')
+          PY
+      - name: Disposable real Apache/PHP with rewrite and MariaDB extensions
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
+          sudo a2enmod rewrite headers php8.3
+          printf 'upload_max_filesize=64M\npost_max_size=72M\n' | sudo tee /etc/php/8.3/apache2/conf.d/99-sokna-ci-upload.ini >/dev/null
+          sudo chown -R www-data:www-data /var/www/sokna-public-host-gate
+          for row in '18080 root' '18081 sub' '18082 upgrade' '18083 older' '18084 browser306'; do
+            read -r port name <<< "$row"
+            doc="/var/www/sokna-public-host-gate/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+          done
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+          sudo apache2ctl -S
+          curl --fail --silent --show-error --include http://127.0.0.1:18080/__sokna_route_probe__
+      - name: Actual Setup status, rewrite, install, pairing, MariaDB readback and duplicate-install rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib
+          work=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
+          for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu'),(18082,'upgrade',''),(18083,'older','/public/menu'),(18084,'browser306','')]:
+              origin=f'http://127.0.0.1:{port}{base}'
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  try:
+                      with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+                  except urllib.error.HTTPError as e:
+                      raise RuntimeError((name,path,e.code,e.read(1000).decode('utf-8','replace'))) from e
+              def post(action,body,want=200):
+                  req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+                  try:
+                      with op.open(req,timeout=30) as r:code=r.status; data=json.load(r)
+                  except urllib.error.HTTPError as e:code=e.code;data=json.load(e)
+                  assert code==want,(name,action,code,data.get('code'))
+                  return data
+              code,_,hdr=get('/__sokna_route_probe__');assert code==204 and hdr.get('X-Sokna-Route-Probe')=='ok'
+              if name not in ('upgrade','older','browser306'):
+                  code,html,_=get('/setup/index.php');assert code==200 and b'<!doctype html>' in html.lower()
+              _,raw,_=get('/setup/api.php?action=status');j=json.loads(raw);assert j['success'] and not j['setup']['installed'] and j['setup']['base_path']==base and j['preflight']['ok']
+              body={'csrf':j['csrf'],'db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_'+name,'user':'root','pass':'sokna-disposable-public-host-ci'},'create_database':True,'routing_probe_ok':True,'owner_password':'disposable-owner-CI-only-20261124','emergency_password':'disposable-emergency-CI-only-20261124','storage_dir':'storage'}
+              installed=post('install',body);assert installed['success'] and installed['installed'] and installed['owner_initialized'] and not installed['paired']
+              _,raw,_=get('/setup/api.php?action=status');s=json.loads(raw);assert s['setup']['installed'] and s['setup']['state']=='ready_to_pair'
+              assert post('install',body,409)['code']=='already_installed'
+              pair=post('pair',{'pairing_code':installed['pairing_code'],'installation_id':'sokna-ci-'+name,'shared_secret':'disposable-CI-pair-secret-only-0123456789','display_name':'QA only'})
+              assert pair['success'] and pair['paired']
+              _,raw,_=get('/health');health=json.loads(raw);want=c['baseline'] if name in ('upgrade','browser306') else c['older'] if name=='older' else c['target']
+              assert health['ok'] and health['database']=='ready' and health['applied_migrations']==health['catalog_migrations']==11 and health['pending_migrations']==0 and health['emergency_ready'] and health['version']==want,(name,health)
+              print('PASS actual Apache Setup, pairing and health',name,base or '/')
+          PY
+      - name: Real R306 to 35io Routine recovery and independent Emergency bridge on disposable MariaDB
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >"$RUNNER_TEMP/operate.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          $root='/var/www/sokna-public-host-gate/upgrade/webroot';
+          $pkg='/var/www/sokna-public-host-gate/update-exact-qa.zip';
+          $contract=json_decode(file_get_contents('/var/www/sokna-public-host-gate/contract.json'),true,512,JSON_THROW_ON_ERROR);
+          require $root.'/bootstrap.php';
+          $cfg=require $root.'/config.php';
+          $core=sokna_public_bootstrap($cfg);
+          $routine=$core->routinePublicUpdates();
+          $health=fn():array=>(new \Sokna\PublicEdge\Health\PublicHealthService($core->database(),$root,$cfg['app']['storage_dir']))->status()['body'];
+          require_once $root.'/src/Update/IndependentEmergencyRoutineBridge.php';
+          $bridge=new \Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge($routine,$cfg['app']['storage_dir'],fn():array=>$core->migrations()->pendingVersions(),$health);
+          $op=$argv[1];
+          if($op==='routine-stage') $result=$routine->stageUploadedDeltaZip($pkg,'disposable-ci',true);
+          elseif($op==='routine-activate') $result=$routine->activateStaged('disposable-ci');
+          elseif($op==='routine-rollback') $result=$routine->rollback('disposable-ci');
+          elseif($op==='emergency-stage') $result=$bridge->stageUploadedZip($pkg,'disposable-ci');
+          elseif($op==='emergency-activate') $result=$bridge->activateStaged('disposable-ci');
+          elseif($op==='emergency-commit') $result=$bridge->commitPending('disposable-ci');
+          else throw new RuntimeException('unexpected QA operation');
+          $s=$routine->snapshot();
+          foreach($contract['protected'] as $n=>$sha) if(hash_file('sha256',$root.'/'.$n)!==$sha) throw new RuntimeException('protected_changed');
+          if(str_ends_with($op,'-activate') && (!is_array($s['pending_verification']) || $s['managed_tree_sha256']!==$contract['target_tree'])) throw new RuntimeException('activation_identity');
+          if($op==='routine-rollback' && ($s['current_version']!==$contract['baseline'] || $s['managed_tree_matches_expected']!==true || $s['pending_verification']!==null)) throw new RuntimeException('rollback_identity');
+          if($op==='emergency-commit' && ($s['current_version']!==$contract['target'] || $s['active_version']!==$contract['target'] || $s['managed_tree_sha256']!==$contract['target_tree'] || $s['pending_verification']!==null)) throw new RuntimeException('commit_identity');
+          echo json_encode(['operation'=>$op,'version'=>$s['current_version'],'tree'=>$s['managed_tree_sha256'],'pending'=>is_array($s['pending_verification']),'health'=>$health()],JSON_THROW_ON_ERROR)."\n";
+          PHP
+          sudo install -o www-data -g www-data -m 0640 "$RUNNER_TEMP/operate.php" /var/www/sokna-public-host-gate/operate.php
+          for op in routine-stage routine-activate routine-rollback emergency-stage emergency-activate emergency-commit; do
+            sudo -u www-data php /var/www/sokna-public-host-gate/operate.php "$op" | tee -a "$RUNNER_TEMP/public-lifecycle-receipt.jsonl"
+            curl --fail --silent --show-error http://127.0.0.1:18082/health | python3 -c "import json,sys; j=json.load(sys.stdin); assert j['ok'] and j['database']=='ready' and j['pending_migrations']==0 and j['applied_migrations']==11; print('HTTP_READBACK_PASS',j['version'])"
+          done
+          echo 'PASS isolated core lifecycle and bridge; authenticated Emergency browser route not claimed'
+      - name: Reconstruct the already-installed origin ledger from verified baseline manifests (disposable fixture only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -u www-data python3 - <<'PY'
+          import pathlib,json,hashlib
+          w=pathlib.Path('/var/www/sokna-public-host-gate'); c=json.loads((w/'contract.json').read_text())
+          for name,sub,version,expected in [('browser306','',c['baseline'],'7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce'),('older','public/menu',c['older'],c['older_tree'])]:
+              root=w/name/'webroot'/sub
+              assert (root/'VERSION.txt').read_text().strip()==version
+              # No private runtime files are used in reconstructing the old
+              # installed code identity. Every managed file came from exact
+              # SHA-pinned origin ZIP; validate the full managed tree via its
+              # manifest readback and the HTTP health on the next step.
+              d=root/'storage/routine-update-v2';d.mkdir(parents=True,exist_ok=True)
+              state=d/'state.json'
+              if state.exists():
+                  before=json.loads(state.read_text())
+                  assert before.get('active_version') in ('',None,version)
+                  assert before.get('active_managed_tree_sha256') in ('',None,expected)
+                  assert all(before.get(k) is None for k in ('staged','pending_verification','db_forward_fence','activation_journal'))
+              state.write_text(json.dumps({'format':'sokna-public-routine-update-state-v2','schema_version':2,'active_version':version,'active_managed_tree_sha256':expected,'previous_version':'','lkg_recovery_id':'','staged':None,'pending_verification':None,'activation_journal':None,'db_forward_fence':None,'history':[]}))
+              print('RECONSTRUCTED_EXACT_HISTORICAL_ORIGIN_LEDGER',name,expected)
+          PY
+          sudo chown -R www-data:www-data /var/www/sokna-public-host-gate/browser306/webroot/storage/routine-update-v2 /var/www/sokna-public-host-gate/older/webroot/public/menu/storage/routine-update-v2
+      - name: Authenticated protected Emergency browser route on both supported origins
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo -u www-data python3 - <<'PY' | tee "$RUNNER_TEMP/public-authenticated-emergency-receipt.jsonl"
+          import pathlib,hashlib,json,urllib.request,urllib.parse,urllib.error,http.cookiejar,re
+          work=pathlib.Path('/var/www/sokna-public-host-gate');c=json.loads((work/'contract.json').read_text())
+          pkg=work/'update-exact-qa.zip';sha=hashlib.sha256(pkg.read_bytes()).hexdigest()
+          assert sha==c['candidate_sha256']
+          for name,port,sub,origin in [('browser306',18084,'',c['baseline']),('older',18083,'/public/menu',c['older'])]:
+              base=f'http://127.0.0.1:{port}{sub}';root=work/name/'webroot'/sub.lstrip('/')
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  with op.open(base+path,timeout=45) as r:return r.read()
+              def post(action,fields=None,upload=False):
+                  html=get('/emergency.php').decode();m=re.search(r'<input[^>]*name="csrf"[^>]*value="([a-f0-9]{48})"',html)
+                  assert m,('CSRF_MISSING',name,action)
+                  fields=dict(fields or {},csrf=m.group(1))
+                  if upload:
+                      b='----sokna-universal-ci-boundary'
+                      body=b''.join(('--'+b+'\r\nContent-Disposition: form-data; name="'+k+'"\r\n\r\n'+v+'\r\n').encode() for k,v in fields.items())
+                      body+=('--'+b+'\r\nContent-Disposition: form-data; name="package"; filename="candidate.zip"\r\nContent-Type: application/zip\r\n\r\n').encode()+pkg.read_bytes()+('\r\n--'+b+'--\r\n').encode()
+                      h={'Content-Type':'multipart/form-data; boundary='+b}
+                  else:body=urllib.parse.urlencode(fields).encode();h={'Content-Type':'application/x-www-form-urlencoded'}
+                  req=urllib.request.Request(base+'/emergency.php?action='+action,data=body,headers=h)
+                  with op.open(req,timeout=60) as r:
+                      assert r.status==200
+                      return r.read().decode()
+              assert json.loads(get('/health'))['version']==origin
+              assert 'دسترسی اضطراری' in get('/emergency.php').decode()
+              post('login',{'emergency_password':'disposable-emergency-CI-only-20261124'})
+              assert 'خروج امن' in get('/emergency.php').decode()
+              response=post('stage',upload=True)
+              if 'بسته با موفقیت اعتبارسنجی' not in response:
+                  import html
+                  safe=re.sub(r'<script.*?</script>|<style.*?</style>','',response,flags=re.S)
+                  print('STAGE_DIAGNOSTIC',name,html.unescape(re.sub(r'<[^>]+>',' ',safe))[-6000:])
+                  state=root/'storage/routine-update-v2/state.json'
+                  if state.is_file():
+                      q=json.loads(state.read_text());print('STATE', {k:q.get(k) for k in ('active_version','staged','pending_verification')})
+                  raise AssertionError('STAGE_REJECTED '+name)
+              assert 'فایل‌ها فعال شدند' in post('activate',{'confirmation':'activate'}),name
+              assert json.loads(get('/health'))['version']==c['target']
+              assert 'نسخه جدید' in post('commit',{'confirmation':'commit'}),name
+              state=json.loads((root/'storage/routine-update-v2/state.json').read_text())
+              assert state['active_version']==c['target'] and state['active_managed_tree_sha256']==c['target_tree']
+              assert all(state.get(k) is None for k in ('staged','pending_verification','db_forward_fence','activation_journal'))
+              for n,d in c['protected'].items():assert hashlib.sha256((root/n).read_bytes()).hexdigest()==d
+              health=json.loads(get('/health'));assert health['ok'] and health['applied_migrations']==11 and health['pending_migrations']==0
+              print(json.dumps({'status':'PASS','scope':'exact_zip','sha256':sha,'origin':origin,'origin_tree_sha256':c['older_tree'] if name=='older' else '7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce','authenticated_emergency_http':True,'layout':sub or '/','protected_files':6,'db_migrations':11}))
+          PY
+      - name: Admit exact Public operator ZIP and clean Web only after all checks succeed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,pathlib,shutil,os
+          w=pathlib.Path('/var/www/sokna-public-host-gate');r=pathlib.Path(os.environ['RUNNER_TEMP']);c=json.loads((w/'contract.json').read_text())
+          rows=[json.loads(line) for line in (r/'public-authenticated-emergency-receipt.jsonl').read_text().splitlines() if line.startswith('{')]
+          assert len(rows)==2 and {x['origin_tree_sha256'] for x in rows}=={c['older_tree'],'7ed171a36324f41ef51130749b021eaeb40b9f5b43955e1c309a4d155cba41ce'}
+          assert all(x['status']=='PASS' and x['sha256']==c['candidate_sha256'] and x['authenticated_emergency_http'] and x['protected_files']==6 and x['db_migrations']==11 for x in rows)
+          out=r/'public-operator';out.mkdir()
+          src=w/'update-exact-qa.zip';clean=r/'verified-clean'/'SOKNA-PUBLIC-35IO-CLEAN-EXACT-CURRENT-QA-NOT-INSTALL.zip'
+          h=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          assert h(src)==c['candidate_sha256'] and h(clean)=='121122166c761af7124199c0c47f11921e65cde3b7668ef0e097a91e817609a1'
+          shutil.copyfile(src,out/'SOKNA-PUBLIC-35IO-UNIVERSAL-UPDATE.zip')
+          shutil.copyfile(clean,out/'SOKNA-PUBLIC-35IO-CLEAN-WEB.zip')
+          d={'schema':'sokna-controlled-distribution-receipt-v1','release':'35io','scope':'Public','distribution_authorized':True,'deployment_authorized':False,'factory_run':os.environ['GITHUB_RUN_ID'],'operator_preflight_required':True,'host_support_required':False,'fresh_setup_note':'Independent Emergency requires a reconciled Routine ledger; first update from a new setup should use Routine if the ledger is not yet established. Historical origins were reconstructed only in disposable CI.','files':{p.name:h(p) for p in out.glob('*.zip')},'authenticated_emergency':rows}
+          (out/'RELEASE-RECEIPT.json').write_text(json.dumps(d,indent=2))
+          print(json.dumps(d,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-PUBLIC-35IO-CONTROLLED-OPERATOR-RELEASE
+          path: ${{ runner.temp }}/public-operator/*
+          if-no-files-found: error
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-PUBLIC-35IO-EXACT-CLEAN-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/verified-clean/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Apache diagnostics on failure (disposable host only)
+        if: failure()
+        run: |
+          sudo tail -n 100 /var/log/apache2/error.log || true
+          sudo apache2ctl -S || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-EXACT-PUBLIC-HOST-GATE-QA-RECEIPT-ONLY
+          path: |
+            ${{ runner.temp }}/public-lifecycle-receipt.jsonl
+            ${{ runner.temp }}/public-authenticated-emergency-receipt.jsonl
+          if-no-files-found: ignore
+          retention-days: 30

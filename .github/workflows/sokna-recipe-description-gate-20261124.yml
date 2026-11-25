@@ -1,0 +1,125 @@
+name: SOKNA recipe-derived catalog descriptions (disposable QA only)
+on:
+  push:
+    branches: [qa/sokna-consolidated-release-factory-20261124]
+    paths:
+      - '.github/workflows/sokna-recipe-description-gate-20261124.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  descriptions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-description-ci
+          MARIADB_DATABASE: sokna_ci_description
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, mbstring, zip, curl, gd
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CONSOLIDATED-EXACT-PREFLIGHT-NOT-INSTALL
+          run-id: 45334121276
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/target
+      - name: Seed exact current Local on disposable MariaDB
+        env:
+          SOKNA_CI_DB_PASS: disposable-description-ci
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,zipfile,io,hashlib
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])
+          p=list((r/'target').rglob('SOKNA-LOCAL-CONSOLIDATED-MAINTENANCE-PREFLIGHT-DO-NOT-INSTALL.zip'))
+          assert len(p)==1 and hashlib.sha256(p[0].read_bytes()).hexdigest()=='5a06b32bcd58b5753f5839a85244c0253281562ace6c33a1b104ed0104bb0dfd'
+          with zipfile.ZipFile(p[0]) as z:
+              with zipfile.ZipFile(io.BytesIO(z.read('artifacts/local/web.zip'))) as w:
+                  assert w.testzip() is None and len(w.namelist())==619
+                  w.extractall(r/'local')
+          PY
+          php qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local" sokna_ci_description setup 0088_historical_variant_order_snapshots
+      - name: Run both new migrations through the actual runner and compare old/new rows
+        env:
+          SOKNA_CI_DB_PASS: disposable-description-ci
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,shutil
+          r=pathlib.Path(os.environ['RUNNER_TEMP'])/'local'
+          p=r/'src/Core/Migrations.php';s=p.read_text()
+          old="|| str_starts_with($version, '0081_');"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"|| str_starts_with($version, '0081_') || in_array($version, ['0089_owner_approved_recipes_and_purchase_units','0090_recipe_based_item_descriptions'], true);"))
+          for p in pathlib.Path('qa/sokna-final-20261124/recipe-catalog').glob('00*.sql'):
+              shutil.copyfile(p,r/'database/migrations'/p.name)
+          PY
+          php <<'PHP'
+          <?php
+          declare(strict_types=1);
+          $pdo=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_description;charset=utf8mb4','root',getenv('SOKNA_CI_DB_PASS'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $a=function($ok,$label){if(!$ok)throw new RuntimeException($label);};
+          $rows=fn($sql)=>$pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+          $one=fn($sql)=>$pdo->query($sql)->fetchColumn();
+          $contract=json_decode(file_get_contents('docs/sokna-recipe-purchase-import-contract-20261124.json'),true,512,JSON_THROW_ON_ERROR);
+          $oldRecipes=(int)$one('SELECT COUNT(*) FROM inventory_recipe_versions');
+          $food=(int)$one("SELECT id FROM items WHERE item_code='1314' AND active=1");
+          $bar=(int)$one("SELECT id FROM items WHERE item_code='1104'");
+          $beef=(int)$one("SELECT id FROM inventory_items WHERE item_code='INV-028'");
+          $lettuce=(int)$one("SELECT id FROM inventory_items WHERE item_code='INV-035'");
+          $milk=(int)$one("SELECT id FROM inventory_items WHERE item_code='INV-003'");
+          $a($food&&$bar&&$beef&&$lettuce&&$milk,'fixture mapping');
+          // Synthetic existing records: no assertion that these are actual food recipes.
+          foreach([$food,$bar] as $id){
+              $pdo->prepare("UPDATE inventory_recipe_versions SET status='retired',retired_at=NOW() WHERE menu_item_id=? AND status='active'")->execute([$id]);
+              $pdo->prepare("INSERT INTO inventory_recipe_versions(menu_item_id,version_no,status,review_status,completeness_status,source_ref) SELECT ?,COALESCE(MAX(version_no),0)+1,'active','ready','complete','disposable_qa_fixture' FROM inventory_recipe_versions WHERE menu_item_id=?")->execute([$id,$id]);
+              $rid=(int)$pdo->lastInsertId();
+              $ins=$pdo->prepare("INSERT INTO inventory_recipe_components(recipe_version_id,inventory_item_id,quantity_base,quantity_status) VALUES(?,?,?,'known')");
+              if($id===$food){$ins->execute([$rid,$beef,1]);$ins->execute([$rid,$lettuce,50]);}else $ins->execute([$rid,$milk,123]);
+          }
+          $pdo->prepare("UPDATE items SET description='QA-OLD-DESCRIPTION' WHERE id IN (?,?)")->execute([$food,$bar]);
+          $before=$rows('SELECT * FROM items ORDER BY id');
+          $components=$rows('SELECT * FROM inventory_recipe_components ORDER BY id');
+          $versions=$rows('SELECT * FROM inventory_recipe_versions ORDER BY id');
+          $immutable=[];
+          foreach(['inventory_movements','inventory_supply_receipts','order_items','orders','inventory_balances'] as $table)$immutable[$table]=$rows("SELECT * FROM ".$table." ORDER BY 1");
+          $r=getenv('RUNNER_TEMP').'/local';
+          require $r.'/bootstrap.php';
+          $cfg=require dirname($r).'/config.php';
+          $core=sokna_local_bootstrap($cfg);
+          $applied=$core->migrations()->migrate();
+          $a($applied===['0089_owner_approved_recipes_and_purchase_units','0090_recipe_based_item_descriptions'],'actual migration order: '.json_encode($applied));
+          $a(count($rows('SELECT * FROM items'))===count($before)+1,'not exactly one new product');
+          $a((int)$one("SELECT COUNT(*) FROM items WHERE item_code='SOKNA-BLACK-MOJITO-20261124' AND price=275000 AND name='بلک موهیتو'")===1,'black mojito');
+          foreach($before as $old){$new=$rows("SELECT * FROM items WHERE id=".(int)$old['id'])[0];unset($old['description'],$old['updated_at'],$new['description'],$new['updated_at']);$a($new===$old,'existing menu field changed '.$old['id']);}
+          foreach($immutable as $table=>$old)$a($rows("SELECT * FROM ".$table." ORDER BY 1")===$old,'historical table changed '.$table);
+          foreach($components as $old)$a($rows("SELECT * FROM inventory_recipe_components WHERE id=".(int)$old['id'])[0]===$old,'old component overwritten');
+          foreach($versions as $old){$new=$rows("SELECT * FROM inventory_recipe_versions WHERE id=".(int)$old['id'])[0];unset($old['status'],$old['retired_at'],$new['status'],$new['retired_at']);$a($new===$old,'old recipe overwritten');}
+          $a((int)$one("SELECT COUNT(*) FROM inventory_recipe_versions WHERE source_ref='owner_approved_bar_recipes_20261124' AND status='active' AND review_status='ready'")===19,'19 active approved recipes');
+          foreach($contract['recipes'] as $recipe){
+              $code=$recipe['item_code']??'SOKNA-BLACK-MOJITO-20261124';
+              $st=$pdo->prepare("SELECT i.description,v.id,v.completeness_status FROM items i JOIN inventory_recipe_versions v ON v.menu_item_id=i.id AND v.status='active' AND v.source_ref='owner_approved_bar_recipes_20261124' WHERE i.item_code=?");$st->execute([$code]);$v=$st->fetch(PDO::FETCH_ASSOC);
+              $a(is_array($v),'missing recipe '.$code);
+              $a($v['description']===implode('، ',array_column($recipe['components'],'ingredient')),'bar names-only mismatch '.$code);
+              $want=[];foreach($recipe['components'] as $c){if($c['unit']!=='serving')$want[]=(int)$c['quantity'];}sort($want);
+              $got=array_map('intval',array_column($rows("SELECT quantity_base FROM inventory_recipe_components WHERE recipe_version_id=".(int)$v['id']),'quantity_base'));sort($got);
+              $a($want===$got,'recipe quantities mismatch '.$code);
+          }
+          $foodDesc=(string)$one("SELECT description FROM items WHERE id=".$food);
+          $a(str_contains($foodDesc,'1 عدد')&&str_contains($foodDesc,'50 گرم'),'food quantities absent');
+          $a((int)$one("SELECT COUNT(*) FROM inventory_recipe_versions WHERE menu_item_id=".$bar." AND source_ref='disposable_qa_fixture' AND status='retired'")===1,'old active not retired');
+          foreach(['بطری ۷۱۰ میلی‌لیتری'=>710,'کارتن ۱۲ بطری'=>8520] as $label=>$qty){$st=$pdo->prepare("SELECT COUNT(*) FROM inventory_purchase_units u JOIN inventory_items i ON i.id=u.inventory_item_id WHERE i.item_code='INV-062' AND u.name=? AND u.base_quantity=? AND u.active=1");$st->execute([$label,$qty]);$a((int)$st->fetchColumn()===1,'Vimto '.$label);}
+          $a($core->migrations()->migrate()===[],'non-idempotent migration replay');
+          echo json_encode(['historical_seed_recipes'=>$oldRecipes,'approved_recipes'=>19,'new_menu_rows'=>1,'food_quantity_check'=>'PASS','bar_descriptions'=>'PASS','historical_rows_preserved'=>true,'vimto_package_conversion'=>'PASS','migration_replay'=>'PASS','disposable_only'=>true],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
+          PHP
