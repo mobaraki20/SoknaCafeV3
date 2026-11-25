@@ -35,7 +35,7 @@ $core->adminControls()->saveUser(['id'=>$admin,'username'=>$loginName,'display_n
 $limitedName='qa-inventory-no-cost';$limitedPw=bin2hex(random_bytes(18));
 $core->adminControls()->saveUser(['username'=>$limitedName,'display_name'=>'QA limited stock','password'=>$limitedPw,'active'=>true,'capabilities'=>['inventory_view','remote_access']],$user);
 $roleCases=['cashier'=>['cashier_accounts'],'supervisor'=>['shift_supervision'],'stock'=>['inventory_view'],'cost'=>['inventory_view','inventory_cost_view'],'stock-supervisor'=>['shift_supervision','inventory_view'],'cost-supervisor'=>['shift_supervision','inventory_view','inventory_cost_view'],'staff-report'=>['staff_consumption_reports'],'floor'=>['orders_floor'],'prep'=>['preparation']];
-$accounts=[];foreach($roleCases as $key=>$caps){$name='qa-role-'.$key;$core->adminControls()->saveUser(['username'=>$name,'display_name'=>'QA '.$key,'password'=>$pw,'active'=>true,'capabilities'=>array_merge($caps,['remote_access'])],$user);$accounts[$key]=$name;}
+$accounts=[];foreach($roleCases as $key=>$caps){$name='qa-role-'.$key;$core->adminControls()->saveUser(['username'=>$name,'display_name'=>'QA '.$key,'password'=>$pw,'active'=>true,'capabilities'=>array_merge($caps,['remote_access']),'preparation_areas'=>$key==='prep'?['bar','kitchen']:[]],$user);$accounts[$key]=$name;}
 $assignment=$core->businessClock()->assignment();$day=$assignment['business_date'];
 $p->prepare('UPDATE table_sessions SET business_date=?,business_shift_key=?,business_shift_label=?,business_cutoff_snapshot=? WHERE id=?')->execute([$day,$assignment['shift_key'],$assignment['shift_label'],$assignment['cutoff'],$session]);
 // A real catalogue product with a preparation station; no mock orders or browser response interception.
