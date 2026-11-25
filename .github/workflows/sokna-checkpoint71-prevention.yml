@@ -35,6 +35,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 qa/checkpoint71/reconstruct.py
+          # Deliberate drift must not truncate the fixture row under strict SQL.
+          python3 - <<'PY'
+          import os,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'prevention-source/mariadb-test.php'
+          s=p.read_text()
+          old='MODIFY payload_hash CHAR(63) NOT NULL'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,'MODIFY payload_hash CHAR(65) NOT NULL'))
+          PY
           sudo apt-get update -qq
           sudo apt-get install -y php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
           mkdir "$RUNNER_TEMP/receipt"
