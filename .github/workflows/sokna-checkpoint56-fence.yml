@@ -1,0 +1,111 @@
+name: SOKNA checkpoint56 orphan fence read-only proof QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint56-fence.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  schema-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        db: ['10.6','11.4']
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.db }}
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-fence-qa
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_fence_ref
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact
+      - name: Verify exact source and isolate original eight migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/exact"
+          echo 'f65f3ca6d478a2d851b169f79583e66845f86ec9cbd93f1881420d51a6e16d85  PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
+          mkdir "$RUNNER_TEMP/public" "$RUNNER_TEMP/migrations8"
+          unzip -q PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip -d "$RUNNER_TEMP/public"
+          cp "$RUNNER_TEMP/public/database/migrations"/000[1-8]_*.sql "$RUNNER_TEMP/migrations8/"
+          cd "$RUNNER_TEMP/migrations8"
+          echo '5321b5aaf5f980e3559cf4493531d2254a973f7144c183e1882271403c4a0d54  0007_authority_epoch_fencing.sql' | sha256sum -c -
+          echo 'e1f896996172c50016c2b8235eb74caceece9e79a4dd966abf2d9aaee951cf9d  0008_public_user_ui_preferences.sql' | sha256sum -c -
+      - name: Positive and negative metadata proof, read-only privileges, historical identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/proof.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          require getenv('GITHUB_WORKSPACE').'/qa/checkpoint56/orphan_fence_readonly.php';
+          require getenv('RUNNER_TEMP').'/public/src/Core/Migrations.php';
+          use Sokna\PublicEdge\Core\Migrations;
+          function db(string $name,string $user='root',string $pass='disposable-fence-qa'):PDO{
+              return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4',$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          }
+          function reject(callable $fn,string $prefix):void{
+              try{$fn();}catch(RuntimeException $e){proofNeed(str_starts_with($e->getMessage(),$prefix),'WRONG_REJECTION: '.$e->getMessage());echo 'PASS rejection '.$prefix.PHP_EOL;return;}
+              throw new RuntimeException('UNEXPECTED_ADMISSION_'.$prefix);
+          }
+          $admin=db('sokna_fence_ref');
+          $admin->exec('CREATE DATABASE sokna_fence_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          // Match default collation on both independent test schemas.
+          $admin->exec('ALTER DATABASE sokna_fence_ref CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          $target=db('sokna_fence_restore');
+          $dir=getenv('RUNNER_TEMP').'/migrations8';
+          $expected=array_keys((new Migrations($admin,$dir))->catalog());
+          proofNeed(count($expected)===8,'CATALOG_COUNT');
+          (new Migrations($admin,$dir))->migrate();(new Migrations($target,$dir))->migrate();
+          $admin->exec("CREATE USER 'proof_reader'@'%' IDENTIFIED BY 'disposable-read-only-qa'");
+          $admin->exec("GRANT SELECT ON sokna_fence_ref.* TO 'proof_reader'@'%'");
+          $admin->exec("GRANT SELECT ON sokna_fence_restore.* TO 'proof_reader'@'%'");
+          $ro=db('sokna_fence_restore','proof_reader','disposable-read-only-qa');
+          $reference=schemaProof(db('sokna_fence_ref','proof_reader','disposable-read-only-qa'));
+          $actual=schemaProof($ro);
+          $receipt=compareProof($actual,$reference,$expected);
+          proofNeed($receipt['schema_matches_reference']&&!$receipt['fence_retirement_authorized'],'PROOF_SCOPE_WRONG');
+          try{$ro->exec("UPDATE schema_migrations SET version=version");throw new RuntimeException('READ_ONLY_PRIVILEGE_FAILURE');}
+          catch(PDOException $e){echo 'PASS database account cannot write ledger'.PHP_EOL;}
+          proofNeed(schemaProof($ro)===$actual,'PROOF_MUTATED_DATABASE');
+          $target->exec("UPDATE schema_migrations SET version='0008_wrong' WHERE version='0008_public_user_ui_preferences'");
+          reject(fn()=>compareProof(schemaProof($ro),$reference,$expected),'EXACT_LEDGER_MISMATCH');
+          $target->exec("UPDATE schema_migrations SET version='0008_public_user_ui_preferences' WHERE version='0008_wrong'");
+          $target->exec("ALTER TABLE installations MODIFY authority_state VARCHAR(25) NOT NULL DEFAULT 'active'");
+          reject(fn()=>compareProof(schemaProof($ro),$reference,$expected),'SCHEMA_METADATA_MISMATCH_columns');
+          $f=['transaction_id'=>'fixture-completed-transaction','schema_owner_version'=>'fixture-old-owner','pending_at_boundary'=>['0007_authority_epoch_fencing','0008_public_user_ui_preferences'],'policy'=>'forward_recovery_only'];
+          $tree=str_repeat('a',64);
+          $state=['db_forward_fence'=>$f,'active_version'=>'fixture-current','current_version'=>'fixture-current','managed_tree_matches_expected'=>true,'managed_tree_sha256'=>$tree,'expected_managed_tree_sha256'=>$tree,'staged'=>null,'pending_verification'=>null,'activation_journal'=>null,'interrupted_activation'=>false];
+          $history=['status'=>'COMMITTED_FENCE_RETAINED']+$f;
+          historicalFenceProof($state,$history);
+          $wrong=$history;$wrong['transaction_id']='different';
+          reject(fn()=>historicalFenceProof($state,$wrong),'HISTORICAL_COMMIT_IDENTITY_UNPROVEN');
+          $wrongState=$state;$wrongState['activation_journal']=['phase'=>'migration_failed'];
+          reject(fn()=>historicalFenceProof($wrongState,$history),'ACTIVE_TRANSACTION_activation_journal');
+          echo json_encode($receipt+['fixture_only'=>true,'historical_receipt_authenticated'=>false,'actual_home_verified'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR).PHP_EOL;
+          PHP
+          php "$RUNNER_TEMP/proof.php" | tee "$RUNNER_TEMP/receipt.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-FENCE-READONLY-MARIADB-${{ matrix.db }}-QA
+          path: ${{ runner.temp }}/receipt.txt
+          if-no-files-found: error
+          retention-days: 14
