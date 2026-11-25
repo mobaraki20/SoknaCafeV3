@@ -1,0 +1,20 @@
+name: SOKNA standard Windows runner diagnostic (no deploy)
+on:
+  push:
+    branches: [qa/actions-runner-diagnostic-20261126]
+    paths: ['.github/workflows/sokna-runner-diagnostic-20261126.yml']
+  workflow_dispatch:
+permissions: {}
+jobs:
+  windows-runner:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify standard runner and native tools
+        shell: pwsh
+        run: |
+          Write-Output "RUNNER_OS=$env:RUNNER_OS"
+          if ($env:RUNNER_OS -ne 'Windows') { throw 'NOT_WINDOWS' }
+          dotnet --info
+          if ($LASTEXITCODE -ne 0) { throw 'DOTNET_NOT_AVAILABLE' }
+          Write-Output 'WINDOWS_RUNNER_READY__NO_PRODUCT_BUILD_OR_DEPLOY'
