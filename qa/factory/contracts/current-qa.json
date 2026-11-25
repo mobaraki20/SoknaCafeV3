@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "source_sha256": "f54d05e3606852bf61ac25fc5cb8fb3b93b4a84794c791dcc90cbbd1196379bb",
+  "artifacts": {
+    "packages": {
+      "run": 45715494853,
+      "id": 15069153300,
+      "head": "a28112450ee37292ceae848a79d6739e1681562b",
+      "workflow": ".github/workflows/sokna-factory-evidence-intake.yml",
+      "name": "SOKNA-FACTORY-CURRENT-FOUR-EXACT-QA-NOT-INSTALL",
+      "sha256": "57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f"
+    },
+    "native": {
+      "run": 45714421467,
+      "id": 15068997056,
+      "head": "bd4035dfdb5cb4e9e18dce29aa54aca7152f3ce4",
+      "workflow": ".github/workflows/sokna-checkpoint62-intake.yml",
+      "name": "SOKNA-CHECKPOINT62-EXACT-COMPONENT-EVIDENCE-QA",
+      "sha256": "c0bdf261bd33d9bc6a8bb699dfac41ea8b8912ef71304ecec3d122b92780da53"
+    },
+    "admission": {
+      "run": 45714663165,
+      "id": 15069735733,
+      "head": "93b5a8dd432a8a71a5c121982abc3bc7bdf0cf72",
+      "workflow": ".github/workflows/sokna-checkpoint63-admission.yml",
+      "name": "SOKNA-CHECKPOINT63-EXACT-PACKAGE-QUARANTINE-QA",
+      "sha256": "c8de34f434d86581b74c7a73470d94adac03e03c8eb7336da10db3a2e4b1129f"
+    },
+    "helper": {
+      "run": 45710818450,
+      "id": 15067916193,
+      "head": "166c205820c62201c4fb8b37d42f480ef9f297d0",
+      "workflow": ".github/workflows/sokna-checkpoint59-infra.yml",
+      "name": "SOKNA-PREREQUISITES-105-QA2-CANDIDATE-NOT-INSTALL",
+      "sha256": "a2bd57c8935b391a18b0100ab9d2b300b5fd77cefe5562e19355b3c1d0abd5d6"
+    },
+    "infra": {
+      "run": 45710818450,
+      "id": 15067706712,
+      "head": "166c205820c62201c4fb8b37d42f480ef9f297d0",
+      "workflow": ".github/workflows/sokna-checkpoint59-infra.yml",
+      "name": "SOKNA-PREREQUISITES-105-QA2-REAL-INFRA-RECEIPT",
+      "sha256": "c24d64252987e929703d5a33a8fa5997f03f33ae94098dc707913c0fec0bed81"
+    }
+  },
+  "files": {
+    "local_update": {
+      "name": "LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip",
+      "sha256": "63f7db98d092fc7f40b785fbae0864aab810e3d277598de0794bff0bc92809a5"
+    },
+    "local_clean": {
+      "name": "LOCAL-FINAL-WEB-QA-DO-NOT-INSTALL.zip",
+      "sha256": "45b671f0d9f9689223f8d899a2f7c9af7de9493e7d44ad5a9ed21553227a03b4"
+    },
+    "public_update": {
+      "name": "PUBLIC-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip",
+      "sha256": "6099b60f9a5869d7cc24ca568a8be104139a10bb25b136882e5a40a77402e6d9"
+    },
+    "public_clean": {
+      "name": "PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip",
+      "sha256": "3198a800e00fb97888dde61014aab24129b5c78e3f0c938468223fe8e2667c8f"
+    }
+  },
+  "helper_version": "1.0.5-qa.2",
+  "helper_sha256": "e36a7f5507ca6ff44614d8cef06f057462f80336969bee47b69e33fcf0bd91a3",
+  "local_migrations": 93,
+  "public_migrations": 12,
+  "origins": {
+    "R301": {
+      "tree": "159b20c33d9b8d92a0a53f5ab1a91bcf8ca60e6a446b836636d66dbd4213193a",
+      "ledger": 83
+    },
+    "R304": {
+      "tree": "9de2777162d05b0fa16e41d6c06380c8b039725f88a193bba23223574f9c2d51",
+      "ledger": 83
+    },
+    "R306": {
+      "tree": "63df287e865ac0503fd21dea275a4714c1138f0c11ee53834522b7cb3d060d7c",
+      "ledger": 83
+    },
+    "R307": {
+      "tree": "5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186",
+      "ledger": 83
+    },
+    "R3": {
+      "tree": "dd9789e783273944e17fa31b8dad283463678c526daa59f914849dea9f1e9889",
+      "ledger": 90,
+      "full_faults": true
+    },
+    "C2": {
+      "tree": "984f685043172eb3ccfe9dbe6e9c2178bc2ad1e69eaf1c9da7007cba03769d35",
+      "ledger": 91,
+      "full_faults": true
+    },
+    "GE": {
+      "tree": "47a022037744e5389042ef1616b34dcee1ce9fa0bc8cb56af07d51e419225bdc",
+      "ledger": 93
+    },
+    "R204": {
+      "tree": "f6edff0b649bf06209ac262808c402ffc13079100686359b8b06398a610054f6",
+      "ledger": 81,
+      "archive_only": true
+    }
+  },
+  "status": "QA_ONLY"
+}
