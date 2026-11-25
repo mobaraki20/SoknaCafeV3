@@ -1,0 +1,107 @@
+name: SOKNA checkpoint62 exact native evidence intake QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint62-intake.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  intake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-CHECKPOINT59-C2-BRIDGE-*-QA
+          run-id: 45711226474
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/evidence
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-CHECKPOINT60-*-BRIDGE-*-QA
+          run-id: 45711741086
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/evidence
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-CHECKPOINT61-*-BRIDGE-*-QA
+          run-id: 45713984575
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/evidence
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/packages
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT57-PINNED-WEB-WINDOWS-QA-RECEIPT
+          run-id: 45709360559
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/clean
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA2-REAL-INFRA-RECEIPT
+          run-id: 45710818450
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/infra
+      - name: Validate actual receipts and exact scope; do not grant admission
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,pathlib,hashlib,json,zipfile
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          pkg=p/'packages/LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip'
+          h=H(pkg.read_bytes())
+          assert h=='63f7db98d092fc7f40b785fbae0864aab810e3d277598de0794bff0bc92809a5'
+          with zipfile.ZipFile(pkg) as z:
+              m=json.loads(z.read('release-set.json')); web=z.read('artifacts/local/web.zip')
+          assert H(web)=='45b671f0d9f9689223f8d899a2f7c9af7de9493e7d44ad5a9ed21553227a03b4'
+          assert m['for_install'] is False and m['production_pass'] is False
+          assert m['status']=='QUARANTINED_RELEASE_CANDIDATE'
+          origins={
+              'R301':(83,'159b20c33d9b8d92a0a53f5ab1a91bcf8ca60e6a446b836636d66dbd4213193a'),
+              'R304':(83,'9de2777162d05b0fa16e41d6c06380c8b039725f88a193bba23223574f9c2d51'),
+              'R306':(83,'63df287e865ac0503fd21dea275a4714c1138f0c11ee53834522b7cb3d060d7c'),
+              'R307':(83,'5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186'),
+              'R3':(90,'dd9789e783273944e17fa31b8dad283463678c526daa59f914849dea9f1e9889'),
+              'C2':(91,'984f685043172eb3ccfe9c2178bc2ad1e69eaf1c9da7007cba03769d35'),
+              'GE':(93,'47a022037744e5389042ef1616b34dcee1ce9fa0bc8cb56af07d51e419225bdc'),
+              'R204':(81,'f6edff0b649bf06209ac262808c402ffc13079100686359b8b06398a610054f6')}
+          assert {v[1] for k,v in origins.items() if k!='R204'}=={x['local']['managed_tree_sha256'] for x in m['supported_baselines']}
+          faults=['none','APACHE_STOPPED','DATABASE_BACKUP_VERIFIED','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED']
+          expected={(o,f) for o in origins for f in (faults if o in ('R3','C2') else ['none'])}
+          seen=set(); rows=[]
+          for f in sorted((p/'evidence').rglob('matrix-receipt.json')):
+              r=json.loads(f.read_text(encoding='utf-8-sig')); k=(r['origin'],r['fault'])
+              assert k in expected and k not in seen,k
+              seen.add(k); forward=k[1] not in ('APACHE_STOPPED','DATABASE_BACKUP_VERIFIED')
+              assert r['status']=='PASS' and r['candidate_sha256']==h and r['origin_tree_sha256']==origins[k[0]][1]
+              assert r['target_tree_sha256']==m['targets']['local']['managed_tree_sha256']
+              assert r['phase']==('COMMITTED' if forward else 'RECOVERED_TO_PREVIOUS_SLOT')
+              assert r['migrations']==(93 if forward else origins[k[0]][0])
+              assert r['independent_restore'] is True and len(r['backup_sha256'])==64
+              assert r['disposable_only'] is True and r['distribution_authorized'] is False
+              assert r['package_admission_tested'] is False and r['component_bridge_only'] is True
+              if k[0]=='R204': assert r['archive_origin_only'] is True
+              rows.append(r|{'receipt_sha256':H(f.read_bytes())})
+          assert seen==expected and len(seen)==18,(seen,expected)
+          clean=json.loads((p/'clean/checkpoint57-web-windows-receipt.json').read_text(encoding='utf-8-sig'))
+          assert clean['status']=='PASS' and clean['package_sha256']==H(web) and clean['db_migrations']==93 and clean['duplicate_rejected'] is True
+          assert clean['distribution_authorized'] is False and clean['native_exe_qualified'] is False
+          infra=json.loads((p/'infra/infra-receipt.json').read_text(encoding='utf-8-sig'))
+          assert infra['status']=='PASS' and all(infra[k] is True for k in ('fresh','repair','recover_service_registration','real_db_marker_preserved','apache_php_http'))
+          assert infra['operator_authorized'] is False
+          receipt={'status':'PASS_EXACT_COMPONENT_EVIDENCE_INTAKE','local_package_sha256':h,'local_web_sha256':H(web),'native_cases':rows,'declared_baselines_exercised':7,'archived_home_origin_exercised':True,'actual_home_identity_attested':False,'clean_web':clean,'infra':infra,'package_admission_tested':False,'distribution_authorized':False,'deployment_authorized':False,'public_home_fence_resolved':False}
+          (p/'evidence-intake.json').write_text(json.dumps(receipt,indent=2))
+          print('PASS 18 DISTINCT NATIVE CASES, EXACT WEB CLEAN AND INFRA EVIDENCE; NO PACKAGE ADMISSION')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT62-EXACT-COMPONENT-EVIDENCE-QA
+          path: ${{ runner.temp }}/evidence-intake.json
+          if-no-files-found: error
+          retention-days: 30
