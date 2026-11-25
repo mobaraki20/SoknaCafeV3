@@ -23,8 +23,8 @@ def fetch(c,root):
         with (root/(role+'.zip')).open('wb') as f:
             subprocess.run(['gh','api',f'repos/{repo}/actions/artifacts/{a["id"]}/zip'],stdout=f,check=True)
 def verify(c,root):
-    need(c['schema']==1 and c['status']=='QA_ONLY','QA_ONLY')
-    need(set(c['artifacts'])=={'packages','native','admission','helper','infra'},'ARTIFACT_ROLES')
+    need(c['schema']==2 and c['status']=='QA_ONLY','QA_ONLY')
+    need(set(c['artifacts'])=={'packages','native','admission','helper','infra','negative_matrix'},'ARTIFACT_ROLES')
     ds={}
     for role,a in c['artifacts'].items():
         b=(root/(role+'.zip')).read_bytes()
@@ -68,7 +68,11 @@ def verify(c,root):
     need(i['version']==c['helper_version'] and H(ds['helper'][i['file']])==i['sha256']==c['helper_sha256'],'HELPER_HASH')
     need(c['artifacts']['helper']['run']==c['artifacts']['infra']['run'] and infra==e['infra'] and infra['status']=='PASS' and all(infra[k] is True for k in ('fresh','repair','recover_service_registration','real_db_marker_preserved','apache_php_http')) and infra['operator_authorized'] is False,'INFRA_SCOPE')
     need(d['evidence_hashes']=={'native':H(ds['native']['evidence-intake.json']),'admission':H(ds['admission']['admission-proof.json']),'helper_exe':i['sha256']},'RECEIPT_HASH_BINDING')
-    return {'status':'QA_RECEIPTS_BOUND_RELEASE_HOLD','source_sha256':c['source_sha256'],'packages':c['files'],'native_cases':len(seen),'declared_baselines':len(baseline),'archived_origins':sum(bool(o.get('archive_only')) for o in origins.values()),'production_qualification_proven':False,'actual_panel_activation_proven':False,'public_live_fence_resolved':False,'actual_home_identity_attested':False,'distribution_authorized':False,'deployment_authorized':False}
+    neg=j(ds['negative_matrix']['negative-matrix.json'])
+    need(neg['status']=='PASS' and neg['package_sha256']==h and neg['scope']=='actual_readonly_native_verifier_negative_matrix','NEGATIVE_MATRIX_BINDING')
+    need(neg['case_count']==len(neg['cases']) and neg['case_count']>=80 and len({x['name'] for x in neg['cases']})==neg['case_count'] and all(x['status']=='PASS' and x['reason'] for x in neg['cases']),'NEGATIVE_MATRIX_CASES')
+    need(neg['production_qualification_proven'] is False and neg['canary_proven'] is False and neg['distribution_authorized'] is False,'NEGATIVE_MATRIX_SCOPE')
+    return {'status':'QA_RECEIPTS_BOUND_RELEASE_HOLD','source_sha256':c['source_sha256'],'packages':c['files'],'native_cases':len(seen),'native_negative_cases':neg['case_count'],'declared_baselines':len(baseline),'archived_origins':sum(bool(o.get('archive_only')) for o in origins.values()),'production_qualification_proven':False,'actual_panel_activation_proven':False,'public_live_fence_resolved':False,'actual_home_identity_attested':False,'distribution_authorized':False,'deployment_authorized':False}
 def main():
     ap=argparse.ArgumentParser();ap.add_argument('contract');ap.add_argument('archive_dir');ap.add_argument('receipt');ap.add_argument('--download',action='store_true');x=ap.parse_args()
     c=j(P(x.contract).read_bytes());root=P(x.archive_dir)
@@ -81,7 +85,8 @@ def main():
         ('missing_origin',lambda z:z['origins'].pop(next(iter(z['origins'])))),
         ('wrong_helper_hash',lambda z:z.update(helper_sha256='0'*64)),
         ('release_claim',lambda z:z.update(status='PRODUCTION')),
-        ('wrong_receipt_digest',lambda z:z['artifacts']['native'].update(sha256='0'*64))]:
+        ('wrong_receipt_digest',lambda z:z['artifacts']['native'].update(sha256='0'*64)),
+        ('wrong_negative_matrix_digest',lambda z:z['artifacts']['negative_matrix'].update(sha256='0'*64))]:
         altered=copy.deepcopy(c);mutate(altered)
         try:verify(altered,root)
         except ValueError as exc:print('PASS NEGATIVE',name,str(exc))
