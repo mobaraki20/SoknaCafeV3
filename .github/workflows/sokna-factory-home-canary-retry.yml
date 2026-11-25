@@ -1,0 +1,100 @@
+name: SOKNA factory controlled Home canary remaining R301 panel
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-home-canary-retry.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - {origin: R301, fault: none, ledger: '83', run: '44561325048', artifact: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT, file: SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/current
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - uses: actions/download-artifact@v4
+        with:
+          name: R204-EXACT-WINDOWS-CANDIDATE-NO-CAFE-AUTO-DEPLOY
+          run-id: 43513196061
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/home
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-REUSABLE-FACTORY-QA-RECEIPT
+          run-id: 45716869600
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/evidence
+      - name: Qualify exact controlled Home candidate via real native panel
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'|Select-Object -First 1
+          $target=Get-ChildItem "$env:RUNNER_TEMP/current" -Recurse -File -Filter 'LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip'|Select-Object -First 1
+          if(!$base -or !$target){throw 'PINNED_ARCHIVES_MISSING'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $homeArchive=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'|Select-Object -First 1
+          if(!$homeArchive){throw 'PINNED_HOME_ARCHIVE_MISSING'}
+          $receipt=Join-Path $env:RUNNER_TEMP 'evidence/reusable-factory-receipt.json'
+          $controlled=Join-Path $env:RUNNER_TEMP 'SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'
+          python qa/factory/build_home_canary.py $target.FullName $homeArchive.FullName $receipt $controlled
+          if($LASTEXITCODE -ne 0){throw 'CONTROLLED_BUILD_FAILED'}
+          $env:SOKNA_CURRENT_QA_ZIP=$controlled
+          $env:SOKNA_MATRIX_TARGET_ZIP=$controlled
+          python qa/factory/prepare_home_canary_native.py
+          if($LASTEXITCODE -ne 0){throw 'BRIDGE_PREPARATION_FAILED'}
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'BRIDGE_TEST_FAILED'}
+          }finally{Pop-Location}
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-HOME-CANARY-PANEL-${{ matrix.origin }}-QA
+          path: ${{ runner.temp }}/matrix-receipt.json
+          if-no-files-found: error
+          retention-days: 30
