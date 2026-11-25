@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright, expect
 fixture_path=Path(sys.argv[1]); f=json.loads(fixture_path.read_text()); out=Path(sys.argv[2]); out.mkdir(parents=True,exist_ok=True)
 results=[]
 report_headings={'overview':'ترکیب عملیات','operations':'عملیات و کیفیت سرویس','inventory':'انبار و بهای مصرف','margin':'حاشیه مشارکت سفارش‌ها','financial':'حساب مشتری و اقامتگاه'}
-stock_headings={'attention':'نیازمند تصمیم مدیر','quality':'کیفیت داده انبار و خرید','purchase':'نیازها و خرید','receive':'تحویل و ورود کالا','consume':'مصرف، ضایعات و اصلاح','stock':'شمارش باز','history':'تاریخچه حرکت‌های انبار'}
+stock_headings={'attention':'کالای فعال','quality':'کیفیت داده انبار و خرید','purchase':'نیازها و خرید','receive':'تحویل و ورود کالا','consume':'مصرف، ضایعات و اصلاح','stock':'شمارش باز','history':'تاریخچه حرکت‌های انبار'}
 page_headings={
  'catalog':{'items':'آیتم‌ها و خدمات','archive':'آرشیو کاتالوگ','categories':'دسته‌بندی‌ها','menus':'منوها','tags':'برچسب‌ها'},
  'system':{'health':'وضعیت کلی','updates':'به‌روزرسانی سامانه محلی','recovery':'ساخت نسخه پشتیبان'},
@@ -75,17 +75,24 @@ with sync_playwright() as p:
             routes={name:pair[0 if host=='local' else 1] for name,pair in shared.items()}
             routes.update(localonly if host=='local' else {'health':'/staff/health/'})
             for name,path in routes.items():
-                if name in ('hall','reports','dashboard'):continue # existing dedicated gates and evidence
+                if name!='inventory':continue # remaining case only; preserve earlier passing evidence
                 key=f'{host}-{width}-{name}'
                 def test():
                     errors=[];handler=lambda e:errors.append(str(e));page.on('pageerror',handler)
                     try:
                         goto(page,host,path);detail={'title':page.locator('h1').first.inner_text()}
+                        page.evaluate('document.fonts.ready')
+                        detail['typography']=page.evaluate("""()=>({family:getComputedStyle(document.body).fontFamily,faces:[...document.fonts].map(f=>({family:f.family,status:f.status,weight:f.weight})),resources:performance.getEntriesByType('resource').filter(e=>e.name.includes('font.php')).map(e=>({path:new URL(e.name).pathname,responseStatus:e.responseStatus||null,transferSize:e.transferSize}))})""")
+                        print('FONT_DIAG '+key+' '+json.dumps(detail['typography'],ensure_ascii=False),flush=True)
                         save(page,key+'-initial')
                         if name=='reports':detail.update(tabs(page,key,'[data-report-section-nav] [role=tab]','href','data-report-section',report_headings))
                         elif name=='inventory':
                             expect(page.locator('[data-operations-workspace]')).to_be_visible()
                             detail.update(tabs(page,key,'[data-ops-workflow]','data-ops-workflow','data-ops-workflow-view',stock_headings))
+                            page.locator('[data-tab="expenses"]').click()
+                            expect(page.locator('[data-panel="expenses"]')).to_be_visible()
+                            assert 'هزینه‌های کافه' in page.locator('[data-panel="expenses"]').inner_text()
+                            save(page,key+'-expenses')
                             assert page.locator('[data-ops-workflow-view="history"] [data-movement-load-more]').count()==1
                             assert page.locator('[data-ops-workflow-view="receive"] [data-movement-load-more]').count()==0
                         elif name=='preparation':
