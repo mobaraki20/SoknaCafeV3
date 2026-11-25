@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "source_sha256": "f54d05e3606852bf61ac25fc5cb8fb3b93b4a84794c791dcc90cbbd1196379bb",
   "artifacts": {
     "packages": {
@@ -41,6 +41,14 @@
       "workflow": ".github/workflows/sokna-checkpoint59-infra.yml",
       "name": "SOKNA-PREREQUISITES-105-QA2-REAL-INFRA-RECEIPT",
       "sha256": "c24d64252987e929703d5a33a8fa5997f03f33ae94098dc707913c0fec0bed81"
+    },
+    "negative_matrix": {
+      "run": 45716250822,
+      "id": 15069592992,
+      "head": "00d94bf36fa3f272b6008fe02aea5ffd2ac42656",
+      "workflow": ".github/workflows/sokna-factory-negative-matrix.yml",
+      "name": "SOKNA-FACTORY-80-NATIVE-NEGATIVE-QA",
+      "sha256": "ac68d194cf0cabcc5a3264af633185f0db6188acd2369af61abae17ad688ab16"
     }
   },
   "files": {
