@@ -82,11 +82,11 @@ jobs:
           $target=Get-ChildItem "$env:RUNNER_TEMP/current" -Recurse -File -Filter 'LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip'|Select-Object -First 1
           if(!$base -or !$target){throw 'PINNED_ARCHIVES_MISSING'}
           $env:SOKNA_BASELINE_ZIP=$base.FullName
-          $home=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'|Select-Object -First 1
-          if(!$home){throw 'PINNED_HOME_ARCHIVE_MISSING'}
+          $homeArchive=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-R204-LOCAL-231FB-61BASE-EXACT-WINDOWS-TECH-CANDIDATE.zip'|Select-Object -First 1
+          if(!$homeArchive){throw 'PINNED_HOME_ARCHIVE_MISSING'}
           $receipt=Join-Path $env:RUNNER_TEMP 'evidence/reusable-factory-receipt.json'
           $controlled=Join-Path $env:RUNNER_TEMP 'SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'
-          python qa/factory/build_home_canary.py $target.FullName $home.FullName $receipt $controlled
+          python qa/factory/build_home_canary.py $target.FullName $homeArchive.FullName $receipt $controlled
           if($LASTEXITCODE -ne 0){throw 'CONTROLLED_BUILD_FAILED'}
           $env:SOKNA_CURRENT_QA_ZIP=$controlled
           $env:SOKNA_MATRIX_TARGET_ZIP=$controlled
