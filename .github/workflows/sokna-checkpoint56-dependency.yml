@@ -1,0 +1,47 @@
+name: SOKNA Apache 2.4.71 replacement candidate admission QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint56-dependency.yml']
+permissions:
+  contents: read
+jobs:
+  verify-candidate:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify replacement candidate before any execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $name='httpd-2.4.71-261112-Win64-VS18.zip'
+          $hash='44961a929dff16b767b3adbcea55760a942a00239b2891dc55806be34029e1fc'
+          $size=14518924
+          $base='https://www.apachelounge.com/download/VS18/binaries/'
+          $dir=Join-Path $env:RUNNER_TEMP 'apache-candidate'
+          New-Item -ItemType Directory $dir|Out-Null
+          $zip=Join-Path $dir $name
+          $checks=Join-Path $dir 'vendor-checksum.txt'
+          & curl.exe --location --fail --silent --show-error --max-time 45 --output $checks ($base+$name+'.txt')
+          if($LASTEXITCODE -ne 0 -or !(Test-Path $checks)){throw 'VENDOR_CHECKSUM_UNAVAILABLE'}
+          $vendor=Get-Content $checks -Raw
+          if($vendor -notmatch ('(?i)'+$hash)){throw 'VENDOR_CHECKSUM_NOT_CONFIRMED'}
+          & curl.exe --location --fail --silent --show-error --max-time 90 --output $zip ($base+$name)
+          if($LASTEXITCODE -ne 0){throw 'VENDOR_DOWNLOAD_FAILED'}
+          $actual=(Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne $hash -or (Get-Item $zip).Length -ne $size){throw 'CANDIDATE_BYTES_MISMATCH'}
+          Expand-Archive $zip (Join-Path $dir 'expanded')
+          $httpd=Join-Path $dir 'expanded/Apache24/bin/httpd.exe'
+          $output=(& $httpd -v 2>&1|Out-String)
+          if($LASTEXITCODE -ne 0 -or $output -notmatch 'Apache/2\.4\.71'){throw 'CANDIDATE_NATIVE_VERSION_MISMATCH'}
+          Write-Host $output
+          @{status='CANDIDATE_ADMISSION_ONLY';sha256=$actual;size=$size;vendor_checksum_confirmed=$true;native_version=$output;old_lock_unchanged=$true;release_authorized=$false}|ConvertTo-Json|Set-Content (Join-Path $dir 'candidate-receipt.json')
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          path: |
+            ${{ runner.temp }}/apache-candidate/*.zip
+            ${{ runner.temp }}/apache-candidate/*.txt
+            ${{ runner.temp }}/apache-candidate/*.json
+          if-no-files-found: error
+          retention-days: 7
