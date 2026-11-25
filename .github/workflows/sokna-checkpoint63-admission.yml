@@ -1,0 +1,40 @@
+name: SOKNA checkpoint63 exact quarantined package preflight QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint63-admission.yml','qa/checkpoint63/**']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  preflight:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/packages
+      - name: Compile against pinned unmodified maintenance core and verify exact candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Copy-Item qa/checkpoint63/AdmissionGateQA.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          dotnet run --project native-src/qa/sokna-r186/R186Harness.csproj --configuration Release -- "$env:RUNNER_TEMP/packages/LOCAL-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip" "$env:RUNNER_TEMP/exact-admission-qa" "$env:RUNNER_TEMP/admission-proof.json"
+          if($LASTEXITCODE -ne 0){throw 'ACTUAL_PACKAGE_GATE_QA_FAILED'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT63-EXACT-PACKAGE-QUARANTINE-QA
+          path: ${{ runner.temp }}/admission-proof.json
+          if-no-files-found: error
+          retention-days: 30
