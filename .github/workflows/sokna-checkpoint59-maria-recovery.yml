@@ -1,0 +1,106 @@
+name: SOKNA checkpoint59 MariaDB existing-data Windows service registration proof
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint59-maria-recovery.yml']
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - name: Test original and corrected registration on exact MariaDB with preserved data
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $ProgressPreference='SilentlyContinue'
+          $root=Join-Path $env:RUNNER_TEMP 'sokna-maria-recovery-qa'
+          New-Item -ItemType Directory $root|Out-Null
+          $msi=Join-Path $root 'mariadb.msi'
+          $hash='4d92fb5f16c0ec8d5a9fc1efdb33a377eaa712d6bce97451e151465c3041ccac'
+          $urls=@('https://dlm.mariadb.com/4699687/MariaDB/mariadb-11.4.12/winx64-packages/mariadb-11.4.12-winx64.msi','https://downloads.mariadb.org/rest-api/mariadb/11.4.12/mariadb-11.4.12-winx64.msi')
+          $ok=$false
+          foreach($url in $urls){
+            & curl.exe --location --fail --silent --show-error --max-time 90 --output $msi $url
+            if($LASTEXITCODE -eq 0 -and (Get-Item $msi).Length -eq 87056384 -and (Get-FileHash $msi -Algorithm SHA256).Hash.ToLowerInvariant() -eq $hash){$ok=$true;break}
+          }
+          if(!$ok){throw 'PINNED_MARIA_MSI_UNAVAILABLE'}
+          $extract=Join-Path $root 'extract'
+          New-Item -ItemType Directory $extract|Out-Null
+          $p=Start-Process msiexec.exe -ArgumentList @('/a',('"' + $msi + '"'),'/qn','/norestart',('TARGETDIR="' + $extract + '"')) -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'MSI_EXTRACT_FAILED'}
+          $bins=@(Get-ChildItem $extract -Recurse -File -Filter mariadbd.exe)
+          if($bins.Count -ne 1){throw 'SERVER_EXTRACT_AMBIGUOUS'}
+          $server=$bins[0].FullName
+          $bin=Split-Path $server
+          $data=Join-Path $root 'Data'
+          $name='SoknaMariaRecoveryQA'
+          $port=39755
+          if(Get-Service $name -ErrorAction SilentlyContinue){throw 'PREEXISTING_SERVICE'}
+          $client=Join-Path $bin 'mariadb.exe'
+          $init=Join-Path $bin 'mariadb-install-db.exe'
+          function Sql([string]$q){
+            $v=& $client --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$port" --user=root --batch --skip-column-names --execute=$q
+            if($LASTEXITCODE -ne 0){throw 'SQL_FAILED'}
+            return $v
+          }
+          function Wait-Db {
+            for($i=0;$i -lt 30;$i++){
+              & (Join-Path $bin 'mariadb-admin.exe') --no-defaults --protocol=tcp --host=127.0.0.1 "--port=$port" --user=root ping 2>$null|Out-Null
+              if($LASTEXITCODE -eq 0){return}
+              Start-Sleep -Seconds 1
+            }
+            throw 'DATABASE_START_TIMEOUT'
+          }
+          function Remove-TestService{
+            $svc=Get-Service $name -ErrorAction SilentlyContinue
+            if($svc){
+              if($svc.Status -ne 'Stopped'){Stop-Service $name -ErrorAction Stop}
+              & sc.exe delete $name|Out-Null
+              if($LASTEXITCODE -ne 0){throw 'SERVICE_DELETE_FAILED'}
+            }
+            for($i=0;$i -lt 20;$i++){if(!(Get-Service $name -ErrorAction SilentlyContinue)){return};Start-Sleep -Milliseconds 500}
+            throw 'SERVICE_STILL_PRESENT'
+          }
+          try{
+            & $init "--datadir=$data" "--service=$name" "--port=$port" --silent
+            if($LASTEXITCODE -ne 0){throw 'INIT_FAILED'}
+            Start-Service $name
+            Wait-Db
+            Sql 'CREATE DATABASE qa; CREATE TABLE qa.marker(id INT PRIMARY KEY, value VARCHAR(50)); INSERT INTO qa.marker VALUES(1,"retained-data");'|Out-Null
+            $initial=(Sql 'SELECT value FROM qa.marker WHERE id=1')
+            if($initial -ne 'retained-data'){throw 'INITIAL_MARKER_FAILED'}
+            $ini=Join-Path $data 'my.ini'
+            if(!(Test-Path $ini)){throw 'MISSING_MY_INI'}
+            $iniHash=(Get-FileHash $ini).Hash
+            Remove-TestService
+            $orig=Start-Process $server -ArgumentList @(('--defaults-file="'+$ini+'"'),'--install',$name) -PassThru -RedirectStandardOutput "$root/original.stdout" -RedirectStandardError "$root/original.stderr"
+            $finished=$orig.WaitForExit(15000)
+            if(!$finished){$orig.Kill($true);$orig.WaitForExit()}
+            $oldRegistered=[bool](Get-Service $name -ErrorAction SilentlyContinue)
+            Write-Host "ORIGINAL_RETURNED=$finished REGISTERED=$oldRegistered EXIT=$($orig.ExitCode)"
+            if(Test-Path "$root/original.stderr"){Get-Content "$root/original.stderr" -Tail 12}
+            if($oldRegistered){Remove-TestService}
+            $new=Start-Process $server -ArgumentList @('--install',$name,('--defaults-file="'+$ini+'"')) -PassThru -RedirectStandardOutput "$root/corrected.stdout" -RedirectStandardError "$root/corrected.stderr"
+            if(!$new.WaitForExit(15000)){$new.Kill($true);throw 'CORRECTED_REGISTRATION_TIMEOUT'}
+            if($new.ExitCode -ne 0 -or !(Get-Service $name -ErrorAction SilentlyContinue)){Get-Content "$root/corrected.stderr";throw 'CORRECTED_REGISTRATION_FAILED'}
+            $svc=Get-CimInstance Win32_Service -Filter "Name='$name'"
+            if($svc.PathName -notlike "*$ini*"){throw 'SERVICE_CONFIG_PATH_NOT_BOUND'}
+            Start-Service $name
+            Wait-Db
+            if((Sql 'SELECT value FROM qa.marker WHERE id=1') -ne $initial -or (Get-FileHash $ini).Hash -ne $iniHash){throw 'EXISTING_DATA_OR_CONFIG_CHANGED'}
+            @{status='PASS';original_returned=$finished;original_registered=$oldRegistered;corrected_registered=$true;existing_data_preserved=$true;config_preserved=$true;disposable_only=$true}|ConvertTo-Json|Set-Content "$root/receipt.json"
+            Write-Host 'PASS EXACT MARIADB SERVICE REREGISTRATION WITH EXISTING DATA'
+          }finally{Remove-TestService}
+          $global:LASTEXITCODE=0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CHECKPOINT59-MARIA-RECOVERY-PROOF
+          path: |
+            ${{ runner.temp }}/sokna-maria-recovery-qa/receipt.json
+            ${{ runner.temp }}/sokna-maria-recovery-qa/*.stdout
+            ${{ runner.temp }}/sokna-maria-recovery-qa/*.stderr
+          if-no-files-found: warn
+          retention-days: 7
