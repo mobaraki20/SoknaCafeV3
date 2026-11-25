@@ -21,13 +21,14 @@ with sync_playwright() as p:
   form.locator('[name=header_title]').fill('QA '+kind+' title')
   form.locator('[name=header_subtitle]').fill('QA subtitle')
   form.locator('[name=footer]').fill('QA footer')
+  form.locator('details.sc-print-template-disclosure').first.locator('summary').click()
   font_fields={'base_font_size':30,'title_font_size':40,'header_subtitle_font_size':34,'table_font_size':42,'notes_font_size':38,'footer_font_size':44,'totals_font_size':46,'settlement_font_size':36,'meta_font_size':32,'line_spacing':8,'margin':10}
   for key,value in font_fields.items():
    persian=str(value).translate(str.maketrans('0123456789','۰۱۲۳۴۵۶۷۸۹'))
    form.locator('[name='+key+']').fill(persian)
   form.locator('[name=show_section_titles]').select_option('1')
   form.locator('[name=show_order_number]').select_option('1')
-  form.locator('[name=show_settlement_label]').select_option('1')
+  if kind=='customer':form.locator('[name=show_settlement_label]').select_option('1')
   form.locator('[name=item_layout]').select_option('columnar-notes' if kind=='preparation' else 'single-line')
   if kind=='customer':form.locator('[name=merchant_card_number]').fill('۶۰۳۷۹۹۱۲۳۴۵۶۷۸۹۰')
   for paper in ['80','58']:

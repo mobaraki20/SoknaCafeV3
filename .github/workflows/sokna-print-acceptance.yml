@@ -70,6 +70,7 @@ jobs:
           path: ${{ runner.temp }}/print-evidence/
           retention-days: 90
   windows-renderer:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
