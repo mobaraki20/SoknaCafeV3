@@ -1,5 +1,5 @@
 """Disposable Windows CI only: run the shipped prerequisites helper through its native UI."""
-import os,sys,json,time,secrets,subprocess,socket
+import os,sys,json,time,secrets,subprocess,socket,re
 from pathlib import Path
 from pywinauto.application import Application
 assert os.environ.get('GITHUB_ACTIONS')=='true'
@@ -18,16 +18,27 @@ def run_mode(mode,title):
  app=Application(backend='win32').start(str(exe),wait_for_idle=False)
  try:
   dlg=app.window(title='آماده‌سازی زیرساخت SOKNA');dlg.wait('exists ready',timeout=40)
-  fields=dlg.descendants(class_name_re=r'WindowsForms10\.EDIT\..*')
-  roots=[w for w in fields if ':\\' in w.window_text()]
-  assert len(roots)==1,'cannot identify root edit'
-  roots[0].set_edit_text(str(root))
-  if mode=='install':
+  # Enumerate actual child classes rather than assume the WinForms class casing.
+  # Wait for child handles; the top-level form can be ready before these exist.
+  roots=[];pw=[]
+  for attempt in range(20):
+   controls=dlg.descendants()
+   fields=[w for w in controls if w.class_name().lower()=='edit' or '.edit.' in w.class_name().lower() or w.friendly_class_name()=='Edit']
    pw=[w for w in fields if w.style() & 0x20]
+   roots=[w for w in fields if not (w.style() & 0x20) and re.search(r'[A-Za-z]:[\\/]',w.window_text())]
+   if len(roots)==1 and (mode!='install' or len(pw)==2):break
+   time.sleep(0.5)
+  print('UI control inventory:',[(w.class_name(),w.friendly_class_name(),hex(w.style()),bool(re.search(r'[A-Za-z]:[\\/]',w.window_text())) if not (w.style() & 0x20) else False) for w in fields],flush=True)
+  assert len(roots)==1,'cannot identify unique root edit'
+  roots[0].set_edit_text(str(root))
+  assert roots[0].window_text()==str(root),'root edit readback mismatch'
+  if mode=='install':
    assert len(pw)==2,'password controls unavailable'
    for w in pw:w.set_edit_text(password)
   dlg.child_window(title=title).wrapper_object().post_message(0x00F5)
+  time.sleep(0.5)
   dlg.child_window(title='شروع').wrapper_object().post_message(0x00F5)
+  print('UI requested operation:',mode,flush=True)
   deadline=time.monotonic()+600
   while time.monotonic()<deadline:
    if state.exists():
