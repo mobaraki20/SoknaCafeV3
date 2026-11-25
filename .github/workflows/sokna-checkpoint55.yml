@@ -2,7 +2,7 @@ name: SOKNA checkpoint55 exact artifact bridge and locked dependency QA
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
-    paths: ['.github/workflows/sokna-checkpoint55.yml','qa/checkpoint55/**']
+    paths: ['qa/checkpoint55/transfer.b64','qa/checkpoint55/reconstruct.py']
 permissions:
   contents: read
   actions: read
