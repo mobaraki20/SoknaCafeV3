@@ -2,7 +2,7 @@ name: SOKNA checkpoint56 exact built prerequisite native retry QA
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
-    paths: ['.github/workflows/sokna-checkpoint56-infra-retry.yml']
+    paths: ['.github/workflows/sokna-checkpoint56-infra-retry.yml','qa/checkpoint56/windows-ui.py']
 permissions:
   contents: read
   actions: read
