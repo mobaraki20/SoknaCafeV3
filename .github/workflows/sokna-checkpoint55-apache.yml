@@ -1,0 +1,41 @@
+name: SOKNA exact Apache acquisition via redirect-aware transport
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint55-apache.yml']
+permissions:
+  contents: read
+jobs:
+  download:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check exact source with curl redirect handling and immutable SHA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $a=(Get-Content platform/windows/release-lock.json -Raw|ConvertFrom-Json).artifacts|Where-Object dependency -eq apache
+          $urls=@($a.source_url,('https://apachelounge.com/download/VS18/binaries/'+$a.filename),('https://www.apachelounge.com/download/VS18/binaries/archive/'+$a.filename))
+          $p=Join-Path $env:RUNNER_TEMP $a.filename
+          foreach($url in $urls){
+            Remove-Item $p -ErrorAction SilentlyContinue
+            & curl.exe --location --fail --silent --show-error --max-time 45 --retry 1 --output $p --write-out "HTTP=%{http_code} EFFECTIVE_URL=%{url_effective}\n" $url
+            if($LASTEXITCODE -eq 0 -and (Test-Path $p)){
+              $hash=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
+              Write-Host "SIZE=$((Get-Item $p).Length) SHA256=$hash"
+              if((Get-Item $p).Length -eq $a.size -and $hash -eq $a.sha256){
+                New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/verified" -Force|Out-Null
+                Copy-Item $p "$env:RUNNER_TEMP/verified/"
+                Write-Host 'PASS EXACT LOCKED APACHE'
+                exit 0
+              }
+            }
+          }
+          throw 'EXACT_LOCKED_APACHE_NOT_AVAILABLE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-VERIFIED-LOCKED-APACHE-QA
+          path: ${{ runner.temp }}/verified/*
+          if-no-files-found: error
+          retention-days: 7
