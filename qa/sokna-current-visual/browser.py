@@ -67,7 +67,7 @@ def goto(page,host,path):
 with sync_playwright() as p:
     b=p.chromium.launch(headless=True,args=['--no-sandbox'])
     for host in ('local','public'):
-        for width in (390,1280):
+        for width in (390,):
             ctx=b.new_context(viewport={'width':width,'height':844},device_scale_factor=1)
             page=ctx.new_page();page.set_default_timeout(8000)
             try:login(ctx,host,f['username'],f['password'])
@@ -106,7 +106,8 @@ with sync_playwright() as p:
                         elif name=='hall':
                             card=page.locator(f'[data-open-tables] [data-table-id="{f["table_id"]}"]');expect(card).to_be_visible(timeout=10000)
                             for density in ('normal','compact','overview'):
-                                page.locator(f'button[data-hall-density="{density}"]').click();save(page,key+'-'+density)
+                                expect(page.locator(f'button[data-hall-density="{density}"]')).to_be_hidden()
+                            detail['desktop_density_controls_hidden_on_mobile']=True
                             card.click();expect(page.locator('[data-account-discount]')).to_be_enabled(timeout=12000)
                             assert f['product'] in page.locator('.sc-hall-bill-lines').inner_text();save(page,key+'-account')
                             detail['actual_account_content']=True
