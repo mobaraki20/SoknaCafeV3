@@ -1,4 +1,5 @@
 $ErrorActionPreference='Stop'
+$ProgressPreference='SilentlyContinue'
 Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or $env:SOKNA_R186_CI_ONLY -ne 'YES') {throw 'R277_NATIVE_DISPOSABLE_CI_ONLY'}
 if(Get-Service SoknaApache -ErrorAction SilentlyContinue){throw 'R277_REFUSE_EXISTING_APACHE_SERVICE'}
@@ -15,15 +16,20 @@ New-Item -ItemType Directory -Force $lab|Out-Null
 # Reuse the externally SHA-pinned PHP and MariaDB components already used by R275 native acceptance.
 $phpUrl='https://downloads.php.net/~windows/releases/archives/php-8.4.24-Win32-vs17-x64.zip'
 $phpZip=Join-Path $lab 'php-ts.zip';$phpRoot=Join-Path $lab 'php-ts'
-Invoke-WebRequest $phpUrl -OutFile $phpZip
+& curl.exe --location --fail --silent --show-error --max-time 180 --output $phpZip $phpUrl
+Need ($LASTEXITCODE -eq 0) 'PHP_DOWNLOAD_FAILED'
+Write-Host 'PHP download completed'
 Need ((Get-FileHash $phpZip -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '7b57fc9840273ab153834d0e2bd06e0bcf4fead36e381182b4b8fe9cedff3174') 'PINNED_PHP_SHA_MISMATCH'
 Expand-Archive $phpZip $phpRoot
 Copy-Item (Join-Path $phpRoot 'php.ini-development') (Join-Path $phpRoot 'php.ini')
 Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension_dir="'+(P (Join-Path $phpRoot 'ext'))+'"')
 foreach($e in @('pdo_mysql','mbstring','zip','sodium','fileinfo','gd','curl')){Add-Content (Join-Path $phpRoot 'php.ini') -Value ('extension='+$e)}
 $mdbUrl='https://archive.mariadb.org/mariadb-11.4.7/winx64-packages/'
-$mdbZip=Join-Path $lab 'mariadb.zip';Invoke-WebRequest ($mdbUrl+'mariadb-11.4.7-winx64.zip') -OutFile $mdbZip
-$sums=(Invoke-WebRequest ($mdbUrl+'sha256sums.txt')).Content
+$mdbZip=Join-Path $lab 'mariadb.zip'
+& curl.exe --location --fail --silent --show-error --max-time 240 --output $mdbZip ($mdbUrl+'mariadb-11.4.7-winx64.zip')
+Need ($LASTEXITCODE -eq 0) 'MARIADB_DOWNLOAD_FAILED'
+Write-Host 'MariaDB download completed'
+$sums=(Invoke-WebRequest ($mdbUrl+'sha256sums.txt') -TimeoutSec 45).Content
 $expected=[regex]::Match([string]$sums,'(?im)^([0-9a-f]{64})\s+\*?(?:\./)?mariadb-11\.4\.7-winx64\.zip\s*$').Groups[1].Value
 Need ($expected.Length -eq 64 -and (Get-FileHash $mdbZip -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $expected) 'MARIADB_SHA_INVALID'
 Expand-Archive $mdbZip (Join-Path $lab 'mdb')
@@ -50,6 +56,7 @@ try {
   try{Write-Host ('R278_MARIADB_STDOUT '+$dbOut.Result)}catch{}
  }
  Need $ready 'MARIADB_NOT_STARTED'
+ Write-Host 'MariaDB disposable server ready'
  $apacheSource=$null
  foreach($a in @('C:\tools\Apache24','C:\tools\apache','C:\ProgramData\chocolatey\lib\apache-httpd')){
   if(Test-Path $a){$e=Get-ChildItem $a -Recurse -Filter httpd.exe -File|Select-Object -First 1;if($e){$apacheSource=Split-Path -Parent (Split-Path -Parent $e.FullName);break}}
@@ -72,6 +79,7 @@ ServerRoot "$ar"
 Listen 127.0.0.1:39841
 ServerName 127.0.0.1:39841
 LoadModule authz_core_module modules/mod_authz_core.so
+LoadModule authz_host_module modules/mod_authz_host.so
 LoadModule dir_module modules/mod_dir.so
 LoadModule mime_module modules/mod_mime.so
 LoadModule php_module "$pr/php8apache2_4.dll"
@@ -97,6 +105,7 @@ PidFile "$ar/logs/httpd.pid"
    Start-Sleep -Milliseconds 500
  }
  Need $ready 'SETUP_HTTP_UNAVAILABLE'
+ Write-Host 'Apache and PHP HTTP setup ready'
  $status=Invoke-RestMethod "$origin/setup/api.php?action=status" -SessionVariable session -TimeoutSec 30
  Need ([bool]$status.success -and [bool]$status.preflight.ok -and $status.setup.state -eq 'new') 'SETUP_PREFLIGHT_FAILED'
  $body=@{csrf=$status.csrf;data_dir=$data;db=@{host='127.0.0.1';port=[string]$dbPort;name='sokna_ci_clean_windows';user='root';pass=''};create_database=$true;admin_user='ci-admin';admin_password='disposable-windows-qa-20261126';cafe_name='DISPOSABLE CI';table_count=5}
