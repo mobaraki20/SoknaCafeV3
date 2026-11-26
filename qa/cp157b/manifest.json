@@ -1,0 +1,17 @@
+{
+  "changed": {
+    "local/public/assets/reports-workspace.js": {
+      "before": "e5c71429c5a6bc98cfaff68cd4c5d87ef4ad02651fa7b429046fa344bbd0321e",
+      "after": "b152ebbf244999ac9390b7c3987588eb316eeec35cc93dea29e2927280d0fd6f"
+    },
+    "public/assets/reports-workspace.js": {
+      "before": "2a760b0c696701e3f82989074712d69e279cfce3a5c115c896fe6e6b9d64f922",
+      "after": "2d59eaf7c22c2354c2f25e0eed3cd17981595a926664e9ba46c1208f7652a9ab"
+    }
+  },
+  "canonical": {
+    "local": "b5727b31eedc94e67b4fba147a23193e34384b98f2d6ed6ca0132b0cb1b30ef3",
+    "public": "74d6aa6c9e422c8bcea0166ad8b245aa1ab4be53c357428c5777ec306f70484c"
+  },
+  "files": 883
+}
