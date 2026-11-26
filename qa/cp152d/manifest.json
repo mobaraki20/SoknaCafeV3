@@ -1,0 +1,13 @@
+{
+  "files": 883,
+  "changed": {
+    "public/assets/operations-workspace.js": {
+      "before": "5540058299dde5137c4d6f920d582799d6042c52aa4d157ea2424ffa468e66b1",
+      "after": "0f868492a166f46b0c93b989caf000fb641393ac2b886e83c6914841e5bb83fc"
+    }
+  },
+  "canonical": {
+    "local": "821ee9bc00798f95c30ecaaf45363e71a10596e5a9c01f16e140cb7176be74ae",
+    "public": "304135af0d341034a2fe4af2d9a35f32d55ed6fdccb564851aca12f8c37c6310"
+  }
+}
