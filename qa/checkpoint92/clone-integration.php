@@ -16,6 +16,7 @@ require getenv('GITHUB_WORKSPACE').'/qa/checkpoint56/orphan_fence_readonly.php';
 function db($name,$user,$pass){return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4',$user,$pass,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);}
 $src=db('sokna_cp92_source','cp92_read',getenv('CP92_READ_PASS'));
 $clone=db('sokna_cp92_clone','cp92_clone',getenv('CP92_CLONE_PASS'));
+$cloneRead=db('sokna_cp92_clone','cp92_read',getenv('CP92_READ_PASS'));
 $pkg=$root.'/fixture/PUBLIC-ORIGIN-TO-35IU-FIXTURE-QA-ONLY.zip';
 ck(hash_file('sha256',$pkg)==='cd91fb137074e523ecb05d68518cf3a882ebefb751aba1c7004f8b55f256d9a7','PACKAGE_PIN');
 $marker=fn(PDO $p)=>(int)$p->query("SELECT COUNT(*) FROM installations WHERE installation_id='cp92-fixture'")->fetchColumn();
@@ -23,9 +24,9 @@ $sourceProof=schemaProof($src);
 ck(count($sourceProof['ledger'])===8&&$marker($src)===1,'SOURCE_LEDGER_MARKER');
 $baselineHash=hash('sha256',json_encode($sourceProof,JSON_THROW_ON_ERROR));
 if($phase==='proof'){
- ck($web===$root.'/old-web'&&schemaProof($clone)===$sourceProof&&$marker($clone)===1,'RESTORE_MISMATCH');
+ ck($web===$root.'/old-web'&&schemaProof($cloneRead)===$sourceProof&&$marker($clone)===1,'RESTORE_MISMATCH');
  // Negative capability test: the clone account must not even be able to read the source.
- try{$clone->query('SELECT version FROM sokna_cp92_source.schema_migrations');throw new RuntimeException('CROSS_DB_PRIVILEGE');}catch(PDOException $e){ck((int)($e->errorInfo[1]??0)===1142,'UNEXPECTED_SOURCE_DENIAL');}
+ try{$clone->query('SELECT version FROM sokna_cp92_source.schema_migrations');throw new RuntimeException('CROSS_DB_PRIVILEGE');}catch(PDOException $e){ck(in_array((int)($e->errorInfo[1]??0),[1044,1142],true),'UNEXPECTED_SOURCE_DENIAL');}
  file_put_contents($root.'/schema-proof.json',json_encode(['source_schema_sha256'=>$baselineHash,'ledger'=>$sourceProof['ledger'],'source_database'=>'sokna_cp92_source','clone_database'=>'sokna_cp92_clone','marker'=>1,'actual_restore_match'=>true,'cross_database_privilege_denied'=>true],JSON_THROW_ON_ERROR));
  echo "PASS verified backup restore and restricted clone account\n";exit;
 }
@@ -42,7 +43,7 @@ ck($clone->query('SELECT DATABASE()')->fetchColumn()==='sokna_cp92_clone'&&$src-
 $m=new Migrations($clone,$web.'/database/migrations');$health=new PublicHealthService($clone,$web,$web.'/storage');
 $r=new Routine($web,$web.'/storage',$web.'/resources/update-trust-v1.json',fn()=>$health->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());
 if($phase==='stage'){
- ck(schemaProof($clone)===$sourceProof&&$marker($clone)===1&&$r->managedTreeDigest()===$j['plan']['transition_tree'],'PREPARED_RESTORE');
+ ck(schemaProof($cloneRead)===$sourceProof&&$marker($clone)===1&&$r->managedTreeDigest()===$j['plan']['transition_tree'],'PREPARED_RESTORE');
  ck($s['db_forward_fence']===null&&$s['foundation_handoff']['no_database_mutation']===true,'DISPOSITION');
  $a=$r->stageUploadedDeltaZip($pkg,'cp92-clone',true);ck($a['package_sha256']===hash_file('sha256',$pkg),'STAGE');
  $b=$r->activateStaged('cp92-clone');ck(is_array($b['pending_verification']),'ACTIVATION');
