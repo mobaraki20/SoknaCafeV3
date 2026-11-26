@@ -1,0 +1,150 @@
+name: Sokna CP135B actual preparation browser recheck
+permissions:
+  contents: read
+  actions: read
+'on':
+  push:
+    branches:
+    - qa/cp133-marketing-20261126
+    paths:
+    - .github/workflows/cp135b-preparation.yml
+jobs:
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+        - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+    steps:
+    - name: Reconstruct exact CP135 from pinned source steps
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\n/usr/bin/python3 - <<'PYCODE'\nimport os,hashlib,urllib.request,subprocess,yaml\nurl='https://raw.githubusercontent.com/mobaraki20/SoknaCafeV3/e3f69ededbd5923a1860b707bee3da8868cb267c/.github/workflows/cp135-preparation.yml'\nraw=urllib.request.urlopen(url,timeout=30).read(200000)\nassert hashlib.sha256(raw).hexdigest()=='3859e708ac4621fcbd966cd82298ff0c2ef504a3236e3ee2702be70b7d43d362'\nsteps=yaml.safe_load(raw)['jobs']['database']['steps']\nassert steps[3]['name']=='Apply exact CP135 preparation delta'\nfor step in steps[:4]:\n    assert 'run' in step and set(step)<= {'name','run','env'}, step['name']\n    cmd=step['run']; marker=chr(36)+'{{'; cmd=cmd.replace(marker+' github.repository }}','mobaraki20/SoknaCafeV3'); assert marker not in cmd\n    print('Pinned source: '+step['name'],flush=True)\n    subprocess.run(['bash','-e','-o','pipefail','-c',cmd],env=dict(os.environ),check=True)\nPYCODE\n"
+    - name: Prepare cp135-local-db.php
+      run: 'set -euo pipefail
+
+        cat > "$RUNNER_TEMP/cp135-local-db.php" <<''QAEOF''
+
+        <?php
+
+        declare(strict_types=1);
+
+        if(PHP_SAPI!==''cli''||getenv(''QA_DB_PASSWORD'')!==''synthetic-cp116-ci-only'')exit(2);
+
+        $root=realpath($argv[1]);if($root===false||basename($root)!==''local'')exit(2);
+
+        require $root.''/bootstrap.php'';
+
+        require_once $root.''/src/Setup/BrowserSetupService.php'';
+
+        use Sokna\Local\Core\{Migrations,Observability};
+
+        use Sokna\Local\Domain\Recovery\{BusinessBackupService,RecoveryException,MediaSnapshotCodec};
+
+        use Sokna\Local\Setup\BrowserSetupService;
+
+        function connectQa(string $db=''''):PDO {if($db!==''''&&!in_array($db,[''sokna_cp119_a'',''sokna_cp119_b''],true))throw new RuntimeException(''not QA schema'');$p=new PDO(''mysql:host=127.0.0.1;port=3306;dbname=''.$db.'';charset=utf8mb4'',''root'',getenv(''QA_DB_PASSWORD''),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);$p->exec("SET time_zone = ''+03:30''");return $p;}
+
+        function snapshotQa(PDO $p):array{$digests=[];foreach($p->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE=''BASE TABLE'' ORDER BY TABLE_NAME")->fetchAll(PDO::FETCH_COLUMN) as $t){$rows=$p->query(''SELECT * FROM `''.str_replace(''`'',''``'',$t).''`'')->fetchAll(PDO::FETCH_ASSOC);$encoded=array_map(fn($r)=>json_encode($r,JSON_THROW_ON_ERROR|JSON_INVALID_UTF8_SUBSTITUTE),$rows);sort($encoded,SORT_STRING);$digests[$t]=hash(''sha256'',implode("\n",$encoded));}return $digests;}
+
+        function check($ok,string $name):void {if(!$ok)throw new RuntimeException(''FAIL ''.$name);echo ''PASS ''.$name."\n";}
+
+        function reject(BusinessBackupService $b,string $f,string $pass,string $code):void {try{$b->restoreEncryptedToEmptyTarget($f,$pass);throw new RuntimeException(''unexpected restore'');}catch(RecoveryException $e){if($e->errorCode!==$code)throw new RuntimeException(''expected ''.$code.'' got ''.$e->errorCode);}}
+
+        $server=connectQa();$dir=sys_get_temp_dir().''/sokna-cp119-''.bin2hex(random_bytes(6));mkdir($dir,0700,true);
+
+        $server->exec(''CREATE DATABASE sokna_cp119_b CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'');
+
+        $setup=new BrowserSetupService(dirname($root),$root);$dataB=$dir.''/b'';
+
+        try{$status=$setup->installNew([''data_dir''=>$dataB,''db''=>[''host''=>''127.0.0.1'',''port''=>''3306'',''name''=>''sokna_cp119_b'',''user''=>''root'',''pass''=>getenv(''QA_DB_PASSWORD'')],''admin_user''=>''qa-target'',''admin_password''=>''synthetic-qa-admin-not-real'',''cafe_name''=>''QA TARGET'',''table_count''=>2]);}catch(Throwable $e){echo ''setup failure ''.get_class($e).'' ''.$e->getMessage().'' ''.json_encode($e->details??[])."\n";throw $e;}
+
+        check(($status[''success'']??false)&&($status[''health''][''migrations_applied'']??0)===93,''actual_browser_setup_service_93_migrations'');
+
+        $cfg=require dirname($root).''/config.php'';$core=sokna_local_bootstrap($cfg);$pdo=$core->database();$actor=$pdo->query("SELECT id,role FROM users WHERE username=''qa-target''")->fetch(PDO::FETCH_ASSOC);
+
+        function deny(callable $f,string $code,string $name):void{try{$f();throw new RuntimeException(''unexpected success'');}catch(Throwable $e){check(($e->errorCode??'''')===$code,$name);}}
+
+        $clock=$core->businessClock()->assignment();$today=$clock[''business_date''];$yesterday=(new DateTimeImmutable($today))->modify(''-1 day'')->format(''Y-m-d'');$table=(int)$pdo->query(''SELECT id FROM cafe_tables ORDER BY id LIMIT 1'')->fetchColumn();
+
+        $pdo->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,''active'',?,?,?,?,?)")->execute([''qa135-session'',$table,$table,$today,$clock[''shift_key''],$clock[''shift_label''],$clock[''cutoff'']]);$session=(int)$pdo->lastInsertId();
+
+        $makeUser=function($name,$area)use($pdo){$pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,''operator'',1)")->execute([$name,password_hash(''qa135-only'',PASSWORD_DEFAULT),$name]);$id=(int)$pdo->lastInsertId();$pdo->prepare("INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,''preparation'',1)")->execute([$id]);$pdo->prepare(''INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,?)'')->execute([$id,$area]);return [''id''=>$id];};
+
+        $bar=$makeUser(''qa135-bar'',''bar'');$kitchen=$makeUser(''qa135-kitchen'',''kitchen'');
+
+        $makeOrder=function($num,$date,$status=''accounted'',$station=''hot_bar'',$qty=1,$ordered=1)use($pdo,$table,$session,$clock){$pdo->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,''staff'',?,?,?,?,?,?,?)")->execute([''qa135-''.$num,''qa135-token-''.$num,$table,$session,$status,500*$qty,$num,$date,$clock[''shift_key''],$clock[''shift_label''],$clock[''cutoff'']]);$id=(int)$pdo->lastInsertId();$pdo->prepare(''INSERT INTO order_items(order_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,?,?,?,?)'')->execute([$id,''QA135 item ''.$num,500,$qty,$ordered,$station,500*$qty]);return [$id,(int)$pdo->lastInsertId()];};
+
+        $adj=function($order,$item,$area,$key)use($pdo,$actor){$pdo->prepare("INSERT INTO order_item_adjustments(request_id,order_id,order_item_id,area_key,from_quantity,to_quantity,delta_quantity,preparation_claimed_before,preparation_ack_status,inventory_quantity_delta,inventory_effect,actor_user_id) VALUES(?,?,?,?,1,2,1,1,''pending'',0,''none'',?)")->execute([$key,$order,$item,$area,$actor[''id'']]);return (int)$pdo->lastInsertId();};
+
+        [$normal,$normalLine]=$makeOrder(13501,$today,''accounted'',''kitchen'');[$old,$oldLine]=$makeOrder(13502,$yesterday,''accounted'',''hot_bar'',2,1);$aid=$adj($old,$oldLine,''bar'',''qa135-old-ack'');
+
+        [$other,$otherLine]=$makeOrder(13503,$yesterday,''accounted'',''kitchen'');[$before,$beforeLine]=$makeOrder(13504,$today);[$after,$afterLine]=$makeOrder(13505,$today);[$failed,$failedLine]=$makeOrder(13506,$yesterday,''cancelled'',''kitchen'',0,1);$pdo->prepare("INSERT INTO whole_order_cancellations(order_id,request_id,reason,actor_user_id,original_total,preparation_dispatched,inventory_reversal_requested,preparation_notice_status) VALUES(?,?,?,?,500,1,1,''failed'')")->execute([$failed,''qa135-failed'',''QA only'',$actor[''id'']]);
+
+        [$expired,$expiredLine]=$makeOrder(13507,$yesterday,''cancelled'');$pdo->prepare("INSERT INTO whole_order_cancellations(order_id,request_id,reason,actor_user_id,original_total,created_at) VALUES(?,?,?,?,500,?)")->execute([$expired,''qa135-expired'',''QA only'',$actor[''id''],$yesterday.'' ''.$clock[''cutoff''].'':00'']);
+
+        $prep=$core->preparation();$prep->acknowledgeAdjustment([''adjustment_id''=>$aid],$bar);$prep->claim([''order_id''=>$after,''area''=>''bar''],$bar);$cancel=$core->orderStaffActions();$cancel->cancelWholeOrder([''order_id''=>$before,''request_id''=>''qa135-cancel-before'',''reason''=>''QA only''],$actor);$cancel->cancelWholeOrder([''order_id''=>$after,''request_id''=>''qa135-cancel-after'',''reason''=>''QA only''],$actor);
+
+        // Keep a separate pending historic adjustment for the browser test; PHP real HTTP uses admin monitor view.
+
+        [$uiOld,$uiLine]=$makeOrder(13508,$yesterday,''accounted'',''hot_bar'',2,1);$uiAck=$adj($uiOld,$uiLine,''bar'',''qa135-browser-ack'');file_put_contents(getenv(''RUNNER_TEMP'').''/cp135-fixture.json'',json_encode([''old''=>$uiOld,''before''=>$before,''after''=>$after,''failed''=>$failed,''normal''=>$normal,''ack''=>$uiAck]));echo "CP135B fixture ready (not new DB acceptance)\n";
+
+        QAEOF
+
+        '
+    - name: Prepare cp135-browser.cjs
+      run: 'set -euo pipefail
+
+        cat > "$RUNNER_TEMP/cp135-browser.cjs" <<''QAEOF''
+
+        const {chromium}=require(process.env.RUNNER_TEMP+''/pw/node_modules/playwright'');const fs=require(''fs''),path=require(''path''),assert=require(''assert/strict'');const shots=path.join(process.env.RUNNER_TEMP,''cp135-screenshots'');fs.mkdirSync(shots,{recursive:true});const f=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,''cp135-fixture.json'')));const local=''http://127.0.0.1:18765'';function ck(v,k){assert.ok(v,k);console.log(''PASS ''+k)}
+
+        (async()=>{const b=await chromium.launch({channel:''chrome'',headless:true});try{for(const mode of [{user:''qa-target'',password:''synthetic-qa-admin-not-real'',width:1440},{user:''qa135-bar'',password:''qa135-only'',width:390}]){const ctx=await b.newContext({viewport:{width:mode.width,height:mode.width===390?844:900},locale:''fa-IR''});const p=await ctx.newPage();p.setDefaultTimeout(12000);const errors=[];p.on(''pageerror'',e=>errors.push(e.message));try{await p.goto(local+''/login.php'');const a=p.locator(`[data-login-account][data-username="${mode.user}"]`);await a.waitFor({state:''attached''});if((await p.locator(''[data-login-selection]'').inputValue())!==mode.user){await p.locator(''.sc-login-flow-change'').click();await p.locator(''.sc-login-flow-search'').fill(mode.user);await a.click();}ck((await p.locator(''[data-login-selection]'').inputValue())===mode.user,''account_selected_''+mode.user);await p.locator(''input[name=password]'').fill(mode.password);await Promise.all([p.waitForNavigation(),p.locator(''form[data-login-form] button[type=submit]'').click()]);await p.goto(local+''/waiter/'');await p.locator(`[data-preparation-cancelled="${f.before}"]`).waitFor();const d=await p.request.get(local+''/waiter/api.php'');ck(d.ok(),''actual_preparation_api_''+mode.user);const payload=await d.json();ck(payload.orders.some(x=>x.id===f.old&&x.adjustment_only)&&payload.cancellations.some(x=>x.id===f.after),''actual_old_and_cancel_model_''+mode.user);ck(await p.locator(`[data-preparation-order="${f.after}"]`).count()===0,''cancel_not_order_''+mode.user);ck(await p.locator(`[data-preparation-order="${f.old}"] [data-preparation-action^="claim:"]`).count()===0,''no_old_claim_''+mode.user);await p.screenshot({path:path.join(shots,mode.user+''-pending.png''),fullPage:true});await p.locator(''[data-preparation-tab="received"]'').click();ck(await p.locator(`[data-preparation-cancelled="${f.after}"]`).isVisible(),''notice_both_tabs_''+mode.user);await p.locator(''[data-preparation-tab="pending"]'').click();if(mode.user===''qa135-bar''){ck(await p.locator(`[data-preparation-cancelled="${f.failed}"]`).count()===0,''kitchen_notice_hidden_bar'');await p.locator(`[data-preparation-action="ack:${f.ack}"]`).click();await p.locator(`[data-preparation-order="${f.old}"]`).waitFor({state:''detached''});ck(await p.locator(`[data-preparation-cancelled="${f.after}"]`).isVisible(),''notice_persists_after_ack'');}else{ck(await p.locator(`[data-preparation-action="ack:${f.ack}"]`).count()===0,''admin_monitor_no_ack'');}ck(errors.length===0,''no_js_errors_''+mode.user);}catch(e){await p.screenshot({path:path.join(shots,mode.user+''-failure.png''),fullPage:true});throw e}finally{await ctx.close()}}console.log(''CP135 ACTUAL BROWSER PASS'');}finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+
+        QAEOF
+
+        '
+    - name: Create disposable browser fixture only
+      run: 'set -euo pipefail
+
+        cd "$RUNNER_TEMP"
+
+        php cp135-local-db.php "$RUNNER_TEMP/local"
+
+        '
+    - name: Install browser driver
+      run: 'set -euo pipefail
+
+        npm install --prefix "$RUNNER_TEMP/pw" playwright@1.51.1 --no-audit --no-fund
+
+        '
+    - name: Chrome actual Local preparation
+      run: 'set -euo pipefail
+
+        cd "$RUNNER_TEMP"
+
+        PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > cp135-local-http.log 2>&1 &
+
+        local_pid=$!
+
+        trap ''kill "$local_pid" 2>/dev/null || true; tail -35 cp135-local-http.log'' EXIT
+
+        sleep 2
+
+        node cp135-browser.cjs
+
+        '
+    - name: Capture synthetic evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: SOKNA-CP135-UI-QA
+        path: ${{ runner.temp }}/cp135-screenshots/*.png
+        retention-days: 1
+        if-no-files-found: warn
