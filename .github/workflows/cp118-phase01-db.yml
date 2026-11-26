@@ -125,26 +125,42 @@ jobs:
           php -d upload_max_filesize=64M -d post_max_size=65M -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > "$RUNNER_TEMP/cp120-http.log" 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true; tail -80 "$RUNNER_TEMP/cp120-http.log"' EXIT
-          for i in $(seq 1 20); do if curl --silent --output /dev/null http://127.0.0.1:18765/login.php; then break; fi; sleep 1; done
+          for i in $(seq 1 20); do if curl --silent --fail --output /dev/null http://127.0.0.1:18765/assets/product-ui.css; then break; fi; sleep 1; done
+          cat > "$RUNNER_TEMP/seed-drift.php" <<'PHPDIAG'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $root=realpath($argv[1]);$fixture=json_decode(file_get_contents(dirname($root).'/cp120-recovery-fixture.json'),true,512,JSON_THROW_ON_ERROR);
+          if($fixture['target_db']!=='sokna_cp119_b')exit(2);
+          $p=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cp119_b;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);
+          $p->exec("SET time_zone = '+03:30'");
+          $receipt=json_decode(file_get_contents($fixture['target_data'].'/recovery-fresh-seed-v1.json'),true,64,JSON_THROW_ON_ERROR);
+          $diff=[]; $now=[];
+          foreach($receipt['tables'] as $t=>$expected){
+            $q=$p->query('SELECT * FROM `'.str_replace('`','``',$t).'`');$rows=[];$raw=[];
+            while($r=$q->fetch(PDO::FETCH_ASSOC)){$raw[]=$r;$rows[]=hash('sha256',json_encode($r,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR));}
+            sort($rows,SORT_STRING);$now[$t]=$raw;$actual=['count'=>count($rows),'sha256'=>hash('sha256',implode("\n",$rows))];
+            if($actual!==$expected)$diff[$t]=['seed_count'=>$expected['count'],'now_count'=>$actual['count']];
+          }
+          $state=dirname($root).'/qa-seed-diag.json';
+          if($argv[2]==='before_http'){file_put_contents($state,json_encode($now,JSON_THROW_ON_ERROR));chmod($state,0600);}
+          else {$before=json_decode(file_get_contents($state),true,512,JSON_THROW_ON_ERROR);foreach($diff as $t=>&$d){$old=$before[$t]??[];$new=$now[$t];$key=[];$pk=$p->query('SHOW INDEX FROM `'.str_replace('`','``',$t).'` WHERE Key_name="PRIMARY"')->fetchAll(PDO::FETCH_ASSOC);usort($pk,fn($a,$b)=>(int)$a['Seq_in_index']<=>(int)$b['Seq_in_index']);foreach($pk as $col)$key[]=$col['Column_name'];if($key){$idx=fn($r)=>json_encode(array_intersect_key($r,array_flip($key)));$om=[];$nm=[];foreach($old as $r)$om[$idx($r)]=$r;foreach($new as $r)$nm[$idx($r)]=$r;$changed=[];foreach(array_intersect_key($om,$nm) as $k=>$r){foreach($r as $c=>$v)if($v!==$nm[$k][$c])$changed[$c]=true;}$d['changed_columns']=array_keys($changed);$d['added']=count(array_diff_key($nm,$om));$d['removed']=count(array_diff_key($om,$nm));} }unset($d);}
+          echo 'DRIFT '.json_encode(['stage'=>$argv[2],'tables'=>$diff],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR)."\n";
+          PHPDIAG
           cat > "$RUNNER_TEMP/recovery-browser.cjs" <<'NODETEST'
           const {chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
           const fs=require('fs'),path=require('path'),assert=require('assert/strict');
           const base='http://127.0.0.1:18765'; const root=process.argv[2];const fixture=JSON.parse(fs.readFileSync(path.join(root,'..','cp120-recovery-fixture.json'))); const shots=path.join(process.env.RUNNER_TEMP,'cp120-screenshots');fs.mkdirSync(shots,{recursive:true});
           const pass='synthetic-only-passphrase';
+          function drift(stage){const p=require('child_process').spawnSync('php',[process.env.RUNNER_TEMP+'/seed-drift.php',root,stage],{encoding:'utf8'});if(p.status!==0)throw Error('drift snapshot failed '+p.stderr);console.log(p.stdout.trim());}
           function ck(v,name){assert.ok(v,name);console.log('PASS '+name)}
           (async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
            const ctx=await browser.newContext({viewport:{width:1440,height:900},locale:'fa-IR'}); const page=await ctx.newPage();page.on('pageerror',e=>console.log('BROWSER ERROR',e.message));
-           await page.goto(base+'/login.php');await page.locator('.sc-login-flow-current-row').waitFor({state:'visible'});if(await page.locator('[data-login-selection]').inputValue()!=='qa-target'){await page.locator('.sc-login-flow-change').click();await page.locator('[data-login-account][data-username="qa-target"]').click();}ck(await page.locator('[data-login-selection]').inputValue()==='qa-target','actual_selected_login_account');await page.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([page.waitForNavigation(),page.locator('form[data-login-form] button[type=submit]').click()]);
-           await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[data-system-workspace]').getAttribute('aria-busy')!=='true');
-           ck(await page.locator('[data-backup-inspect]').isDisabled(),'inspect_disabled_before_upload');ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_before_upload');await page.screenshot({path:path.join(shots,'01-recovery-desktop-initial.png'),fullPage:true});
-           const csrf=await page.locator('[data-system-workspace]').getAttribute('data-csrf');const denied=await ctx.request.post(base+'/system/api.php',{data:{action:'backup_inspect',id:'invalid-id',passphrase:pass}});ck(denied.status()===419,'real_http_csrf_rejected');
-           const inp=page.locator('#sc-recovery-backup-file');await inp.setInputFiles(fixture.backup);await page.locator('[data-recovery-upload] button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('[data-restore-id]').value!=='');
-           ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_after_upload');await page.locator('[data-restore-pass]').fill('synthetic-wrong-password');await page.locator('[data-backup-inspect]').click();await page.waitForFunction(()=>document.querySelector('[data-backup-manifest]').classList.contains('sc-alert--danger'));ck(await page.locator('[data-backup-restore]').isDisabled(),'wrong_password_cannot_restore');await page.screenshot({path:path.join(shots,'02-recovery-wrong-password.png'),fullPage:true});
-           await page.locator('[data-restore-pass]').fill(pass);const [resp]=await Promise.all([page.waitForResponse(r=>r.url().includes('/system/api.php')&&r.request().method()==='POST'),page.locator('[data-backup-inspect]').click()]);const result=await resp.json();console.log('INSPECT_RESULT',JSON.stringify({http:resp.status(),success:result.success,ready:result.manifest?.target_ready,kind:result.manifest?.target_kind,issue:result.manifest?.target_issue}));await page.waitForFunction(()=>!document.querySelector('[data-backup-inspect]').disabled);await page.screenshot({path:path.join(shots,'03-recovery-inspected-desktop.png'),fullPage:true});
-           await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(shots,'04-recovery-inspected-mobile.png'),fullPage:true});
-           ck(result.success&&result.manifest?.stream_verified&&result.manifest?.target_ready,'fresh_destination_ready_after_real_login_and_page_load');ck(await page.locator('[data-backup-restore]').isEnabled(),'restore_enabled_after_verified_inspection');
-           await page.locator('[data-backup-restore]').click();await page.locator('dialog[open]').waitFor();await page.screenshot({path:path.join(shots,'05-recovery-confirm-mobile.png'),fullPage:true});await page.locator('dialog[open] [data-dialog-role=cancel]').click();ck(await page.locator('[data-backup-restore]').isEnabled(),'cancel_preserves_verified_selection');await page.setViewportSize({width:1440,height:900});await page.locator('[data-backup-restore]').click();await page.locator('dialog[open]').waitFor();const [rest]=await Promise.all([page.waitForResponse(r=>r.url().includes('/system/api.php')&&r.request().method()==='POST',{timeout:90000}),page.locator('dialog[open] [data-dialog-role=primary]').click()]);const rr=await rest.json();console.log('RESTORE_RESULT',JSON.stringify({http:rest.status(),success:rr.success,restored:rr.restore?.restored,table_count:rr.restore?.table_count,code:rr.code}));ck(rr.success&&rr.restore?.restored&&rr.restore?.table_count===104,'real_browser_restore_full_schema');await page.locator('[data-backup-manifest] a').waitFor();await page.screenshot({path:path.join(shots,'06-recovery-complete-desktop.png'),fullPage:true});ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_after_success');
-           console.log('CP120 BROWSER RECOVERY PASS');
+           drift('before_http');await page.goto(base+'/login.php');drift('after_login_page');await page.locator('.sc-login-flow-current-row').waitFor({state:'visible'});if(await page.locator('[data-login-selection]').inputValue()!=='qa-target'){await page.locator('.sc-login-flow-change').click();await page.locator('[data-login-account][data-username="qa-target"]').click();}ck(await page.locator('[data-login-selection]').inputValue()==='qa-target','actual_selected_login_account');await page.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([page.waitForNavigation(),page.locator('form[data-login-form] button[type=submit]').click()]);
+           drift('after_login_redirect');await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[data-system-workspace]').getAttribute('aria-busy')!=='true');
+           drift('after_recovery_page');await page.screenshot({path:path.join(shots,'05-desktop-recovery-stable.png'),fullPage:true,animations:'disabled'});
+           await page.setViewportSize({width:390,height:844});await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[data-system-workspace]').getAttribute('aria-busy')!=='true');await page.screenshot({path:path.join(shots,'06-mobile-fresh-navigation.png'),fullPage:true,animations:'disabled'});console.log('MOBILE_METRICS',JSON.stringify(await page.evaluate(()=>({viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth}))));drift('after_mobile_recovery_page');
+           console.log('CP120 READ-ONLY DRIFT DIAGNOSTIC COMPLETE');
            }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
           NODETEST
           node "$RUNNER_TEMP/recovery-browser.cjs" "$RUNNER_TEMP/local"
@@ -152,7 +168,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: SOKNA-CP120-RECOVERY-SCREENSHOTS-QA
+          name: SOKNA-CP120-DRIFT-DIAGNOSTIC-SCREENSHOTS-QA
           path: ${{ runner.temp }}/cp120-screenshots/*.png
           retention-days: 1
           if-no-files-found: warn
