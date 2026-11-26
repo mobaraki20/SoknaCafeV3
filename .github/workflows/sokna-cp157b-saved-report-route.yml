@@ -1,0 +1,90 @@
+name: SOKNA CP157B saved report scope and route
+on:
+  push:
+    branches: [qa/cp133-marketing-20261126]
+    paths: [.github/workflows/sokna-cp157b-saved-report-route.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout reviewable QA source data
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Verify and apply direct source delta
+        run: |
+          mkdir -p "$RUNNER_TEMP/cp148-qa"
+          python3 qa/cp148/prepare-source.py "$RUNNER_TEMP/cp148-qa" "$RUNNER_TEMP/cp148-input" | tee "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP150 candidate delta
+        run: python3 qa/cp150/apply-cp150.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP151 candidate delta
+        run: python3 qa/cp151/apply-cp151.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152 candidate delta
+        run: python3 qa/cp152/apply-cp152.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152B candidate delta
+        run: python3 qa/cp152b/apply-cp152b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152C candidate delta
+        run: python3 qa/cp152c/apply-cp152c.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152D candidate delta
+        run: python3 qa/cp152d/apply-cp152d.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP153 candidate delta
+        run: python3 qa/cp153/apply-cp153.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP154 candidate delta
+        run: python3 qa/cp154/apply-cp154.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP155 candidate delta
+        run: python3 qa/cp155/apply-cp155.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP156 candidate delta
+        run: python3 qa/cp156/apply-cp156.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP157 candidate delta
+        run: python3 qa/cp157/apply-cp157.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP157B candidate delta
+        run: python3 qa/cp157b/apply-cp157b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Prepare browser driver
+        continue-on-error: true
+        run: npm install --prefix "$RUNNER_TEMP/cp148-qa/pw" playwright --no-audit --no-fund
+      - name: Execute independent remaining MariaDB HTTP and browser groups
+        run: bash qa/cp157b/run-qa.sh "$RUNNER_TEMP/cp148-qa"
+      - name: Preserve synthetic QA evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CP157B-SAVED-REPORT-QA
+          path: |
+            ${{ runner.temp }}/cp148-qa/source-results.txt
+            ${{ runner.temp }}/cp148-qa/cp157b-*-results.txt
+            ${{ runner.temp }}/cp148-qa/cp157b-*-summary.json
+            ${{ runner.temp }}/cp148-qa/QA-summary.txt
+            ${{ runner.temp }}/cp148-qa/cp157b-screenshots/*.png
+          retention-days: 7
+          if-no-files-found: warn
