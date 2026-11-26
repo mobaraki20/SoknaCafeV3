@@ -1,0 +1,13 @@
+name: ChatGPT connection smoke test
+on:
+  push:
+    branches: [qa/connection-smoke-20261126]
+    paths: ['.github/workflows/chatgpt-connection-smoke-20261126.yml']
+permissions: {}
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Print test result
+        run: echo 'TEST PASS'
