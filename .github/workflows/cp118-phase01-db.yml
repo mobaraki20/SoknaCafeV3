@@ -1,4 +1,4 @@
-name: CP120 full schema finance HTTP and role gate (QA only)
+name: CP120 actual browser recovery QA (QA only)
 on:
   push:
     branches: [qa/cp118-phase01-db-20261126]
@@ -71,33 +71,39 @@ jobs:
           assert H(patch)=='13fafdf33a77cf67f393e890611337be614db0da9f385207ec4e363398cbb2ad'
           pathlib.Path('cp118.patch').write_bytes(patch)
           pathlib.Path('test-db.php').write_bytes(zlib.decompress(base64.b64decode(
-              'eNq1V21z2zYS/p5fwWQ4A3JKOZTs2rVV2sPY6sQdn+VI6vVmZA0GIiELNQnSBKhIV/e/dxd8keTEvrsPN04oYgEsFvs8zwL8+SJf'
-              '5u9iHiWs4I7ShYg01Zucq6Dr9t+JhXP3+Y6Ow7vr90FAokSQ5+cHrrlcOeRLSK8+0btwPP59OLoiLo5QG6mXXIuoE+Xd7nEnEp1M'
-              'Jhvi8rXQTg9c2kWW6aDgLMmZXjo2Kx5W0+7M7cNa703n8/OcKS5Zyh3TNo6TLGLJjpuCP5Wi4JYZcUA+zuEHwmf5AWyI9Otumslo'
-              'O0YV0ccx12X+8VORfVW8MI0xL1Yi4tW8d3YeSP7VursaOiTdqKfkbJkpHXR7Jwc+/HX7eVbo4PDQP+5HS1YoroNSL35K50fEI7gO'
-              '8V7LjzcFr2dn4WQyooPR6B/Dq0Fwbkx1iw7+dTm4m1wPb2eYqLxzztc8csjlaBBOBtZVOAk/heOBpbJHySgkuOfTJ2Zdfg5H4eVk'
-              'MLLGg4lVR2NdDm9ucFbdpqUUURZzGgmCzmNRBGqjKARLNU9zCgbHxSSh845x3iEHcyF7S752CibjLKXzjebKOXbdfvqIE9CN55/4'
-              'vqeLkqNfhSk1Kbwfo6f7GwTu3mT6/jtpd8DDDtRe9dO3VVC56pwLqTRLklv+1ZmSmGmGoZLgHNeGeNECqY/nYJoSBAteSIsXdCFi'
-              'aEPQoImrYXM/i9BRQmjYUaFIcqYUNF9Dc+YRFqdC0mbaE+sYA2k60MHXrIjNYq0ummEdmekOygDGR2zBaRPXl9D65fo2vL0cQI9m'
-              '8wQwy0qJW+jNKk2+d2w1JaqMIg4xzi4uFixR3H1+NvYlONVLMpuSVDwUTItMKsryPBE8xsE+Cur00NVLgMNCqEbgXqR8sI54jsMd'
-              'YnJvLZhIYA7iGi0egkZz+5ABBlEmF+KhUpAdZQUPquQa0dJWmg56AWzzwAzqnCN2qHUHVliAhUVLwBgyFDG1FJBWDxsxlyZyiynL'
-              'Lt0/URh5wXOsWB+ub8eD0cS6vp0MLURCOfjE8Lwm/3QJ3rxYqDxhG5Nmr8gS7rFIixV3rX+GN78Nxs6Fh38kyznkLIO1u+4Ht5Jg'
-              'qbkztct9j84+qLjsDqYNUejV4Jfwt5sJMLusipxdBlDPdjbpvrkhGrGczUUitODV5qiIvda48aBSAkfinX2Q2jNlkWGO+mYvjpDa'
-              'LJswpa8lONXXseNCgH9t685eKIaiho3KMSmsmCnLdM4LDysL5BPpSHX2yGUbDdLZDCXe6empwbNutq8dM4NAhH1bB6+E1n8lroWQ'
-              'TEYCaAa4iSxWjhYawIWaUWgKBOOQoNi87MVUjYYoev6R3/G78G+ncditwqlGvRGTgh2jvoLprA8MdmwR+H1b/HwKjx9+eIOrVfqa'
-              '6U5ezhMRVbmrUwsowyZ0qbx5qYTE1JrttC3AeKHpI9+8NCVszpOtESDPFguqJMvVEgS7S3hSiWA3Dz0DDTy+hPDwj858n+yzB5Gr'
-              'I4cjwhaerWdYsuvNTGevJgzYlbJHHixKGZlCA+MsW5mtFkI+wFHNn9p3IVcZHBFtO+ZwEhOoPjyCAn1h5kJdkWrBi0CWSdKOrBIH'
-              'F5YszRMo4HEzvOArM9IFITl27tUIvwEUVELgU8qlprAuiF859UYRoZf0Q1sddqONptnkn/6hMunhXmAuJqGREqiqHeSpcq4zOPe8'
-              '6lkzAcKHEscB6G1UsCIWZvBnKLPteBQyRlFmaZrFZiXaZAtH/h9ZBbz68y+CP1v1d+GSgP+rfssM+h84Z0hSo+W1zDCU8Gq4PUTX'
-              'MwxqCACFtkoZlOSL7esZWQAHiNeyB+hbwIlXSOtV5mIBYiIODIGdLdn9malk2NfxfVNFvoQduFTAK4gCCfdySnd/Sm87pYdTvj+6'
-              'Cf7FjEO8+9SKMBLY7tLkA4tUq5GqSFXHbA+vSznURhAM8Xz8m3mHe8ZuZTwyRrhYoYzQBhH9iLb6etCMO0Yb4BLv2E5ezvVn1Tku'
-              '4jVc4VZvCO/7zP2P6uNrjed/QkGqFdELDiiuKjfmoHowYtnXG1xl0hcmluLh+d/JuT5pqRIPIOqywNvHJslYffmoCco0XrV1dZ8D'
-              'iatcRCIrFVQWlQPW3KtuTLivRPyb0xqKF+IC+aCwzDYMEyyMntTyqqXXquzipZAaYiEGs1ZTyDHInSno8bqmnGqbQLfw8rJpQp2F'
-              'mHPOtENAtsdH7p5pXpkODg7sFZ4MDXjVkm+dDpDHb+RyUglgjw+ogpOtCvB1r39H2zAfr5dAVZqXmHsJF3qtnG9vseabZyHWiN8B'
-              'wko8fFIukTZw7jUh4ddH844fCgLv+KY8mDCwAT8z79fx8JZOPo+Gv1N4ga+84Qg+nXi0zKwPeEG0+BrOXwuLkVXduOEzy2qvlfXl'
-              'hlt1TOpefui/+xvIV0NT'
+              'eNqtWG1T20gS/s6vUFyujHQnGQO72Q1emRJGWbwFmNhic1vGNRlJY1uLLCkzkoMvyX+/7tGL7YSwt1dXVIHmradfnn66h1/OsmV2'
+              'EPIgZoLrMhdRkNN8k3FpHxm9g2iu317e0olzO3xh2ySII/L584LnPFnr5K1DL87prTOZvBuNL4iBO+QmyZc8jwIryI6OXllBZKVJ'
+              'vCEGf4xy/RhEtkWa5rbgLM5YvtTbTCzW06OZ0YO7yjXbnrNY8s+ffSZ5wla8nFfy4zRg8Y40wT8UkeCa2tEhhz78AStY1gG7SLNO'
+              '0yTYbpIiOJzwvMgOz0X6UXKhBhMu1lHAq4OF5NokfUjY/RVeeT9IBb//dB0tBMujNJHmyIeDa+ZHcZRvvnx74CJdsSi5H/MgXXOx'
+              'uf90Xsgo4VKes+Chuc2s193HgGco2bzmYcQmCcvkMs0HKcTmCelK4/sn1O8dzIskQEFakCYJD/K3TMU1WWjt0LcJMU5vL0baJ3R3'
+              '6KNPycuXL6KEMiHYBufMKZF4FcUQvqaMmHtjn8zMXBTcMPIl3K8l/KM2LpI8WvHGCJ0kaa69dTQZLPmKEaPXzmzcCFfrZLWRH+LT'
+              'ZSpz++j4p04Xfo56WSpy++Sk+6oX+hh0m3RAlw7pBUsmJM/tIp//vPJ/AG0wjMT8HgzNKVxyeup43pi64/H16MK1+2qqGlH3XwP3'
+              '1huObsydndd3V47n0tuxe+uM3YndVyCcoeZWnz/yQG9NXE9DM+m/04Rrtkb+2T05PemSltETEAKRaO2s92UbAFkFESKALm9nxqly'
+              '8qd2GC24zKU9nfXmACwWQCLANR8KQALec+UOPM1zzq9ceuNcu9qb8ehaixLYu1Lwo6VfO2rLRHt36Y7dav9kcOleO/aFA0Nn4uqG'
+              '5txcVGveH7euTXC6nCAaeMwda+d/7FzWMqz+nOfB0oljXTnojesNLulgdHV3fWNoTGrt3PjURuzZW61JpfU/SmXfkw6gjgqexSzg'
+              'OnkPcXsPv+BoBwbfuQOCOBqAy3kSAPBDW7mLrlimzxNgAcPu/ynB+nIZJszfJqMb6l2OR+8ofECAR+PPam5487tzNbygd96bn+nk'
+              '7nziDb07zzVMpbfRkwA3vb7HnIzGHp144+HNr3B7FZ1pO5/ZSyaXOpFLdvzjK2JGqyzGm1v3ScusTxtG70sd/+roLgogUsGD3k4f'
+              'zDoNEd7G6TqNQpWGL2Dt2Vx64wyvNEgHda7Hg2WqEcR7PddBdXavFPxPSHz9ScbR2n6jyLz5ypiUzQCtqvXLBcDVt/oCzAKkukkg'
+              'NlnOQy91V1m+8YC+OThybioRRu85O4qEP2agGA+1ShwQw5eAAQ70b3hQa3NDkRSH9BMiFUiFQFelds9d01wC7sHNHaItgI1gtCsK'
+              'bv5y0EYO58LeUqUKv7DlRlIwjOZ8lVGY0A2sG8iCqrC9tkjHj5LjJX/UBUvCdEX9Tc6l/grAsHrAAyjG7P7U7ZZk2avvqsiEDMYu'
+              '8I1W56m2R7Ha4NIZOwMPchNJp6I+DVIQSaoe0yKJ0EAaRKS8AOqAotknCoMO+uwUU7P8A9aynJ3bqC2WT6h8KuIyZ3kB6a1EWv0o'
+              'gYk4vuEf9SnBE+gTYvfL0yYJfRhMCVI6fJCG1SHpkddxDqkdhqgCDvcrikmgwKHAitsJggmG3+P4mUlYuIKiVR/7wKxcQZHUKyjh'
+              'YypCdVnTlcA+tWxBfbKwCYH9AZtzWusFNctzxr+6HizkzI/BuSkgDJaOZw1YPUQfLiqQlgmpPKXNWRQX0I+QDqIHuiopAcEAngp+'
+              'MHsNGckWXC8n9/gMNoQ8BxHy7Gw6M8q8LqHe5pDgJZXoVXSgTBdBANLI7OxMVSvj5cvt4hKsy5dkNiWrpmuhLMviiId4omtAp/X6'
+              'BPwV5AWLqV9ihipDqCxRQ1+f0O1xhTLBAx5luV3GHkAjqtS15pDVS0tyHlrrI2UZVm9UOZJ0HsWIvfKwYZb+ogHEAFKVZiJawwfF'
+              'w7TapG4L5gu7bvL2EQw3Q9rOo0XZsUGqC26XsFJdIm16QR2lANR9W22y+v4eMWLOZ80aWoWNJ876fK6Ebus4bIR51FK1afa3zdrp'
+              'qQwYFCvlHaOyX2FI354z+l30ANi6wiGYz6HVVRYfHkKjVwgg6nn0CEWFn2oSjNb4I8RJa2JxiKc1CZ4B8PCetoU49tvAJkoEhrTz'
+              'd5iH/S/MA9S/w6BfNY8VxTg1xTDSECROw8yigGJgKUeQXcZsl0YMAAEYwJ3xlACOEdkNFc1KODp7m4CVYI/K7Jn9lVp7Gyt6U47F'
+              'I1GIB4Aryj2kh+ClWQEZnSbASLnUn8OiSX7BZ5VWNQWks2aCQlVSLUdzbWklNLjoopWi7e3zAoDGzPq9UkPycC8T2yurX05Ae9Xt'
+              '/vgasJQUtMY2ZhG8euB5UnaM6x/KSFl9AFuGr73W8Gbijj1teOONNCRSqeNvNMus2ZNi/2OGkYQ2bqNI0hRpzE3AYrTmhgZN1p07'
+              '0c9M/CmZl5hHBvaQCLYCdJvuOHJfrv48Mdd0Ty/cN87dlQekgS+KUhI25lFo61GSG8oqoNp8mID++TDUn7NU8FUKTIOmIv2EEM4I'
+              'yFPZTqPwK9O3OyikkMQHWqkBXWETseuAI7N8nm5Lz74f2l8L/7v2zyrqUVi5f+KxOeEAYihL8v6Cz1kRAyMpuE7gEBcKU399dACA'
+              'WqRiMwT4XEW+YNDc10gEmlLGy8OwvMCqEuJwfXQYVActoIZElvxvmP/NUXgWPEUGlblWH3/r4L590H9FrrBSVbffy0BJ3ahLXBWy'
+              'eRHHdOdJyuqX3S4+oDDl0AZLvfqgD3xj1t9rFhfbqAOyO1Un21kx8QC9CLxOy4mwxjyAoNdmZVv2VEPehGXvPwoVPQLmt9kDcpCI'
+              'mmZNSenIB39Oeqr93v3/C5YBCyezpQDugB1gbVlumyZeV/Lq1v3/SHLBPr0d/KXo1iEQ83HX2vYSZfFTKGqZu13StFUa3oL2U6nf'
+              'qqIb+jDV2qP5ltkq28InFv2dRXB1q+lmG3k7s87sqacmNPua6v5a6jlW0U0IL/WQZzxB4tgWZq22rS7s2Nwd/AeJwaTF'
           )))
-          assert H(pathlib.Path('test-db.php').read_bytes())=='cd74580a2a5028c5bcef2ae2c0acfc0f8c53192f6494eaf65db24f8df9d774d3'
+          assert H(pathlib.Path('test-db.php').read_bytes())=='fe216a6cdcbec5ded772ca857cebfbd33c0313c59792bf2fe56bc917a22d04a3'
           PY
           patch --batch --forward -p1 < cp118.patch
           python3 - <<'PY'
@@ -106,49 +112,47 @@ jobs:
           r=pathlib.Path('local');files=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());assert len(files)==624
           actual=H(''.join(n+'\0'+H((r/n).read_bytes())+'\n' for n in files).encode());print('exact CP119 Local canonical SHA256',actual);assert actual=='2941dc21f50a1f5d4b34938a3f65bdafdac2b6d98d04653722dbeb990e5dc605'
           PY
-      - name: Exercise actual finance endpoints with PHP HTTP and real MariaDB
+      - name: Set up installed Chrome browser driver
+        run: |
+          set -euo pipefail
+          google-chrome --version
+          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright@1.57.0
+      - name: Actual browser and PHP HTTP recovery on independent synthetic schemas
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
           php test-db.php "$RUNNER_TEMP/local"
-          php -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > "$RUNNER_TEMP/cp120-http.log" 2>&1 &
+          php -d upload_max_filesize=64M -d post_max_size=65M -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > "$RUNNER_TEMP/cp120-http.log" 2>&1 &
           server=$!
           trap 'kill "$server" 2>/dev/null || true; tail -80 "$RUNNER_TEMP/cp120-http.log"' EXIT
           for i in $(seq 1 20); do if curl --silent --output /dev/null http://127.0.0.1:18765/login.php; then break; fi; sleep 1; done
-          python - "$RUNNER_TEMP/local" <<'PYTEST'
-          import json,sys,urllib.request,urllib.parse,urllib.error,http.cookiejar,pathlib
-          root=pathlib.Path(sys.argv[1]); fx=json.loads((root.parent/'cp120-fixture.json').read_text()); s=fx['sessions']; base='http://127.0.0.1:18765';api='/finance/api.php'
-          def client():return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
-          def req(c,path,data=None):
-           try:
-            with c.open(base+path,data=data,timeout=30) as r:return r.status,r.read()
-           except urllib.error.HTTPError as e:return e.code,e.read()
-          def query(c,action,**kw):
-           status,raw=req(c,api+'?'+urllib.parse.urlencode({'action':action,**kw}));
-           try:return status,json.loads(raw)
-           except Exception:raise RuntimeError(f'non-JSON {status}: {raw[:500]!r}')
-          def ck(v,name):
-           if not v:raise AssertionError(name)
-           print('PASS',name,flush=True)
-          def login(name,passw):
-           c=client();status,raw=req(c,'/login.php',urllib.parse.urlencode({'username':name,'password':passw}).encode());return c
-          anon=client();ck(query(anon,'settlement_request_status',session_id=s[0],request_id='qa-paid-0001')[0]==401,'real_http_unauthenticated')
-          a=login('qa-admin','synthetic-qa-admin-not-real');c=login('qa-cashier','synthetic-qa-user-not-real');d=login('qa-denied','synthetic-qa-user-not-real')
-          for who in [a,c]:
-           for action in ['settlement_request_status','accommodation_transfer_status']:
-            args={'session_id':s[8]};
-            if action.startswith('settlement'):args['request_id']='qa-unknown-0008'
-            st,body=query(who,action,**args);ck(st==200 and body['result']['state']=='unconfirmed',action+'_unconfirmed_'+('admin' if who is a else 'cashier'))
-          for action in ['invoices','invoice_lookup','settlement_request_status','accommodation_transfer_status']:
-           ck(query(d,action,session_id=s[0],request_id='qa-paid-0001')[0]==403,'denied_'+action)
-          st,b=query(c,'settlement_request_status',session_id=s[0],request_id='qa-paid-0001');ck(st==200 and b['result']['state']=='committed' and b['result']['result']['settlement_id']==fx['paid'],'committed_exact_id')
-          ck(query(c,'settlement_request_status',session_id=s[1],request_id='qa-paid-0001')[0]==409,'cross_session_conflict')
-          st,b=query(c,'settlement_request_status',session_id=s[1],request_id='qa-paid-0002');ck(st==200 and b['result']['state']=='requires_review','reversal_not_committed')
-          for i,state in [(2,'prepared'),(3,'remote_result_unknown'),(4,'posted_local_pending'),(5,'failed'),(6,'requires_review'),(7,'committed')]:
-           st,b=query(c,'accommodation_transfer_status',session_id=s[i]);ck(st==200 and b['result']['state']==state,'accommodation_'+state)
-          ck(query(c,'settlement_request_status',session_id=0,request_id='qa-paid-0001')[0]==422,'invalid_session')
-          ck(query(c,'settlement_request_status',session_id=s[0],request_id='bad')[0]==422,'invalid_request_id')
-          st,b=query(c,'invoice_lookup',invoice='QA-12001');ck(st==200 and b['id']==fx['paid'],'invoice_lookup_real_http')
-          st,b=query(c,'invoices',q='QA-12001');ck(st==200 and b.get('success') is True,'invoices_real_http')
-          print('CP120 FINANCE HTTP PASS',flush=True)
-          PYTEST
+          cat > "$RUNNER_TEMP/recovery-browser.cjs" <<'NODETEST'
+          const {chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
+          const fs=require('fs'),path=require('path'),assert=require('assert/strict');
+          const base='http://127.0.0.1:18765'; const root=process.argv[2];const fixture=JSON.parse(fs.readFileSync(path.join(root,'..','cp120-recovery-fixture.json'))); const shots=path.join(process.env.RUNNER_TEMP,'cp120-screenshots');fs.mkdirSync(shots,{recursive:true});
+          const pass='synthetic-only-passphrase';
+          function ck(v,name){assert.ok(v,name);console.log('PASS '+name)}
+          (async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
+           const ctx=await browser.newContext({viewport:{width:1440,height:900},locale:'fa-IR'}); const page=await ctx.newPage();page.on('pageerror',e=>console.log('BROWSER ERROR',e.message));
+           await page.goto(base+'/login.php');await page.locator('[data-login-account][data-username="qa-target"]').click();await page.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([page.waitForNavigation(),page.locator('form[data-login-form] button[type=submit]').click()]);
+           await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[data-system-workspace]').getAttribute('aria-busy')!=='true');
+           ck(await page.locator('[data-backup-inspect]').isDisabled(),'inspect_disabled_before_upload');ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_before_upload');await page.screenshot({path:path.join(shots,'01-recovery-desktop-initial.png'),fullPage:true});
+           const csrf=await page.locator('[data-system-workspace]').getAttribute('data-csrf');const denied=await ctx.request.post(base+'/system/api.php',{data:{action:'backup_inspect',id:'invalid-id',passphrase:pass}});ck(denied.status()===419,'real_http_csrf_rejected');
+           const inp=page.locator('#sc-recovery-backup-file');await inp.setInputFiles(fixture.backup);await page.locator('[data-recovery-upload] button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('[data-restore-id]').value!=='');
+           ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_after_upload');await page.locator('[data-restore-pass]').fill('synthetic-wrong-password');await page.locator('[data-backup-inspect]').click();await page.waitForFunction(()=>document.querySelector('[data-backup-manifest]').classList.contains('sc-alert--danger'));ck(await page.locator('[data-backup-restore]').isDisabled(),'wrong_password_cannot_restore');await page.screenshot({path:path.join(shots,'02-recovery-wrong-password.png'),fullPage:true});
+           await page.locator('[data-restore-pass]').fill(pass);const [resp]=await Promise.all([page.waitForResponse(r=>r.url().includes('/system/api.php')&&r.request().method()==='POST'),page.locator('[data-backup-inspect]').click()]);const result=await resp.json();console.log('INSPECT_RESULT',JSON.stringify({http:resp.status(),success:result.success,ready:result.manifest?.target_ready,kind:result.manifest?.target_kind,issue:result.manifest?.target_issue}));await page.waitForFunction(()=>!document.querySelector('[data-backup-inspect]').disabled);await page.screenshot({path:path.join(shots,'03-recovery-inspected-desktop.png'),fullPage:true});
+           await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(shots,'04-recovery-inspected-mobile.png'),fullPage:true});
+           ck(result.success&&result.manifest?.stream_verified&&result.manifest?.target_ready,'fresh_destination_ready_after_real_login_and_page_load');ck(await page.locator('[data-backup-restore]').isEnabled(),'restore_enabled_after_verified_inspection');
+           await page.locator('[data-backup-restore]').click();await page.locator('dialog[open]').waitFor();await page.screenshot({path:path.join(shots,'05-recovery-confirm-mobile.png'),fullPage:true});await page.locator('dialog[open] [data-dialog-role=cancel]').click();ck(await page.locator('[data-backup-restore]').isEnabled(),'cancel_preserves_verified_selection');await page.setViewportSize({width:1440,height:900});await page.locator('[data-backup-restore]').click();await page.locator('dialog[open]').waitFor();const [rest]=await Promise.all([page.waitForResponse(r=>r.url().includes('/system/api.php')&&r.request().method()==='POST',{timeout:90000}),page.locator('dialog[open] [data-dialog-role=primary]').click()]);const rr=await rest.json();console.log('RESTORE_RESULT',JSON.stringify({http:rest.status(),success:rr.success,restored:rr.restore?.restored,table_count:rr.restore?.table_count,code:rr.code}));ck(rr.success&&rr.restore?.restored&&rr.restore?.table_count===104,'real_browser_restore_full_schema');await page.locator('[data-backup-manifest] a').waitFor();await page.screenshot({path:path.join(shots,'06-recovery-complete-desktop.png'),fullPage:true});ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_after_success');
+           console.log('CP120 BROWSER RECOVERY PASS');
+           }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+          NODETEST
+          node "$RUNNER_TEMP/recovery-browser.cjs" "$RUNNER_TEMP/local"
+      - name: Capture only synthetic UI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CP120-RECOVERY-SCREENSHOTS-QA
+          path: ${{ runner.temp }}/cp120-screenshots/*.png
+          retention-days: 1
+          if-no-files-found: warn
