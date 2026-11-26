@@ -1,0 +1,13 @@
+{
+  "changed": {
+    "local/public/assets/staff-app/hall-workspace.js": {
+      "before": "3e5d1303d559dbded9e0a1c80782d05201b9e4c1f2fb11bc2e814454e9670e93",
+      "after": "07dc6c6c83b6fe4ab9e73cfc0d47b1ad0899e2d65c8866da659ad4d4692a9bea"
+    }
+  },
+  "canonical": {
+    "local": "88a4308b773186e6c6473f6293f5e340c25c75a081194f0076288cee23ed97cf",
+    "public": "65e470418d52ab518fbd920d1f414a962f3b909142733ca5b060ce938d1da193"
+  },
+  "files": 883
+}
