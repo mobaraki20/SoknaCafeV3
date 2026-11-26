@@ -37,7 +37,7 @@ newroot=out/'new-web';newroot.mkdir()
 for n,v in new.items():p=newroot/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(v)
 f=out/'PUBLIC-35IQ-TO-35IU-FIXTURE-QA-ONLY.zip'
 with zipfile.ZipFile(f,'w',compression=zipfile.ZIP_DEFLATED) as z:
- for n,v in sorted(u|{'manifest.json':J(m)}.items()):z.writestr(n,v)
+ for n,v in sorted((u|{'manifest.json':J(m)}).items()):z.writestr(n,v)
 check=read(f.read_bytes());check.pop('manifest.json');assert check==u
 r=json.loads((target/'factory-evidence-decision.json').read_text());r['public']['qa_only_foundation_origin']=b35iq;r['files'][f.name]={'sha256':H(f.read_bytes()),'bytes':f.stat().st_size}
 (out/'factory-evidence-decision.json').write_bytes(J(r))
