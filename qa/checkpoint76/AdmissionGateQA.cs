@@ -8,7 +8,7 @@ if(Directory.Exists(sandbox) || !sandbox.StartsWith(Path.GetFullPath(Environment
 string Hash(string p)=>Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(p))).ToLowerInvariant();
 void Need(bool b,string reason){if(!b)throw new InvalidDataException(reason);}
 void Reject(Action f,string reason){try{f();}catch(InvalidDataException e){Need(e.Message.Contains(reason,StringComparison.OrdinalIgnoreCase),"Unexpected rejection: "+e.Message);return;}throw new InvalidDataException("Expected rejection: "+reason);}
-const string pin="9f2859e4da6dd6d15ef64dae3b9d9ae24e64734be39a22349e914d6ed0707ac1";
+const string pin="14cb9ac28637fcc1e9c83dc34ac40765c8a6d2a13ad37cf8c0d40e8e8b359e31";
 Need(Hash(zip)==pin,"PACKAGE_HASH");
 ReleaseSetManifest m;
 using(var z=ZipFile.OpenRead(zip))using(var stream=z.GetEntry("release-set.json")!.Open())m=JsonSerializer.Deserialize<ReleaseSetManifest>(stream,AtomicFile.JsonOptions)!;
