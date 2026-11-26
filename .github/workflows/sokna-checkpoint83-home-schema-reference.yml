@@ -1,0 +1,86 @@
+name: SOKNA checkpoint83 exact MariaDB historical schema reference
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint83-home-schema-reference.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  schema-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        db: ['10.6.28']
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.db }}
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-fence-qa
+          MARIADB_ROOT_HOST: '%'
+          MARIADB_DATABASE: sokna_fence_ref
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CHECKPOINT51-EXACT-RECONSTRUCTED-QA-ONLY
+          run-id: 45706374139
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/exact
+      - name: Verify exact source and isolate original eight migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/exact"
+          echo 'f65f3ca6d478a2d851b169f79583e66845f86ec9cbd93f1881420d51a6e16d85  PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip' | sha256sum -c -
+          mkdir "$RUNNER_TEMP/public" "$RUNNER_TEMP/migrations8"
+          unzip -q PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip -d "$RUNNER_TEMP/public"
+          cp "$RUNNER_TEMP/public/database/migrations"/000[1-8]_*.sql "$RUNNER_TEMP/migrations8/"
+          cd "$RUNNER_TEMP/migrations8"
+          echo '5321b5aaf5f980e3559cf4493531d2254a973f7144c183e1882271403c4a0d54  0007_authority_epoch_fencing.sql' | sha256sum -c -
+          echo 'e1f896996172c50016c2b8235eb74caceece9e79a4dd966abf2d9aaee951cf9d  0008_public_user_ui_preferences.sql' | sha256sum -c -
+          echo 'b4da2e8a0de5d9f6d64a2ae0727079fc5f9c1fcf57b05aeb9cbf512e121fe877  0001_m3_public_edge_core.sql' | sha256sum -c -
+          echo 'b47733907911306fa8b380778e575df29534ccbefa98f7728757cc3dc899b6f3  0002_m4_guest_public_projection.sql' | sha256sum -c -
+          echo 'eb89c8dc847665f15bd135de0345c3105bba6bea570edf714b287faa72c3e16e  0003_g3_emergency_update_takeover.sql' | sha256sum -c -
+          echo '03236b951ff24405bb90b5faeea0ddb636933487088b22ea04ed76d4e3c36435  0004_remote_read_event_cursor.sql' | sha256sum -c -
+          echo 'ed625f9a4ef082dcdba945166b096f7117f8d8824f16c2c276e26e876ab020  0005_transport_v2.sql' | sha256sum -c -
+          echo '653cf1fe988a0236fc263b65da52053e7e01295a8abb2b6adff044322c8384f5  0006_lan_staff_browser_credentials.sql' | sha256sum -c -
+      - name: Build independent reference and print schema only
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/reference.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          require getenv('GITHUB_WORKSPACE').'/qa/checkpoint56/orphan_fence_readonly.php';
+          require getenv('RUNNER_TEMP').'/public/src/Core/Migrations.php';
+          use Sokna\PublicEdge\Core\Migrations;
+          $pdo=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_fence_ref;charset=utf8mb4','root','disposable-fence-qa',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $server=(string)$pdo->query('SELECT VERSION()')->fetchColumn();
+          proofNeed(preg_match('/^10\.6\.28(?:[-+]|$)/D',$server)===1,'SERVER_VERSION_MISMATCH');
+          $pdo->exec('ALTER DATABASE sokna_fence_ref CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          $m=new Migrations($pdo,getenv('RUNNER_TEMP').'/migrations8');
+          $expected=array_keys($m->catalog());
+          proofNeed(count($expected)===8,'CATALOG_COUNT');
+          $m->migrate();
+          $pdo->exec("CREATE USER 'proof_reader'@'%' IDENTIFIED BY 'disposable-read-only-qa'");
+          $pdo->exec("GRANT SELECT ON sokna_fence_ref.* TO 'proof_reader'@'%'");
+          $ro=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_fence_ref;charset=utf8mb4','proof_reader','disposable-read-only-qa',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $proof=schemaProof($ro);
+          proofNeed($proof['ledger']===$expected,'LEDGER_MISMATCH');
+          echo 'REFERENCE_BEGIN'.PHP_EOL;
+          echo base64_encode(json_encode($proof,JSON_THROW_ON_ERROR)).PHP_EOL;
+          echo 'REFERENCE_END'.PHP_EOL;
+          echo 'PASS independent historical schema reference (no host data)'.PHP_EOL;
+          PHP
+          php "$RUNNER_TEMP/reference.php"
