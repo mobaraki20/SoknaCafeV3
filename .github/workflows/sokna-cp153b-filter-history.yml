@@ -63,7 +63,7 @@ jobs:
       - name: Prepare browser driver
         continue-on-error: true
         run: npm install --prefix "$RUNNER_TEMP/cp148-qa/pw" playwright --no-audit --no-fund
-      - name: Execute independent remaining MariaDB HTTP and browser groups with isolated empty schema
+      - name: Execute remaining report groups with advanced product picker
         run: bash qa/cp153b/run-qa.sh "$RUNNER_TEMP/cp148-qa"
       - name: Preserve synthetic QA evidence only
         if: always()
