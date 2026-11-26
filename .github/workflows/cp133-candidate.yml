@@ -1,0 +1,233 @@
+name: Sokna CP133 candidate grouped marketing and pricing acceptance
+permissions:
+  contents: read
+  actions: read
+'on':
+  push:
+    branches:
+    - qa/cp133-marketing-20261126
+    paths:
+    - .github/workflows/cp133-candidate.yml
+jobs:
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+        - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+    steps:
+    - name: Reconstruct exact CP132 from pinned successful workflow
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\n/usr/bin/python3 - <<'PYCODE'\nimport os,pathlib,hashlib,urllib.request,subprocess,yaml\n\
+        url='https://raw.githubusercontent.com/mobaraki20/SoknaCafeV3/739906e98dceecb8cc3c4a351a0108f774d55c55/.github/workflows/cp118-phase01-db.yml'\n\
+        raw=urllib.request.urlopen(url,timeout=30).read(600000)\nassert hashlib.sha256(raw).hexdigest()=='bfa3af14d81c1726c172ba10cb2b0f1599d0aa80fd2debdd5361c0a949a3b9bf'\n\
+        steps=yaml.safe_load(raw)['jobs']['database']['steps']\nend=next(i for i,s in enumerate(steps) if s['name']=='Apply\
+        \ CP132 exact cumulative source')\nassert end==64, end\nfor step in steps[:end+1]:\n    assert 'run' in step and set(step)<=\
+        \ {'name','run','env'}, step['name']\n    env=dict(os.environ)\n    marker=chr(36)+'{{'\n    cmd=step['run'].replace(marker+'\
+        \ github.repository }}','mobaraki20/SoknaCafeV3')\n    assert marker not in cmd\n    print('Pinned source: '+step['name'],flush=True)\n\
+        \    subprocess.run(['bash','-e','-o','pipefail','-c',cmd],env=env,check=True)\nPYCODE\n"
+    - name: Apply exact candidate delta and verify both canonical sources
+      run: "set -euo pipefail\ncd \"$RUNNER_TEMP\"\npython3 - <<'PYCODE'\nimport base64,zlib,json,pathlib,hashlib\nH=lambda\
+        \ b:hashlib.sha256(b).hexdigest()\nraw=zlib.decompress(base64.b64decode('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'))\n\
+        assert H(raw)=='90d25a6d7563f2e4e1bd4655985edb5afddad6bde8afb00217b1b5b1058c013f'\nfor n,(before,after,edits) in json.loads(raw).items():\n\
+        \ p=pathlib.Path(n);a=p.read_bytes();assert H(a)==before,n\n s=a.decode('utf-8')\n for i,j,t in reversed(edits):s=s[:i]+t+s[j:]\n\
+        \ out=s.encode();assert H(out)==after,n;p.write_bytes(out)\n print('PASS exact delta',n)\nfor d,n,expected in [('local',625,'dabcc6c96db06da40ae598c2e092db5130595e20a533924cdd101556bdc087a4'),('public',258,'a831b8475bcfe673faec1df023abafe647cb9339ac8627470a734bb53f169859')]:\n\
+        \ p=pathlib.Path(d);names=sorted(x.relative_to(p).as_posix() for x in p.rglob('*') if x.is_file());actual=H(''.join(n+'\\\
+        0'+H((p/n).read_bytes())+'\\n' for n in names).encode());assert len(names)==n and actual==expected,(d,actual);print('PASS\
+        \ canonical',d,actual)\nPYCODE\n"
+    - name: Prepare cp133-local-db.php
+      run: 'set -euo pipefail
+
+        cat > "$RUNNER_TEMP/cp133-local-db.php" <<''QAEOF''
+
+        <?php
+
+        declare(strict_types=1);
+
+        if(PHP_SAPI!==''cli''||getenv(''QA_DB_PASSWORD'')!==''synthetic-cp116-ci-only'')exit(2);
+
+        $root=realpath($argv[1]);if($root===false||basename($root)!==''local'')exit(2);
+
+        require $root.''/bootstrap.php'';
+
+        require_once $root.''/src/Setup/BrowserSetupService.php'';
+
+        use Sokna\Local\Core\{Migrations,Observability};
+
+        use Sokna\Local\Domain\Recovery\{BusinessBackupService,RecoveryException,MediaSnapshotCodec};
+
+        use Sokna\Local\Setup\BrowserSetupService;
+
+        function connectQa(string $db=''''):PDO {if($db!==''''&&!in_array($db,[''sokna_cp119_a'',''sokna_cp119_b''],true))throw
+        new RuntimeException(''not QA schema'');$p=new PDO(''mysql:host=127.0.0.1;port=3306;dbname=''.$db.'';charset=utf8mb4'',''root'',getenv(''QA_DB_PASSWORD''),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);$p->exec("SET
+        time_zone = ''+03:30''");return $p;}
+
+        function snapshotQa(PDO $p):array{$digests=[];foreach($p->query("SELECT TABLE_NAME FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE=''BASE TABLE'' ORDER BY TABLE_NAME")->fetchAll(PDO::FETCH_COLUMN) as
+        $t){$rows=$p->query(''SELECT * FROM `''.str_replace(''`'',''``'',$t).''`'')->fetchAll(PDO::FETCH_ASSOC);$encoded=array_map(fn($r)=>json_encode($r,JSON_THROW_ON_ERROR|JSON_INVALID_UTF8_SUBSTITUTE),$rows);sort($encoded,SORT_STRING);$digests[$t]=hash(''sha256'',implode("\n",$encoded));}return
+        $digests;}
+
+        function check($ok,string $name):void {if(!$ok)throw new RuntimeException(''FAIL ''.$name);echo ''PASS ''.$name."\n";}
+
+        function reject(BusinessBackupService $b,string $f,string $pass,string $code):void {try{$b->restoreEncryptedToEmptyTarget($f,$pass);throw
+        new RuntimeException(''unexpected restore'');}catch(RecoveryException $e){if($e->errorCode!==$code)throw new RuntimeException(''expected
+        ''.$code.'' got ''.$e->errorCode);}}
+
+        $server=connectQa();$dir=sys_get_temp_dir().''/sokna-cp119-''.bin2hex(random_bytes(6));mkdir($dir,0700,true);
+
+        $server->exec(''CREATE DATABASE sokna_cp119_b CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'');
+
+        $setup=new BrowserSetupService(dirname($root),$root);$dataB=$dir.''/b'';
+
+        try{$status=$setup->installNew([''data_dir''=>$dataB,''db''=>[''host''=>''127.0.0.1'',''port''=>''3306'',''name''=>''sokna_cp119_b'',''user''=>''root'',''pass''=>getenv(''QA_DB_PASSWORD'')],''admin_user''=>''qa-target'',''admin_password''=>''synthetic-qa-admin-not-real'',''cafe_name''=>''QA
+        TARGET'',''table_count''=>2]);}catch(Throwable $e){echo ''setup failure ''.get_class($e).'' ''.$e->getMessage().''
+        ''.json_encode($e->details??[])."\n";throw $e;}
+
+        check(($status[''success'']??false)&&($status[''health''][''migrations_applied'']??0)===93,''actual_browser_setup_service_93_migrations'');
+
+        $cfg=require dirname($root).''/config.php'';$core=sokna_local_bootstrap($cfg);$pdo=$core->database();$actor=$pdo->query("SELECT
+        id,role FROM users WHERE username=''qa-target''")->fetch(PDO::FETCH_ASSOC);
+
+        function deny(callable $f,string $code,string $name):void{try{$f();throw new RuntimeException(''unexpected success'');}catch(Throwable
+        $e){check(($e->errorCode??'''')===$code,$name);}}
+
+        $m=$core->marketing();
+
+        function need(array $a,string $key,mixed $v):void{check(($a[$key]??null)===$v,$key);}
+
+        for($i=1;$i<=231;$i++)$m->saveCampaign([''name''=>sprintf(''QA133 campaign %03d'',$i),''headline''=>''QA headline
+        ''.$i,''body''=>''synthetic body'',''status''=>$i===1?''active'':''draft'',''public_visible''=>$i===1],$actor);
+
+        for($i=1;$i<=52;$i++)$m->saveEvent([''title''=>sprintf(''QA133 event %03d'',$i),''description''=>''synthetic description'',''starts_at''=>''2030-04-01T10:00'',''ends_at''=>''2030-04-01T12:00'',''location_label''=>''QA
+        cafe'',''capacity''=>''16'',''status''=>''scheduled'',''public_visible''=>true],$actor);
+
+        $a=$m->snapshot();$b=$m->snapshot([''campaign_page''=>10,''event_page''=>3]);
+
+        check($a[''campaign_page''][''total'']===231&&count($a[''campaigns''])===25&&$b[''campaign_page''][''page'']===10&&count($b[''campaigns''])===6,''MKT_L378_full_campaign_pagination'');
+
+        check($a[''event_page''][''total'']===52&&count($a[''events''])===25&&count($b[''events''])===2,''MKT_L378_full_event_pagination'');
+
+        check(!array_intersect(array_column($a[''campaigns''],''id''),array_column($b[''campaigns''],''id'')),''MKT_L371_pages_disjoint'');
+
+        $f=$m->snapshot([''campaign_q''=>''QA133 campaign 001'',''campaign_visible''=>''1'',''campaign_status''=>''active'']);check($f[''campaign_page''][''total'']===1&&count($f[''campaigns''])===1,''MKT_L371_filter_old_record'');
+
+        $c=$f[''campaigns''][0];$oldToken=$c[''edit_token''];$c[''headline'']=''QA edited headline'';$m->saveCampaign($c,$actor);$c[''headline'']=''QA
+        stale overwritten'';deny(fn()=>$m->saveCampaign($c,$actor),''marketing_edit_conflict'',''MKT_L380_stale_campaign_rejected'');
+
+        $c2=$m->snapshot([''campaign_q''=>''QA133 campaign 001''])[''campaigns''][0];check($c2[''headline'']===''QA edited
+        headline''&&$c2[''edit_token'']!==$oldToken,''MKT_L380_preserve_campaign_edit'');
+
+        $ev=$a[''events''][0];$ev[''title'']=''QA updated event'';$ev[''starts_at'']=''2030-04-01T10:00'';$ev[''ends_at'']=''2030-04-01T12:00'';$m->saveEvent($ev,$actor);deny(fn()=>$m->saveEvent($ev,$actor),''marketing_edit_conflict'',''MKT_L380_stale_event_rejected'');
+
+        $ev2=$m->snapshot([''event_q''=>''QA updated event''])[''events''][0];check($ev2[''title'']===''QA updated event''&&$ev2[''window_state'']===''future'',''MKT_L372_future_window_independent_of_visibility'');
+
+        $feed=$m->publicFeed();check(count(array_filter($feed[''campaigns''],fn($x)=>$x[''headline'']===''QA edited headline''))===1,''MKT_L372_active_campaign_guest_feed'');
+
+        check(count(array_filter($feed[''campaigns''],fn($x)=>str_starts_with($x[''headline''],''QA headline'')))===0,''MKT_L372_draft_not_public'');
+
+        deny(fn()=>$m->saveCampaign([''name''=>''bad'',''headline''=>''bad''],[''id''=>$actor[''id''],''role''=>''staff'']),''forbidden'',''MKT_admin_guard'');
+
+        echo "CP133 MARKETING DB GROUP PASS\n";
+
+
+        QAEOF
+
+        '
+    - name: Prepare cp133-browser.cjs
+      run: 'set -euo pipefail
+
+        cat > "$RUNNER_TEMP/cp133-browser.cjs" <<''QAEOF''
+
+        const {chromium}=require(process.env.RUNNER_TEMP+''/pw/node_modules/playwright'');const fs=require(''fs''),path=require(''path''),assert=require(''assert/strict'');const
+        shots=path.join(process.env.RUNNER_TEMP,''cp133-screenshots'');fs.mkdirSync(shots,{recursive:true});const failures=[];function
+        ck(v,k){assert.ok(v,k);console.log(''PASS ''+k)}async function group(n,fn){try{await fn();console.log(''GROUP PASS
+        ''+n)}catch(e){failures.push(n);console.log(''GROUP FAIL ''+n+'' ''+e.stack)}}
+
+        (async()=>{const b=await chromium.launch({channel:''chrome'',headless:true});try{const local=''http://127.0.0.1:18765'',pub=''http://127.0.0.1:18766'';const
+        shot=async(p,n)=>p.screenshot({path:path.join(shots,n+''.png''),animations:''disabled'',fullPage:false});const open=async(p,url)=>{p.setDefaultTimeout(12000);const
+        r=await p.goto(url,{waitUntil:''domcontentloaded''});console.log(''HTTP ''+r.status()+'' ''+p.url());};const lc=await
+        b.newContext({viewport:{width:1440,height:900},locale:''fa-IR''});const l=await lc.newPage();l.on(''pageerror'',e=>console.log(''LOCAL_ERROR
+        ''+e.message));await open(l,local+''/login.php'');const a=l.locator(''[data-login-account][data-username="qa-target"]'');if(await
+        a.isVisible())await a.click();else ck(await a.evaluate(e=>e.classList.contains(''is-selected'')),''qa_account_selected'');await
+        l.locator(''input[name=password]'').fill(''synthetic-qa-admin-not-real'');await Promise.all([l.waitForNavigation(),l.locator(''form[data-login-form]
+        button[type=submit]'').click()]);
+
+        await group(''marketing-campaign-list'',async()=>{await open(l,local+''/marketing/'');const counter=l.locator(''[data-list-count=campaign]'');await
+        l.waitForFunction(()=>document.querySelector(''[data-list-count=campaign]'').textContent.includes(''۲۳۱''));ck(await
+        l.locator(''[data-campaign-list] tr'').count()===25,''marketing_first_page'');await shot(l,''marketing-campaign-desktop'');await
+        l.locator(''[data-list-next=campaign]'').click();await l.waitForFunction(()=>document.querySelector(''[data-list-count=campaign]'').textContent.includes(''صفحه
+        ۲''));ck(await l.locator(''[data-campaign-list] tr'').count()===25,''marketing_second_page'');await l.locator(''[data-list-q=campaign]'').fill(''QA133
+        campaign 001'');await l.locator(''[data-list-status=campaign]'').selectOption(''active'');await l.locator(''[data-list-visible=campaign]'').selectOption(''1'');await
+        l.locator(''[data-list-apply=campaign]'').click();await l.locator(''[data-campaign-list] tr'').filter({hasText:''QA
+        edited headline''}).waitFor();ck(await l.locator(''[data-campaign-list] tr'').count()===1,''marketing_old_filtered'');await
+        l.setViewportSize({width:390,height:844});await shot(l,''marketing-campaign-mobile'');await l.locator(''[data-campaign-list]
+        button'').click();await l.locator(''[data-campaign-form]'').waitFor();ck((await l.locator(''[data-campaign-form] input[name=edit_token]'').inputValue()).length===64,''marketing_edit_token_in_form'');await
+        shot(l,''marketing-editor-mobile'');await l.locator(''[data-cancel-campaign]'').first().click();await l.locator(''[data-campaign-editor]'').waitFor({state:''hidden''});await
+        l.setViewportSize({width:1440,height:900});await l.locator(''[data-tab=events]'').click();await l.locator(''[data-event-list]
+        tr'').first().waitFor();ck(await l.locator(''[data-event-list] tr'').count()===25,''marketing_event_page'');await
+        shot(l,''marketing-events-desktop'');await l.setViewportSize({width:390,height:844});await shot(l,''marketing-events-mobile'');});
+
+        await group(''pricing-display'',async()=>{await l.route(''**/reports/api.php?*'',route=>{const u=new URL(route.request().url());if(u.searchParams.get(''action'')!==''pricing'')return
+        route.continue();return route.fulfill({status:200,contentType:''application/json'',body:JSON.stringify({success:true,pricing:{items:[{name:''QA
+        item 123'',sku:''SKU123'',variant_label:''QA'',category_name:''QA'',price:500,ingredient_cost:100,food_cost_percent:20,price_minus_ingredients:400,cost_status:''known'',oldest_cost_updated_at:''2026-11-26
+        12:00:00''}]}})});});await open(l,local+''/reports/?focus=pricing'');const tab=l.locator(''#report-tab-pricing'');if(await
+        tab.isVisible())await tab.click();await l.locator(''[data-pricing-rows] tr'').filter({hasText:''QA item 123''}).waitFor();await
+        l.locator(''[data-pricing-search]'').fill(''۱۲۳'');ck((await l.locator(''[data-pricing-rows] tr'').first().textContent()).includes(''QA
+        item 123''),''pricing_fa_digit_search'');await l.locator(''[data-pricing-search]'').fill(''١٢٣'');ck((await l.locator(''[data-pricing-rows]
+        tr'').first().textContent()).includes(''QA item 123''),''pricing_ar_digit_search'');ck((await l.locator(''[data-pricing-rows]
+        tr td'').last().textContent()).includes(''۱۴۰۵/۰۹/۰۵''),''pricing_persian_basis_date'');await shot(l,''pricing-mobile'');});
+
+        if(failures.length)throw Error(''Failed groups: ''+failures.join('',''));console.log(''CP133 BROWSER GROUPS PASS'');}finally{await
+        b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+
+
+        QAEOF
+
+        '
+    - name: MariaDB marketing acceptance
+      run: 'set -euo pipefail
+
+        cd "$RUNNER_TEMP"
+
+        php cp133-local-db.php "$RUNNER_TEMP/local"
+
+        '
+    - name: Install browser driver
+      run: 'set -euo pipefail
+
+        npm install --prefix "$RUNNER_TEMP/pw" playwright@1.51.1 --no-audit --no-fund
+
+        '
+    - name: Real Local browser marketing and pricing groups
+      run: 'set -euo pipefail
+
+        cd "$RUNNER_TEMP"
+
+        PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > cp133-local-http.log 2>&1 &
+
+        local_pid=$!
+
+        trap ''kill "$local_pid" 2>/dev/null || true; tail -35 cp133-local-http.log'' EXIT
+
+        sleep 2
+
+        node cp133-browser.cjs
+
+        '
+    - name: Capture synthetic evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: SOKNA-CP133-UI-QA
+        path: ${{ runner.temp }}/cp133-screenshots/*.png
+        retention-days: 1
+        if-no-files-found: warn
