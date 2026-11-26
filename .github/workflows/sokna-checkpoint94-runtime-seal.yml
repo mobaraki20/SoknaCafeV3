@@ -1,0 +1,163 @@
+name: SOKNA checkpoint94 private runtime config and actual product bootstrap QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint94-runtime-seal.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        origin: [35hv]
+        mariadb: ['10.6']
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-ci-disposable-upgrade76
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+      - name: Exact factory and archive reconstruction, disposable fixtures only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGIN: ${{ matrix.origin }}
+        run: |
+          set -euo pipefail
+          id=13937261374; pin=53df21adb24ee6eeb79e375e1566f95ad939975675d9653322782b098da97ea8
+          download() { curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$1/zip" -o "$2"; echo "$3  $2" | sha256sum -c -; }
+          download 15069153300 "$RUNNER_TEMP/base.zip" 57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f
+          download "$id" "$RUNNER_TEMP/origin.zip" "$pin"
+          python qa/checkpoint76/reconstruct.py "$RUNNER_TEMP/cp76" "$RUNNER_TEMP/base.zip" qa/checkpoint76/transfer.b64
+          python - <<'PY'
+          import os,pathlib as P,io,zipfile as Z,json,hashlib,base64,zlib
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          root=P.Path(os.environ['RUNNER_TEMP']); origin=os.environ['ORIGIN']
+          def read(b):
+              with Z.ZipFile(io.BytesIO(b)) as z:
+                  assert z.testzip() is None and len(z.namelist())==len(set(z.namelist()))
+                  assert all(n and not n.startswith('/') and '..' not in n.split('/') and chr(92) not in n for n in z.namelist())
+                  return {n:z.read(n) for n in z.namelist() if not n.endswith('/')}
+          def tree(d):return H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(d.items())).encode())
+          source=read((root/'origin.zip').read_bytes())
+          raw=source['SOKNA-R171-PUBLIC-35HT-FROM-35HK-PANEL-UPDATE.zip']
+          assert H(raw)=='ea1d2f7d90242d5b45fe232da7ff5510f03ee55c835e2dabe5f61980430be157'
+          a=read(raw);om=json.loads(a.pop('manifest.json'))
+          old={n[8:]:v for n,v in a.items() if n.startswith('payload/')}
+          assert tree(old)==om['target_managed_tree_sha256']=='be2ebe23091472480beadd6a06cad621b43da365d3677f54fadaab6ba56242b6'
+          delta=(P.Path(os.environ['GITHUB_WORKSPACE'])/'qa/checkpoint89/r171-r181.delta.b64').read_bytes()
+          assert H(delta)=='f0eaffdd1b852681ac09dfaf8c422ebdccfe1a9d237681e0a8d39aee0fd0a178'
+          patches=json.loads(zlib.decompress(base64.b64decode(delta,validate=True)))
+          assert len(patches)==13
+          for n,ops in patches.items():
+              lines=old[n].decode().splitlines(keepends=True)
+              for i,j,t in reversed(ops):lines[i:j]=[t]
+              old[n]=''.join(lines).encode()
+          expected={'35hv':'90b26f6d15899b3d53dc85d653928b9851e3580ea73d38e5d3e83cf258126619'}
+          assert len(old)==225 and tree(old)==expected[origin],('ORIGIN_TREE',tree(old))
+          b=read((root/'base.zip').read_bytes())
+          oldclean=read(b['PUBLIC-FINAL-WEB-QA-DO-NOT-INSTALL.zip'])
+          oldmanaged=read(b['PUBLIC-FINAL-FROZEN-QA-DO-NOT-INSTALL.zip']);oldmanaged.pop('manifest.json')
+          protected={n:v for n,v in oldclean.items() if 'payload/'+n not in oldmanaged}
+          assert len(protected)==6 and not(set(old)&set(protected))
+          print('ORIGIN_EXACT_35HV_RECONSTRUCTED',tree(old),'protected synthetic old pins only')
+          v=old['VERSION.txt'].decode().strip();assert '.%s-'%origin in v
+          target=root/'cp76/out'
+          targetzip=target/'PUBLIC-35IU-UPDATE-FOUNDATION-FIXTURE-QA-DO-NOT-INSTALL.zip'
+          clean=target/'PUBLIC-35IU-CLEAN-WEB-QA-DO-NOT-INSTALL.zip'
+          assert H(targetzip.read_bytes())=='692c4379a3ef8c2b8bfdbbd9cec5a319422dd80c587476f20a8a4ffe2ff03797'
+          assert H(clean.read_bytes())=='b6c622515cc1f532531b049fc9d252bbebeff39d09dc4faed2a6368a3a7ca6e3'
+          new=read(clean.read_bytes());u=read(targetzip.read_bytes());m=json.loads(u.pop('manifest.json'))
+          assert tree({n[8:]:b for n,b in u.items()})==m['target_managed_tree_sha256']
+          sql=[n for n in old if n.startswith('database/migrations/') and n.endswith('.sql')]
+          assert len(sql)==8 and all(new[n]==old[n] for n in sql)
+          assert H(old['recovery.php'])=='84093636728846bcd5f2480b2f8b90592518befdb1cba55a805d6472dda8381a'
+          assert H(old['src/Recovery/StableRecoveryService.php'])=='872c872d90a3146d5bc4286803a11410a57fd4ebfe6a9a80f919cffc8df72bed'
+          assert H(protected['src/Emergency/PublicUpdateService.php'])=='2722c10cc2367ba055dc9ecf3f1320e8bbbc7ae2381abe3c0a8ad2f48e570267'
+          base={'version':v,'managed_tree_sha256':tree(old|{n:new[n] for n in ('recovery.php','src/Recovery/StableRecoveryService.php')})}
+          versions=[
+              ('3.0.0-g3.6-workspace.35hv-r181-home-ux-uat','58a60975a1a3797a96ba113d0d5c9e4322a98e5dd8b1a45ddb25b72cf74a0271'),
+              ('3.0.0-g3.6-workspace.35im-r304-controlled-preparation','c04287546c40b5f13532790cb747256d24b06e26560b2e583994c0334ac72f6b'),
+              ('3.0.0-g3.6-workspace.35in-r306-local-public-ui-parity','6f747f8b06585767b40785a982eca35e4f152cf1324bbed753fcf70e2e4fcba6'),
+              ('3.0.0-g3.6-workspace.35io-consolidated-20261124-preflight','0c082e0df8dc78b455c0746708beecc30063bbc6b3059d8c274fe82b466c4256'),
+              ('3.0.0-g3.6-workspace.35ip-staff-login-hotfix-20261124','0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584'),
+              ('3.0.0-g3.6-workspace.35iq-request-c2-20261124','23113433786f798c1eb5129072c9e59b7755ae1b4ce074af25d0176b4789a46e'),
+              ('3.0.0-g3.6-workspace.35is-consolidated-20261124','2b9c67830f5879b36db623e9e5e06a38b965dfff72f697a37fd97ba19feb2d9e'),
+              ('3.0.0-g3.6-workspace.35it-checkpoint46-qa','72ec91074b07be5ffb8442e1fdd49eccb91f94dee487a43bf203e2edd20f1148')]
+          bases=[{'version':v,'managed_tree_sha256':h} for v,h in versions]
+          assert base in bases
+          d={n[8:]:v for n,v in u.items()};orig=dict(d);meta={'resources/release-identity-v1.json','resources/build-provenance.json'}
+          ident=json.loads(d['resources/release-identity-v1.json']);ident['baseline']['source_versions']=[x['version'] for x in bases];ident['qualification']={'tier':'QUARANTINED_EXACT_CANDIDATE','claim_rule':'Eight post-owner-transition QA baselines; no live foundation or deployment authorization.'};d['resources/release-identity-v1.json']=J(ident)
+          prov=json.loads(d['resources/build-provenance.json']);prov['scope']='Checkpoint89 metadata-consistent eight-origin QA candidate';prov['operator_warning']='DO NOT INSTALL; host foundation and exact release qualification required';prov['schema_migrations']=[n.split('/')[-1][:-4] for n in sorted(d) if n.startswith('database/migrations/') and n.endswith('.sql')];d['resources/build-provenance.json']=J(prov)
+          assert {n for n in d if d[n]!=orig[n]}==meta
+          assert H(''.join(n+'\0'+str(len(v))+'\0'+H(v)+'\n' for n,v in sorted(d.items()) if n not in meta).encode())==ident['source']['canonical_tree_sha256']
+          m['compatibility']={'supported_baselines':bases};m['target_managed_tree_sha256']=tree(d);m['files']=[{'path':n,'size':len(b),'sha256':H(b)} for n,b in sorted(d.items())]
+          m['provenance'].pop('source_managed_tree_sha256',None);m['provenance'].update(build='Checkpoint89 exact metadata reconciliation from checkpoint76',qualification_qa_run='EXACT_AGGREGATE_GATE_REQUIRED',host_operator_note='Eight transitioned QA origins only; live foundation and historical fence disposition are not authorized. DO NOT INSTALL.')
+          assert m['provenance']['installation_authorized'] is False and m['provenance']['production_host_qualified'] is False
+          assert H(J(m))=='10e4bdbadd116e5c5dff4324f890c7e023bff082b76d034052481497099372dd'
+          assert m['target_managed_tree_sha256']=='cbf6512d85325b5c91110487ecca415e502dfbff16de6eaa856a708a9c69dcfd'
+          out=root/'fixture';out.mkdir();oldroot=root/'old-web';oldroot.mkdir();newroot=out/'new-web';newroot.mkdir()
+          new.update(d)
+          for directory,files in ((oldroot,old|protected),(newroot,new)):
+              for n,b in files.items():
+                  p=directory/n;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b)
+          f=out/'PUBLIC-ORIGIN-TO-35IU-FIXTURE-QA-ONLY.zip'
+          with Z.ZipFile(f,'w') as z:
+              for n,b in sorted(({'manifest.json':J(m)}|{'payload/'+n:b for n,b in d.items()}).items()):
+                  i=Z.ZipInfo(n,(2026,11,26,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=Z.ZIP_DEFLATED;z.writestr(i,b,compresslevel=9)
+          assert H(f.read_bytes())=='cd91fb137074e523ecb05d68518cf3a882ebefb751aba1c7004f8b55f256d9a7',('OUTER_DRIFT',H(f.read_bytes()))
+          assert read(f.read_bytes())=={'manifest.json':J(m)}|{'payload/'+n:b for n,b in d.items()}
+          r=json.loads((target/'factory-evidence-decision.json').read_text());r['public']['qa_only_foundation_origin']=base;r['public']['managed_tree_sha256']=tree(d)
+          r['files'][f.name]={'sha256':H(f.read_bytes()),'bytes':f.stat().st_size}
+          (out/'factory-evidence-decision.json').write_bytes(J(r))
+          print('EXACT_AGGREGATE',H(f.read_bytes()),'origin',v,base['managed_tree_sha256'],'target',tree(d))
+          PY
+      - name: Actual independent DB restore, signed preparation, clone-only activation and companion (isolated import fix)
+        env:
+          ROOT_DB_PASS: sokna-ci-disposable-upgrade76
+          CP92_READ_PASS: disposable-cp92-read
+          CP92_CLONE_PASS: disposable-cp92-clone
+          DB_CONTAINER: ${{ job.services.mariadb.id }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
+          python -m pip install cryptography
+          docker exec "$DB_CONTAINER" mariadb -uroot -p"$ROOT_DB_PASS" -e "CREATE DATABASE sokna_cp92_source CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE sokna_cp92_clone CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER 'cp92_read'@'%' IDENTIFIED BY '$CP92_READ_PASS'; CREATE USER 'cp92_clone'@'%' IDENTIFIED BY '$CP92_CLONE_PASS'; GRANT SELECT ON sokna_cp92_source.* TO 'cp92_read'@'%'; GRANT ALL PRIVILEGES ON sokna_cp92_clone.* TO 'cp92_clone'@'%';"
+          cat > "$RUNNER_TEMP/source-setup.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          $root=getenv('RUNNER_TEMP');
+          require $root.'/old-web/src/Core/Migrations.php';
+          require getenv('GITHUB_WORKSPACE').'/qa/checkpoint56/orphan_fence_readonly.php';
+          function db92($name){return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4','root',getenv('ROOT_DB_PASS'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);}
+          $source=db92('sokna_cp92_source');
+          if($argv[1]==='setup'){
+             $m=new Sokna\PublicEdge\Core\Migrations($source,$root.'/old-web/database/migrations');
+             proofNeed(count($m->migrate())===8,'SOURCE_LEDGER');
+             $source->exec("INSERT INTO installations(installation_id) VALUES('cp92-fixture')");
+          }else{
+             $clone=db92('sokna_cp92_clone');
+             proofNeed(schemaProof($source)===schemaProof($clone),'FULL_RESTORE_SCHEMA_MISMATCH');
+             proofNeed(count(schemaProof($source)['constraints'])>0,'FULL_METADATA');
+             echo "PASS independent restore full schema metadata including constraints\n";
+          }
+          PHP
+          php8.3 "$RUNNER_TEMP/source-setup.php" setup
+          docker exec "$DB_CONTAINER" mariadb-dump -uroot -p"$ROOT_DB_PASS" --single-transaction --skip-lock-tables sokna_cp92_source > "$RUNNER_TEMP/backup.sql"
+          test -s "$RUNNER_TEMP/backup.sql"
+          docker exec -i "$DB_CONTAINER" mariadb -uroot -p"$ROOT_DB_PASS" sokna_cp92_clone < "$RUNNER_TEMP/backup.sql"
+          php8.3 "$RUNNER_TEMP/source-setup.php" compare
+          python qa/checkpoint94/runtime-integration.py
