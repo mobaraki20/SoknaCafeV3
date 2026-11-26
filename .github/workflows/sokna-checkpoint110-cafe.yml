@@ -210,7 +210,7 @@ jobs:
           import pathlib as P,os
           s=P.Path('qa/checkpoint77/public-35iq-upgrade.php').read_text()
           a=s.index("    ck(count($m->migrate())===11");b=s.index("    $staged=$r->stageUploadedDeltaZip",a)
-          s=s[:a]+"""    ck(count($m->verifiedAppliedVersions())===11,'BASE_LEDGER');
+          s=s[:a]+"""    ck(count($m->appliedVersions())===11,'BASE_LEDGER');
               ck($r->managedTreeDigest()===$base['managed_tree_sha256'],'ACTUAL_REPAIR_RESULT');
           """+s[b:]
           s=s.replace('sokna_ci_upgrade77','sokna_ci_cp107').replace('cp77-fixture','cp107-disposable').replace('actual 35iq owner-transition fixture -> exact 35iu payload','actual 35ip repair component -> exact 35iy payload')
