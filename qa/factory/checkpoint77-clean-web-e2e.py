@@ -77,7 +77,12 @@ clean_exe=Path(sys.argv[4]).resolve()
 assert clean_exe.is_file()
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def deploy(name):
- return subprocess.run([str(clean_exe),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',f'/DIR={root}',f'/LOG={evidence/name}'],timeout=240).returncode
+ rc=subprocess.run([str(clean_exe),'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',f'/DIR={root}',f'/LOG={evidence/name}'],timeout=240).returncode
+ diag=root/'Infrastructure'/'Logs'/'clean-web-stage-qa.log'
+ if diag.is_file():
+  shutil.copyfile(diag,evidence/(name+'.stage.log'))
+  print(diag.read_text(encoding='utf-8',errors='replace'),flush=True)
+ return rc
 assert deploy('web-exe-install.log')==0,'CLEAN_WEB_EXE_FAILED'
 assert sha(root/'Web'/'VERSION.txt')==hashlib.sha256(b'3.0.0-g6.2-workspace.231gg-checkpoint76-qa\n').hexdigest(),'WRONG_VERSION'
 port=int(d['endpoints']['local_web']['port']);origin=f'http://127.0.0.1:{port}/'
