@@ -3,7 +3,7 @@ Qualification is inherited only from the already admitted Home canary on the
 identical pinned Maintenance Core, and is not a new production assertion.
 No product files, trust policy, engine, migrations or signing keys are modified.
 """
-import sys,os,io,zipfile,json,pathlib,hashlib,urllib.request,re
+import sys,os,io,zipfile,json,pathlib,hashlib,urllib.request,urllib.parse,re
 P=pathlib.Path
 H=lambda b:hashlib.sha256(b).hexdigest()
 J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
@@ -14,8 +14,7 @@ F='07e243bc95b569a992a2d9d2d7f6d69ffe6d20f8b3c33fc8f09c3c4622e9a730'
 T='bafc41567eb3ed3db042855474bf51fdacc2a926094885f561411ae4dae42fa6'
 CORE='f38c20083068e540d593876a2c527c51e0157f92'
 PINS={45718662312:'325849ac8e18178d0fab964838d05f7e2fb9140d',45729045732:'bebbb500fbdb96dec4470ce72f2cad1918cc4924',45733926535:'5302dd71c8d0f604ab79501b44b274361909b1d9',45730164810:'c956e986a77db767fc06436efc707ba132328862',45716869600:'a88c84678195f0cbce9f22b60e5f89b22cff3263'}
-ART={15076585132:'9492b109aa60d06c135fb7149c70bc7f3c4f731ad7d03e4d6b5f7e8a35284ba6',15076580040:'ddecbf62de89bfb8dbfd36eb82e04e5346ad657608c83a419030021847ed4e13',15076286246:'1f20fbf79362d75b04552a545c196a703e6012f4df4574272a2d071acd6e4803',15076106915:'2ed08fafbdf156befcfa7939c84954a408fe5ff15c342f7bce160c4071e722a6',15076022481:'04e71cd835a8eddd7dbdf328894c684c4c4d8a9c3efad1d7036918ff5c16d4ce',15075912981:'fe1cf5a1121615178aee151c48c3a8fc52b4e0867793abcfd83533eecdc43880',15075553600:'1a9f1b342267d2d9cb788038208ad53b97d9a1f16fa5a8425deca433cd6',15075363007:'6f84c66149f489f5c00732edaa14f5c008a0b73a54a4c5890b5fb5a83a4bc8ba'}
-ART[15075363007]='6f84c66149f489f5c00732edaa14f5caa2b79419c74544aee62821fa04f9b53f'
+ART={15076585132:'9492b109aa60d06c135fb7149c70bc7f3c4f731ad7d03e4d6b5f7e8a35284ba6',15076580040:'ddecbf62de89bfb8dbfd36eb82e04e5346ad657608c83a419030021847ed4e13',15076286246:'1f20fbf79362d75b04552a545c196a703e6012f4df4574272a2d071acd6e4803',15076106915:'2ed08fafbdf156befcfa7939c84954a408fe5ff15c342f7bce160c4071e722a6',15076022481:'04e71cd835a8eddd7dbdf328894c684c4c4d8a9c3efad1d7036918ff5c16d4ce',15075912981:'fe1cf5a1121615178aee151c48c3a8fc52b4e0867793abcfd83533eecdc43880',15075553600:'1a9f1b342267d2d9cb788038208ad53b97d9a1f16fa5a8425deca433cd6',15075363007:'6f84c66149f489f5c00732edaa14f5caa2b79419c74544aee62821fa04f9b53f'}
 FAULT={139622460151:('APACHE_STOPPED','RECOVERED_TO_PREVIOUS_SLOT',91),139622460204:('DATABASE_BACKUP_VERIFIED','RECOVERED_TO_PREVIOUS_SLOT',91),139622459715:('DATABASE_FORWARD_INTENT','COMMITTED',93),139622460184:('POINTER_SWITCHED','COMMITTED',93),139622460196:('COMMITTED','COMMITTED',93)}
 ORIGINS={'GF','R301','R304','R306','R307','R3','C2','GE'}
 def need(ok,why):
@@ -28,7 +27,6 @@ def get(path):
    next=super().redirect_request(req,fp,code,msg,headers,newurl)
    if next and urllib.parse.urlsplit(newurl).netloc!=urllib.parse.urlsplit(req.full_url).netloc:next.remove_header('Authorization')
    return next
- import urllib.parse
  req=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','User-Agent':'sokna-factory-cp84'})
  with urllib.request.build_opener(Safe()).open(req,timeout=90) as resp:return resp.read()
 def obj(path):return json.loads(get(path))

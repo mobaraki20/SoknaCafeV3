@@ -2,7 +2,7 @@ name: SOKNA checkpoint84 controlled Home exact outer admission
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
-    paths: ['.github/workflows/sokna-factory-checkpoint84-controlled-local.yml']
+    paths: ['.github/workflows/sokna-factory-checkpoint84-controlled-local.yml', 'qa/factory/build_checkpoint84_controlled_local.py', 'qa/factory/prepare_checkpoint84_native.py']
 permissions:
   contents: read
   actions: read
