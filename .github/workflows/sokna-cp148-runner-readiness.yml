@@ -1,0 +1,31 @@
+name: SOKNA CP148 runner readiness
+on:
+  push:
+    branches: [qa/cp133-marketing-20261126]
+    paths: [.github/workflows/sokna-cp148-runner-readiness.yml]
+permissions: {}
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-test-only
+          MARIADB_DATABASE: sokna_health
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - name: Confirm runtime availability
+        run: |
+          php -v
+          php -r 'if (!in_array("mysql", PDO::getAvailableDrivers(), true)) exit(1); echo "PDO MySQL available\n";'
+          google-chrome --version
+          node --version
+          echo "Runner readiness PASS"
