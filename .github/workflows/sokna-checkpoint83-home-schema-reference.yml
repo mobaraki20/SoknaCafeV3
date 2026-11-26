@@ -76,7 +76,13 @@ jobs:
           $pdo->exec("CREATE USER 'proof_reader'@'%' IDENTIFIED BY 'disposable-read-only-qa'");
           $pdo->exec("GRANT SELECT ON sokna_fence_ref.* TO 'proof_reader'@'%'");
           $ro=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_fence_ref;charset=utf8mb4','proof_reader','disposable-read-only-qa',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
-          $proof=schemaProof($ro);
+          $readOnlyProof=schemaProof($ro);
+          // Metadata privileges may hide TABLE_CONSTRAINTS and REFERENTIAL_CONSTRAINTS.
+          // The root connection exists only in this disposable synthetic database.
+          $proof=schemaProof($pdo);
+          foreach (['ledger','tables','columns','indexes','keys','check_rules','triggers'] as $key) proofNeed($proof[$key]===$readOnlyProof[$key],'VISIBLE_SCHEMA_DISAGREEMENT_'.$key);
+          proofNeed(count($proof['constraints'])>0&&count($proof['fk_rules'])>0,'INCOMPLETE_REFERENCE_METADATA');
+          echo 'REFERENCE_VISIBILITY '.json_encode(['readonly_constraints'=>count($readOnlyProof['constraints']),'full_constraints'=>count($proof['constraints']),'readonly_fk_rules'=>count($readOnlyProof['fk_rules']),'full_fk_rules'=>count($proof['fk_rules'])],JSON_THROW_ON_ERROR).PHP_EOL;
           proofNeed($proof['ledger']===$expected,'LEDGER_MISMATCH');
           echo 'REFERENCE_BEGIN'.PHP_EOL;
           echo base64_encode(json_encode($proof,JSON_THROW_ON_ERROR)).PHP_EOL;
