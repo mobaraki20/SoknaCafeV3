@@ -1,0 +1,383 @@
+--- a/local/public/assets/staff-app/hall-workspace.js
++++ b/local/public/assets/staff-app/hall-workspace.js
+@@ -712,7 +712,7 @@
+   try{
+    let checked=await reconcileCorrectionRequest(entry.id,entry.request,entry.expected);
+    if(checked.state==='unconfirmed'&&correctionSessionId()===sid){
+-    const confirmed=await SoknaUI.confirm('تعیین تکلیف اصلاحیه','نتیجه هنوز ثبت‌شده نیست. اگر ادامه این اصلاحیه را نمی‌خواهید، سرور درخواست قبلی را قطعی لغو می‌کند؛ اگر قبلاً ثبت شده باشد همان سند بررسی می‌شود. هیچ مبلغی با این اقدام تغییر نمی‌کند. تعیین تکلیف شود؟');
++    const confirmed=await SoknaUI.confirm('تعیین تکلیف اصلاحیه','نتیجه هنوز مشخص نیست. سرور ابتدا ثبت قبلی را بررسی می‌کند؛ اگر ثبت نشده باشد، همان درخواست را برای همیشه لغو می‌کند. هیچ مبلغی تغییر نمی‌کند. تعیین تکلیف شود؟');
+     if(confirmed&&correctionSessionId()===sid){
+      const response=await financeMutate({action:'discount_correction_abandon',session_id:sid,request_id:entry.id});
+      checked=verifyCorrectionState(response?.result||{},entry.id,entry.request,entry.expected);
+--- a/local/src/Domain/Finance/SettlementService.php
++++ b/local/src/Domain/Finance/SettlementService.php
+@@ -393,11 +393,11 @@
+         if(!is_array($row)){
+             if($this->isDiscountCorrectionAbandoned($sessionId,$requestId,$lock))
+                 return ['state'=>'abandoned','session_id'=>$sessionId,'request_id'=>$requestId,'retry_safe'=>false];
+-            return ['state'=>'unconfirmed','session_id'=>$sessionId,'retry_safe'=>false];
++            return ['state'=>'unconfirmed','session_id'=>$sessionId,'request_id'=>$requestId,'retry_safe'=>false];
+         }
+         if((int)$row['session_id']!==$sessionId)
+             throw new SettlementStateConflict('correction_request_conflict','شناسه درخواست متعلق به این حساب نیست.',409);
+-        return ['state'=>'committed','session_id'=>$sessionId,'retry_safe'=>false,'result'=>[
++        return ['state'=>'committed','session_id'=>$sessionId,'request_id'=>$requestId,'retry_safe'=>false,'result'=>[
+             'revision_id'=>(int)$row['id'],'grant_id'=>(int)$row['grant_id'],
+             'revision_no'=>(int)$row['revision_no'],'discount_type'=>$row['discount_type']===null?null:(string)$row['discount_type'],
+             'discount_value'=>(int)$row['discount_value'],'discount_amount'=>(int)$row['discount_amount'],
+@@ -412,8 +412,7 @@
+     {
+         if($sessionId<1||!preg_match('/^remaining-discount-correction-[a-zA-Z0-9-]{8,66}$/D',$requestId))
+             throw new SettlementException('invalid_request_id','شناسه پیگیری اصلاحیه معتبر نیست.',422);
+-        if($this->pdo->inTransaction())throw new \LogicException('Abandonment requires its own transaction.');
+-        $this->pdo->beginTransaction();
++        $ownsTransaction=!$this->pdo->inTransaction();if($ownsTransaction)$this->pdo->beginTransaction();
+         try{
+             $lock=$this->pdo->prepare('SELECT active,role FROM users WHERE id=? FOR UPDATE');
+             $lock->execute([(int)($user['id']??0)]);$locked=$lock->fetch(PDO::FETCH_ASSOC);
+@@ -427,8 +426,8 @@
+                 if(!$this->isDiscountCorrectionAbandoned($sessionId,$requestId,true))throw new \RuntimeException('correction_abandonment_not_persisted');
+                 $state=['state'=>'abandoned','session_id'=>$sessionId,'request_id'=>$requestId,'retry_safe'=>false];
+             }
+-            $this->pdo->commit();return $state;
+-        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
++            if($ownsTransaction)$this->pdo->commit();return $state;
++        }catch(Throwable $e){if($ownsTransaction&&$this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+     }
+ 
+     private function isDiscountCorrectionAbandoned(int $sessionId,string $requestId,bool $lock): bool
+--- a/local/src/Domain/LanStaff/LanStaffGatewayService.php
++++ b/local/src/Domain/LanStaff/LanStaffGatewayService.php
+@@ -5,7 +5,7 @@
+ final class LanStaffGatewayService
+ {
+     private const MODEL_CAP=['operations'=>'operations.read','operations_workspace'=>'operations.workspace.read','preparation'=>'preparation.read','inventory'=>'inventory.read','inventory_cost'=>'inventory.cost.read','subscribers'=>'subscriber.read','reports'=>'reports.read','notifications'=>'notifications.read','deferred_context'=>'deferred.context','table_draft_context'=>'orders.table_draft'];
+-    private const RT_CAP=['hall.acceptance_update'=>'shift_supervision','operations.mutate'=>'operations.write','operations.query'=>'operations.workspace.read','order.staff_status'=>'orders.mutate','hall.waiter_status'=>'orders.mutate','hall.table_move'=>'orders.mutate','hall.order_reprint'=>'orders.mutate','hall.order_item_adjust'=>'orders.mutate','settlement.review'=>'finance.settle','settlement.discount_preview'=>'finance.settle','settlement.commit'=>'finance.settle','settlement.late_catalog'=>'finance.settle','settlement.late_commit'=>'finance.settle','settlement.discount'=>'finance.settle','settlement.discount_correction_preview'=>'*','settlement.discount_correction'=>'*','settlement.discount_correction_status'=>'*','settlement.receipt_reprint'=>'finance.settle','settlement.followup_detach'=>'finance.settle','settlement.followup_destination'=>'finance.settle','preparation.mutate'=>'preparation.mutate','table_draft.get'=>'orders.table_draft','table_draft.create'=>'orders.table_draft','table_draft.edit'=>'orders.table_draft','table_draft.finalize'=>'orders.table_draft','table_draft.finalize_atomic'=>'orders.table_draft','table_draft.cancel'=>'orders.table_draft','notification.push.subscribe'=>'notifications.push','notification.push.unsubscribe'=>'notifications.push','notification.preferences.save'=>'notifications.push'];
++    private const RT_CAP=['hall.acceptance_update'=>'shift_supervision','operations.mutate'=>'operations.write','operations.query'=>'operations.workspace.read','order.staff_status'=>'orders.mutate','hall.waiter_status'=>'orders.mutate','hall.table_move'=>'orders.mutate','hall.order_reprint'=>'orders.mutate','hall.order_item_adjust'=>'orders.mutate','settlement.review'=>'finance.settle','settlement.discount_preview'=>'finance.settle','settlement.commit'=>'finance.settle','settlement.late_catalog'=>'finance.settle','settlement.late_commit'=>'finance.settle','settlement.discount'=>'finance.settle','settlement.discount_correction_preview'=>'*','settlement.discount_correction'=>'*','settlement.discount_correction_status'=>'*','settlement.discount_correction_abandon'=>'*','settlement.receipt_reprint'=>'finance.settle','settlement.followup_detach'=>'finance.settle','settlement.followup_destination'=>'finance.settle','preparation.mutate'=>'preparation.mutate','table_draft.get'=>'orders.table_draft','table_draft.create'=>'orders.table_draft','table_draft.edit'=>'orders.table_draft','table_draft.finalize'=>'orders.table_draft','table_draft.finalize_atomic'=>'orders.table_draft','table_draft.cancel'=>'orders.table_draft','notification.push.subscribe'=>'notifications.push','notification.push.unsubscribe'=>'notifications.push','notification.preferences.save'=>'notifications.push'];
+     private const DEF_CAP=['supply.need.create'=>'supply.need.defer','supply.status.prepare'=>'supply.manage.defer','supply.status.return'=>'supply.manage.defer','supply.receipt'=>'supply.manage.defer','inventory.waste'=>'inventory.waste.defer','inventory.count_draft'=>'inventory.count_draft.defer','subscriber.payment'=>'subscriber.payment.defer','expense.create'=>'expense.create.defer'];
+     public function __construct(private readonly Config $config,private readonly PDO $pdo,private readonly PublicProjectionBuilder $projection,private readonly RealtimeDispatchService $realtime,private readonly DeferredDispatchService $deferred,private readonly LanStaffRealtimeReceiptService $receipts){}
+     public function allowedOrigin(): string
+--- a/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
++++ b/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
+@@ -749,7 +749,7 @@
+             }
+             $out[]=['session_id'=>(int)($a['session']['id']??$id),'table_name'=>(string)($a['session']['table_name']??''),'remaining_total'=>(int)($a['remaining_total']??0),'signature'=>(string)($a['signature']??''),'account'=>$a];
+         }
+-        return ['accounts'=>$out,'state'=>['status'=>'ready','reason_code'=>'','remaining_discount_correction_contract'=>1]];
++        return ['accounts'=>$out,'state'=>['status'=>'ready','reason_code'=>'','remaining_discount_correction_contract'=>1,'remaining_discount_correction_terminal_contract'=>1]];
+     }
+     private function model(string $key,array $payload,string $at): array{$payload=\Sokna\Shared\IranTime::transport($payload);return ['format'=>'sokna-remote-read-v1','model_key'=>$key,'source_version'=>self::hash($payload),'generated_at'=>$at,'payload'=>$payload];}
+     private function caps(int $id): array{$q=$this->pdo->prepare('SELECT capability FROM user_capabilities WHERE user_id=? AND enabled=1');$q->execute([$id]);return array_map('strval',$q->fetchAll(PDO::FETCH_COLUMN));}
+--- a/local/src/Relay/RealtimeDispatchService.php
++++ b/local/src/Relay/RealtimeDispatchService.php
+@@ -26,7 +26,7 @@
+         return in_array($kind,[
+             'guest_order.submit','guest_table.context','order.edit','order.append','order.cancel',
+             'waiter_call.create','waiter_call.cancel',
+-            'settlement.commit','settlement.late_commit','settlement.discount','settlement.discount_correction','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination',
++            'settlement.commit','settlement.late_commit','settlement.discount','settlement.discount_correction','settlement.discount_correction_abandon','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination',
+             'order.staff_status','hall.acceptance_update','hall.waiter_status','hall.table_move','hall.order_reprint','hall.order_item_adjust',
+             'operations.mutate','account.password_change','preparation.mutate','notification.push.subscribe','notification.push.unsubscribe','notification.preferences.save',
+             'table_draft.create','table_draft.edit','table_draft.finalize','table_draft.finalize_atomic','table_draft.cancel',
+@@ -52,7 +52,7 @@
+         }
+         if(in_array($kind,['guest_order.submit','guest_order.quote','guest_order.list','guest_order.status','guest_table.context','order.edit','order.append','order.cancel'],true))return $this->guestOrders->dispatch($envelope);
+         if(in_array($kind,['waiter_call.create','waiter_call.status','waiter_call.cancel'],true))return $this->waiterCalls->dispatch($envelope);
+-        if(in_array($kind,['settlement.commit','settlement.late_catalog','settlement.late_commit','settlement.review','settlement.discount_preview','settlement.discount','settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination'],true))return $this->settlement->dispatch($envelope);
++        if(in_array($kind,['settlement.commit','settlement.late_catalog','settlement.late_commit','settlement.review','settlement.discount_preview','settlement.discount','settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status','settlement.discount_correction_abandon','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination'],true))return $this->settlement->dispatch($envelope);
+         if($kind==='order.staff_status')return $this->staffOrders->dispatch($envelope);
+         if(str_starts_with($kind,'hall.'))return $this->hallStaff->dispatch($envelope);
+         if($kind==='preparation.mutate')return $this->preparation->dispatch($envelope);
+--- a/local/src/Relay/SettlementRealtimeAdapter.php
++++ b/local/src/Relay/SettlementRealtimeAdapter.php
+@@ -19,7 +19,7 @@
+     public function dispatch(array $envelope): array
+     {
+         $kind=trim((string)($envelope['kind']??''));
+-        if(!in_array($kind,['settlement.commit','settlement.review','settlement.discount_preview','settlement.discount','settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination','settlement.late_catalog','settlement.late_commit'],true))
++        if(!in_array($kind,['settlement.commit','settlement.review','settlement.discount_preview','settlement.discount','settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status','settlement.discount_correction_abandon','settlement.receipt_reprint','settlement.followup_detach','settlement.followup_destination','settlement.late_catalog','settlement.late_commit'],true))
+             throw new SettlementException('unsupported_kind','عملیات تسویه معتبر نیست.',422);
+ 
+         $projection=trim((string)($envelope['actor_projection_id']??''));
+@@ -36,12 +36,17 @@
+         if($kind==='settlement.late_catalog')return $this->lateServed->catalog($actor);
+         if($kind==='settlement.late_commit'){ $payload['request_id']=$requestId;return $this->lateServed->commit($payload,$actor); }
+         if($kind==='settlement.review')return $this->settlements->review($payload,$actor);
+-        if(in_array($kind,['settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status'],true)){
++        if(in_array($kind,['settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status','settlement.discount_correction_abandon'],true)){
+             if((string)($actor['role']??'')!=='admin')throw new SettlementException('discount_correction_forbidden','اصلاح تخفیف ثبت‌شده فقط برای مدیر مجاز است.',403);
+             $sessionId=(int)($payload['session_id']??0);
+             $type=array_key_exists('discount_type',$payload)&&$payload['discount_type']!==null?(string)$payload['discount_type']:null;
+             $value=(int)($payload['discount_value']??0);
+             if($kind==='settlement.discount_correction_preview')return $this->settlements->previewRemainingDiscountCorrection($sessionId,$type,$value,$actor);
++            if($kind==='settlement.discount_correction_abandon'){
++                $target=(string)($payload['request_id']??'');
++                if(hash_equals($requestId,$target))throw new SettlementException('correction_request_conflict','شناسه تعیین تکلیف باید از شناسه اصلاحیه جدا باشد.',409);
++                return $this->settlements->abandonRemainingDiscountCorrection($sessionId,$target,$actor);
++            }
+             if($kind==='settlement.discount_correction_status'){
+                 $target=(string)($payload['request_id']??'');
+                 if(!preg_match('/^[A-Za-z0-9._:-]{8,96}$/D',$target))throw new SettlementException('invalid_request_id','شناسه اصلاحیه معتبر نیست.',422);
+--- a/public/assets/staff-app/hall-workspace.js
++++ b/public/assets/staff-app/hall-workspace.js
+@@ -473,6 +473,68 @@
+ const correctionDialog=root.querySelector('[data-hall-correction-dialog]'),correctionForm=root.querySelector('[data-hall-correction-form]');
+ let correctionPreviewSeq=0,correctionPreviewTimer=0,correctionPreviewSnapshot=null,correctionUnknown=false;
+ const correctionNode=key=>correctionDialog?.querySelector(`[data-correction-${key}]`);
++// Persist only the identity and expected amounts of an unresolved correction.
++// A separate key per intent avoids losing another tab's pending record.
++const correctionStoragePrefix='sokna.hall.public-discount-correction.v1:'+financeApi+':';
++const correctionSessionId=()=>Number(financeAccount?.session?.id||0);
++const correctionStorageKey=(sid,id)=>correctionStoragePrefix+sid+':'+id;
++function correctionPending(sid){
++ if(!canAdmin||!canCashier||!Number.isSafeInteger(sid)||sid<1)return [];
++ const prefix=correctionStoragePrefix+sid+':',pending=[];
++ try{
++  for(let i=0;i<localStorage.length;i++){
++   const k=localStorage.key(i);if(!k?.startsWith(prefix))continue;
++   const v=JSON.parse(localStorage.getItem(k)),r=v?.request,x=v?.expected;
++   if(!v||!r||!x||r.session_id!==sid||k!==correctionStorageKey(sid,v.id)||!/^remaining-discount-correction-[a-zA-Z0-9-]{8,90}$/.test(v.id)||
++    !Number.isSafeInteger(r.grant_id)||r.grant_id<1||![null,'fixed','percent'].includes(r.discount_type)||
++    ![r.discount_value,x.discount,x.total].every(n=>Number.isSafeInteger(n)&&n>=0))return null;
++   pending.push(v);
++  }
++  const legacy=transport?.pendingCorrectionForSession?.(sid);
++  if(legacy&&!pending.some(x=>x.id===legacy.request_id)){
++   if(Number(legacy.session_id)!==sid||!/^remaining-discount-correction-[a-zA-Z0-9-]{8,66}$/.test(String(legacy.request_id)))return null;
++   pending.push({id:String(legacy.request_id),request:{session_id:sid},expected:null,legacy:true});
++  }
++  return pending;
++ }catch{return null}
++}
++function rememberCorrection(id,r,x){
++ const pending=correctionPending(r.session_id);
++ if(pending===null||pending.length)throw new Error('ابتدا نتیجه اصلاحیه قبلی را پیگیری کنید؛ ثبت جدید انجام نشد.');
++ const key=correctionStorageKey(r.session_id,id),record={id,request:{session_id:r.session_id,grant_id:r.grant_id,discount_type:r.discount_type,discount_value:r.discount_value},expected:{discount:x.discount,total:x.total}};
++ try{localStorage.setItem(key,JSON.stringify(record));if(!localStorage.getItem(key))throw Error('storage');}
++ catch{throw new Error('ذخیره شناسه پیگیری ممکن نیست؛ اصلاحیه ارسال نشد.');}
++ return record;
++}
++function forgetCorrection(record){
++ // Do not clear any other unresolved intent.
++ if(!record.legacy)localStorage.removeItem(correctionStorageKey(record.request.session_id,record.id));
++ transport?.confirmCorrectionStatus?.(record.request.session_id,record.id);
++}
++async function followCorrection(){
++ const sid=correctionSessionId(),pending=correctionPending(sid);
++ if(pending===null)throw new Error('خواندن شناسه پیگیری ممکن نیست؛ بررسی مالی لازم است.');
++ if(!pending.length)return;
++ let remaining=0,abandoned=0;
++ for(const entry of pending){
++  try{
++   let checked=await reconcileCorrectionRequest(entry.id,entry.request,entry.expected);
++   if(checked.state==='unconfirmed'&&correctionSessionId()===sid&&transport?.canAbandonCorrection?.()===true){
++    const confirmed=await SoknaUI.confirm('تعیین تکلیف اصلاحیه','نتیجه هنوز مشخص نیست. سرور ابتدا ثبت قبلی را بررسی می‌کند؛ اگر ثبت نشده باشد، همان درخواست را برای همیشه لغو می‌کند. هیچ مبلغی تغییر نمی‌کند. تعیین تکلیف شود؟');
++    if(confirmed&&correctionSessionId()===sid){
++     const response=await financeMutate({action:'discount_correction_abandon',session_id:sid,request_id:entry.id});
++     checked=verifyCorrectionState(response?.result||{},entry.id,entry.request,entry.expected);
++    }
++   }
++   if(checked.state==='committed'||checked.state==='abandoned'){forgetCorrection(entry);if(checked.state==='abandoned')abandoned++;}else remaining++;
++  }catch{remaining++}
++ }
++ if(correctionSessionId()!==sid)return;
++ if(remaining){setStatus('نتیجه اصلاحیه هنوز تأیید نشده است. ثبت مجدد انجام ندهید؛ دوباره پیگیری کنید.','warning');return;}
++ correctionUnknown=false;closeCorrectionDialog();await loadAccount(selectedTableId);
++ toast(abandoned?'درخواست ثبت‌نشده تعیین تکلیف شد؛ مانده و رسیدها تغییر نکردند.':'نتیجه اصلاحیه قبلی تأیید شد؛ رسیدهای قبلی بدون تغییر هستند.','success');
++}
++
+ function correctionInput(){
+  const type=String(correctionNode('type')?.value||'percent'),input=correctionNode('value');
+  const raw=type==='none'?0:(type==='fixed'&&root.dataset.finalAmountRial==='1'
+@@ -500,9 +562,9 @@
+  return {subtotal,discount,net,tax,total};
+ }
+ function closeCorrectionDialog(){clearTimeout(correctionPreviewTimer);correctionPreviewSeq++;correctionPreviewSnapshot=null;
+- if(correctionDialog?.open)correctionDialog.close()}
++ if(correctionDialog?.open)correctionDialog.close();if(correctionUnknown&&account?.table)renderAccount()}
+ function correctionPreview(){
+- if(!correctionDialog||!financeAccount)return;
++ if(!correctionDialog||!financeAccount||correctionUnknown)return;
+  const r=correctionInput(),seq=++correctionPreviewSeq,valid=correctionValid(r),remove=r.discount_type===null;
+  const valueRow=correctionNode('value-row'),valueLabel=correctionNode('value-label'),input=correctionNode('value'),apply=correctionNode('apply'),status=correctionNode('status');
+  if(valueRow)valueRow.hidden=remove;if(input)input.required=!remove;
+@@ -525,6 +587,7 @@
+ }
+ function openCorrectionDialog(){
+  if(!canAdmin||!canCashier||!correctionDialog||!financeAccount?.session?.remaining_discount_grant||!mutationsAllowed()||transport?.canCorrectDiscount?.(Number(financeAccount.session.id))!==true)return;
++ const pending=correctionPending(correctionSessionId());if(pending===null||pending.length)return;
+  correctionUnknown=false;correctionPreviewSnapshot=null;correctionNode('type').value='percent';correctionNode('value').value='';correctionNode('reason').value='';
+  correctionNode('previous').textContent=finalMoney(Number(financeAccount.session.remaining_discount_grant.amount||0));
+  correctionPreview();if(!window.SoknaUI?.showDialog?.(correctionDialog,{initialFocus:'[data-correction-value]'}))correctionDialog.showModal();
+@@ -535,14 +598,24 @@
+ async function reconcileCorrectionRequest(requestId,request,expected){
+  const q=new URLSearchParams({action:'discount_correction_status',session_id:String(request.session_id),request_id:requestId});
+  const response=await requestJsonCorrectionStatus(q);
+- const payload=response?.result||{},saved=payload?.result||{};
++ return verifyCorrectionState(response?.result||{},requestId,request,expected);
++}
++function verifyCorrectionState(payload,requestId,request,expected){
++ const saved=payload?.result||{};
++ if(payload.state==='abandoned'){
++  if(Number(payload.session_id)!==request.session_id||String(payload.request_id)!==requestId||payload.retry_safe!==false)throw new Error('نتیجه لغو درخواست با شناسه پیگیری مطابقت ندارد.');
++  return {state:'abandoned'};
++ }
+  if(payload.state!=='committed')return {state:'unconfirmed'};
++ if(expected===null){
++  if(String(payload.request_id)!==requestId||Number(payload.session_id)!==request.session_id||!Number.isSafeInteger(Number(saved.revision_id))||Number(saved.revision_id)<1)throw new Error('نتیجه درخواست قدیمی نیاز به بررسی مالی دارد.');
++  return {state:'committed',saved};
++ }
+  if(Number(payload.session_id)!==request.session_id||Number(saved.grant_id)!==request.grant_id||
+    Number(saved.revision_id)<1||!Number.isSafeInteger(Number(saved.revision_id))||
+    (saved.discount_type??null)!==request.discount_type||Number(saved.discount_value)!==request.discount_value||
+    Number(saved.discount_amount)!==expected.discount||Number(saved.remaining_total_at_correction)!==expected.total)
+    throw new Error('سند پیدا شد اما مشخصات آن با اصلاحیه مورد انتظار یکسان نیست؛ بررسی مالی لازم است.');
+- transport?.confirmCorrectionStatus?.(request.session_id,requestId);
+  return {state:'committed',saved};
+ }
+ async function requestJsonCorrectionStatus(q){return request(`${financeApi}?${q.toString()}`)}
+@@ -558,27 +631,27 @@
+  if(!confirm)return;
+  if(prior.key!==correctionKey(correctionInput()))throw new Error('حساب یا ورودی اصلاحیه تغییر کرده است؛ ثبت انجام نشد.');
+  const requestId=clientRequestId('remaining-discount-correction');
++ const pendingRecord=rememberCorrection(requestId,r,fresh);
+  correctionPreviewSnapshot=null;correctionUnknown=true;const submit=correctionNode('apply');if(submit)submit.disabled=true;
+  let result;
+- try{result=await financeMutate({action:'discount_correction',session_id:r.session_id,discount_type:r.discount_type,
+-  discount_value:r.discount_value,expected_signature:r.expected_signature,reason,request_id:requestId});}
+- catch(e){
+-  // Whether the POST was accepted or not, never repeat the same financial intent automatically.
+-  // Some transport adapters do not expose error classification, so query by request id.
+-  let state='unconfirmed',reconciliationError='';
+-  try{const checked=await reconcileCorrectionRequest(requestId,r,fresh);state=checked.state;if(state==='committed')result={result:checked.saved};}
+-  catch(checkError){reconciliationError=String(checkError?.message||'');}
+-  if(state!=='committed'){
+-   const message='نتیجه اصلاحیه تأیید نشده است. درخواست را تکرار نکنید؛ شناسه پیگیری: '+requestId+'. '+
+-    (reconciliationError||String(e?.message||'از سوابق مالی بررسی کنید.'));
+-   if(correctionNode('status'))correctionNode('status').textContent=message;
+-   throw new Error(message);
++ try{
++  result=await financeMutate({action:'discount_correction',session_id:r.session_id,discount_type:r.discount_type,
++   discount_value:r.discount_value,expected_signature:r.expected_signature,reason,request_id:requestId});
++  const saved=result?.result||result||{};
++  if(!Number.isSafeInteger(Number(saved.revision_id))||Number(saved.revision_id)<1||Number(saved.grant_id)!==r.grant_id||
++    Number(saved.discount_amount)!==fresh.discount||Number(saved.remaining_total_at_correction??saved.remaining_total)!==fresh.total)
++   throw new Error('نتیجه ثبت با پیش‌نمایش تطبیق ندارد.');
++ }catch(e){
++  try{const checked=await reconcileCorrectionRequest(requestId,r,fresh);if(checked.state==='committed')result={result:checked.saved};else result=null;}
++  catch{result=null;}
++  if(!result){
++   const message='نتیجه اصلاحیه تأیید نشده است. ثبت مجدد نکنید؛ پس از بستن پنجره، «پیگیری اصلاحیه» را انتخاب کنید.';
++   if(correctionSessionId()===r.session_id){if(correctionNode('status'))correctionNode('status').textContent=message;setStatus(message,'warning');renderAccount();}
++   return;
+   }
+  }
+- const saved=result?.result||result||{};
+- closeCorrectionDialog();await loadAccount(selectedTableId);
+- if(!Number.isSafeInteger(Number(saved.revision_id))||Number(saved.revision_id)<1||Number(saved.discount_amount)!==fresh.discount)
+-  throw new Error('نتیجه ثبت با پیش‌نمایش تطبیق ندارد؛ اصلاحیه را دوباره نفرستید و سوابق مالی را بررسی کنید.');
++ forgetCorrection(pendingRecord);correctionUnknown=false;
++ if(correctionSessionId()===r.session_id){closeCorrectionDialog();await loadAccount(selectedTableId);}
+  toast('اصلاحیه مستقل مانده ثبت شد. رسیدهای قبلی تغییر نکردند.','success');
+ }
+ if(correctionDialog){
+@@ -675,13 +748,16 @@
+ function financeSummary(t){if(!financeAccount)return {label:'جمع سفارش‌های تأییدشده',amount:Number(t.account_total||0),gross:Number(t.account_total||0),discount:0,discountLabel:'',paid:0,tax:0};const a=financeAccount,type=String(a.session?.discount_type||''),value=Number(a.session?.discount_value||0),discount=Number(a.remaining_discount||0),gross=Number(a.remaining_subtotal||0),tax=Number(a.remaining_tax||0),paid=Number(a.paid_total||0),discountLabel=discount>0?(type==='percent'?`${L.integer(value)}٪`:'مبلغ'):'';return {label:'قابل پرداخت',amount:Number(a.remaining_total||0),gross,discount,discountLabel,paid,tax}}
+ // HALL-20261126-DISCOUNT-UI-02: one stable discount action, existing permission gates.
+ function renderDiscountAction(ready,lockedHint,financial){
++ const pending=correctionPending(correctionSessionId());
++ if(pending===null)return `<button class="sc-button sc-button--secondary sui-account-action" type="button" data-account-discount disabled title="خواندن شناسه پیگیری ممکن نیست؛ بررسی مالی لازم است.">${uiIcon('tag')}<span>بررسی اصلاحیه</span></button>`;
++ if(pending.length)return `<button class="sc-button sc-button--secondary sui-account-action has-discount" type="button" data-account-discount data-account-discount-followup ${ready&&transport?.canResolveCorrection?.()===true?'':'disabled'} title="استعلام و تعیین تکلیف درخواست قبلی؛ بدون ارسال مجدد">${uiIcon('tag')}<span>پیگیری اصلاحیه</span></button>`;
+  const grant=financeAccount?.session?.remaining_discount_grant,canCorrect=Boolean(grant&&canAdmin&&canCashier&&ready&&transport?.canCorrectDiscount?.(Number(financeAccount?.session?.id))===true);
+  const hasGrant=Boolean(grant),disabled=!ready||(hasGrant&&!canCorrect),type=String(financeAccount?.session?.discount_type||''),value=Number(financeAccount?.session?.discount_value||0);
+  const label=hasGrant?(canCorrect?'اصلاح تخفیف':'تخفیف ثبت‌شده'):(financial.discount>0?(type==='percent'&&value>0?`تخفیف ${L.integer(value)}٪`:'تخفیف‌دار'):'تخفیف');
+- const hint=!ready?lockedHint:(hasGrant&&!canCorrect?(canAdmin?'مسیر اصلاح مانده آماده نیست یا اصلاحیه قبلی نیازمند پیگیری است؛ از سامانه اصلی بررسی کنید.':'اصلاح تخفیف مانده در اختیار مدیر مالی است.'):(hasGrant?'اصلاح تخفیف مانده':'تخفیف'));
++ const hint=!ready?lockedHint:(hasGrant&&!canCorrect?'اصلاح تخفیف مانده در اختیار مدیر مالی است.':(hasGrant?'اصلاح تخفیف مانده':'تخفیف'));
+  return `<button class="sc-button sc-button--secondary sui-account-action ${financial.discount>0||hasGrant?'has-discount':''}" type="button" data-account-discount ${canCorrect?'data-account-discount-correct':''} ${disabled?'disabled':''} title="${esc(hint)}">${uiIcon('tag')}<span>${esc(label)}</span></button>`;
+ }
+-function renderAccount(){const currentBill=accountPane.querySelector('.sc-hall-bill-lines');if(currentBill)accountBillScrollTop=currentBill.scrollTop;if(!account?.table){renderAccountEmpty();return}const t=account.table;if(!Number(t.session_id)){renderAccountEmpty(canOrder?'این میز آزاد است؛ با انتخاب «ثبت سفارش» حساب آن باز می‌شود.':'این میز آزاد است.');if(canOrder){const b=actionButton('ثبت سفارش',()=>openOrder(t.id,'hall-free'),'primary');accountPane.querySelector('.sc-hall-account__empty').append(b)}return}const lastOrder=t.last_order_at?`آخرین سفارش ${ago(t.last_order_at)}`:'هنوز سفارش تأییدشده‌ای ندارد',hasAccounted=Boolean((account.order_rounds||[]).length||(account.lines||[]).length||financeAccount?.fully_credited_empty),canMove=canOrder&&featureTableMove&&!tableMovePending&&tableMoveUncertainSessionId!==Number(t.session_id||0)&&Number(t.pending_order_count||0)===0&&moveTargets(t).length>0,financial=financeSummary(t),financeReady=canCashier&&featureSettlement&&Boolean(financeAccount)&&hasAccounted,lockedHint=financeError||'حساب مالی آماده نیست.',prepAvailable=canOrder&&(account.order_rounds||[]).some(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted'),customerAvailable=canCashier&&Array.isArray(financeAccount?.receipts)&&financeAccount.receipts.length>0,showPrint=featureReprint&&(canOrder||canCashier),liveTable=(snap?.tables||[]).find(x=>Number(x.id)===Number(t.id))||t,st=tableOperationalState(liveTable),recovery=settlementRecoveryBySession.get(Number(t.session_id||0))||null,alert='',summary=`<div class="sc-hall-payable sui-account-summary${financial.discount>0?' is-discounted':''}">${financial.discount>0?`<div class="sc-hall-summary-row"><span>جمع کل</span><b>${money(financial.gross)}</b></div><div class="sc-hall-summary-row is-discount"><span>تخفیف ${esc(financial.discountLabel)}</span><b>− ${money(financial.discount)}</b></div>`:''}${financial.tax>0?`<div class="sc-hall-summary-row is-tax"><span>مالیات</span><b>+ ${money(financial.tax)}</b></div>`:''}<div class="sc-hall-summary-row is-payable"><span>${esc(financial.label)}</span><strong>${finalMoney(financial.amount)}</strong></div>${financial.paid>0?`<div class="sc-hall-summary-row is-paid"><span>پرداخت‌شده تا این لحظه</span><b>${money(financial.paid)}</b></div>`:''}</div>`,discountType=String(discountDraftType||financeAccount?.session?.discount_type||'percent'),discountValue=Number(financeAccount?.session?.discount_value||0),discountPopover='';accountPane.innerHTML=`<div class="sc-hall-account-card sui-account-panel"><header class="sc-hall-account-head sui-account-head is-selected"><div class="sc-hall-account-number sui-account-table-badge"><small>میز</small><strong>${L.integer(t.table_number||t.id)}</strong></div><div class="sc-hall-account-copy sui-account-identity"><strong class="sc-hall-account-title">حساب میز</strong><div class="sc-hall-account-context sui-account-meta">${String(t.zone_label||'').trim()?`<span>${esc(t.zone_label)}</span><i></i>`:''}<span class="is-emphasis">${esc(duration(t.started_at))}</span></div></div><div class="sc-hall-account-head-actions">${canMove?'<button class="sc-button sc-button--secondary sc-hall-context-action" type="button" data-account-move>تغییر میز</button>':''}${showPrint?`<div class="sc-hall-print-control" data-account-print-control><button class="sc-icon-button sc-hall-print-trigger" type="button" data-account-print-toggle aria-label="چاپ مجدد" aria-haspopup="menu" aria-expanded="false">${uiIcon('print')}</button><div class="sc-hall-print-menu" data-account-print-menu role="menu" hidden><button type="button" role="menuitem" data-account-print-preparation ${prepAvailable?'':'disabled'}><span>فیش آماده‌سازی</span><small>چاپ مجدد فیش ثبت‌شده</small></button><button type="button" role="menuitem" data-account-print-customer ${customerAvailable?'':'disabled'}><span>فیش مشتری</span><small>${customerAvailable?'چاپ مجدد فیش ثبت‌شده':'هنوز فیش مشتری برای این حساب ثبت نشده'}</small></button></div></div>`:''}<button class="sc-icon-button" type="button" data-account-close aria-label="بستن حساب">×</button></div></header>${alert}${accountNotices()}<section class="sc-hall-bill sui-account-content"><div class="sc-hall-bill-head sui-account-section-head"><strong>نوبت‌های سفارش</strong><span>${L.integer((account.lines||[]).length)} قلم · ${L.integer((account.lines||[]).reduce((n,l)=>n+Number(l.quantity||0),0))} عدد${account.order_rounds?.length?` · ${L.integer(account.order_rounds.length)} نوبت`:''}</span></div><div class="sc-order-cart__columns sc-account-columns" aria-hidden="true"><span>آیتم</span><span>تعداد</span><span>مبلغ</span></div><div class="sc-hall-bill-lines">${pendingAccountSummary()}${accountRounds()}</div></section><footer class="sc-hall-checkout sui-account-footer">${summary}${discountPopover}<div class="sc-hall-account-actions sui-account-actions">${canCashier&&featureSettlement?`<button class="sc-button sui-account-action is-primary" type="button" data-account-settle ${financeReady?'':`disabled title="${esc(lockedHint)}"`}>${uiIcon('ticket')}<span>تسویه</span></button>`:''}${canCashier&&featureDiscount?renderDiscountAction(financeReady,lockedHint,financial):''}${canOrder?`<button class="sc-button sc-button--secondary sui-account-action is-soft" type="button" data-account-order>${uiIcon('add')}<span>افزودن سفارش</span></button>`:''}</div>${financeReady&&recovery?`<div class="sc-hall-settlement-recovery"><div><strong>تسویه نیازمند پیگیری است</strong><small>${esc(recovery.message||'تلاش قبلی کامل نشد.')}</small></div><button class="sc-button sc-button--secondary" type="button" data-account-followup-open>ادامه پیگیری</button></div>`:''}</footer></div>`;accountPane.querySelector('[data-account-close]')?.addEventListener('click',()=>closeSelectedAccount());accountPane.querySelectorAll('[data-pending-approve],[data-pending-reject]').forEach(b=>b.addEventListener('click',e=>{const oid=Number(e.currentTarget.dataset.pendingApprove||e.currentTarget.dataset.pendingReject||0),tid=Number(e.currentTarget.dataset.pendingTable||0),order=(account?.pending_orders||[]).find(o=>Number(o.id)===oid);if(!order||tid!==Number(account?.table?.id||0))return;SoknaUI.busy(e.currentTarget,()=>setPendingOrderStatus({...order,table_id:tid},e.currentTarget.hasAttribute('data-pending-reject')?'cancelled':'accounted')).catch(err=>actionError(err,'تعیین تکلیف سفارش انجام نشد'))}));accountPane.querySelector('[data-price-details]')?.addEventListener('click',openAccountPriceChanges);accountPane.querySelector('[data-account-move]')?.addEventListener('click',e=>SoknaUI.busy(e.currentTarget,()=>moveTable(t)).catch(err=>actionError(err,'تغییر میز انجام نشد')));accountPane.querySelector('[data-account-order]')?.addEventListener('click',()=>openOrder(t.id,'account'));accountPane.querySelectorAll('[data-account-line-edit]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAccountItemEditor(Number(b.dataset.accountLineEdit||0))}));accountPane.querySelectorAll('[data-account-line]').forEach(row=>row.addEventListener('dblclick',e=>{if(e.target.closest('button,input,select,textarea,a'))return;const id=Number(row.dataset.accountLine||0);if(id>0&&row.querySelector('[data-account-line-edit]'))openAccountItemEditor(id)}));accountPane.querySelectorAll('[data-item-stage-delta]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();stageOrderItem(e.currentTarget)}));accountPane.querySelectorAll('[data-item-adjust-cancel]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();{const id=Number(e.currentTarget.dataset.itemAdjustCancel||0);accountAdjustmentDrafts.delete(id);accountAdjustmentReasons.delete(id);accountAdjustmentNotes.delete(id);accountAdjustmentModes.delete(id);accountServiceDistributionDrafts.delete(id);accountItemNoteDrafts.delete(id);}accountEditFeedback=null;renderAccount()}));accountPane.querySelectorAll('[data-item-adjust-reason]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=Number(b.dataset.itemId||0),reason=String(b.dataset.itemAdjustReason||'customer');if(id<1)return;accountAdjustmentReasons.set(id,reason);if(reason!=='other')accountAdjustmentNotes.delete(id);renderAccount()}));accountPane.querySelectorAll('[data-item-adjust-note]').forEach(input=>input.addEventListener('input',e=>{e.stopPropagation();const id=Number(e.target.dataset.itemAdjustNote||0);e.target.value=human(e.target.value);if(id>0)accountAdjustmentNotes.set(id,e.target.value)}));accountPane.querySelectorAll('[data-item-adjust-mode]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=Number(b.dataset.itemId||0),mode=String(b.dataset.itemAdjustMode||'dine_in');if(id<1||!['dine_in','takeaway'].includes(mode))return;accountAdjustmentModes.set(id,mode);accountEditFeedback=null;renderAccount()}));accountPane.querySelectorAll('[data-item-prep-note]').forEach(input=>{input.addEventListener('click',e=>e.stopPropagation());input.addEventListener('input',e=>{e.stopPropagation();const id=Number(e.target.dataset.itemPrepNote||0);e.target.value=human(e.target.value);if(id>0)accountItemNoteDrafts.set(id,e.target.value);accountEditFeedback=null})});accountPane.querySelectorAll('[data-item-adjust-note]').forEach(input=>input.addEventListener('click',e=>e.stopPropagation()));accountPane.querySelectorAll('[data-item-adjust-apply]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();SoknaUI.busy(e.currentTarget,()=>commitOrderItemAdjustment(e.currentTarget)).catch(err=>actionError(err,'اصلاح سفارش انجام نشد'))}));const printToggle=accountPane.querySelector('[data-account-print-toggle]'),printMenu=accountPane.querySelector('[data-account-print-menu]');printToggle?.addEventListener('click',e=>{e.stopPropagation();discountOpen=false;const next=Boolean(printMenu?.hidden);if(printMenu)printMenu.hidden=!next;printToggle.setAttribute('aria-expanded',next?'true':'false')});printMenu?.addEventListener('click',e=>e.stopPropagation());accountPane.querySelector('[data-account-print-preparation]')?.addEventListener('click',e=>SoknaUI.busy(e.currentTarget,async()=>{closePrintMenu();await reprintPreparationFromMenu()}));accountPane.querySelector('[data-account-print-customer]')?.addEventListener('click',e=>SoknaUI.busy(e.currentTarget,async()=>{closePrintMenu();await reprintCustomerReceiptFromMenu()}));accountPane.querySelector('[data-account-discount]')?.addEventListener('click',e=>{e.stopPropagation();closePrintMenu();if(e.currentTarget.hasAttribute('data-account-discount-correct'))openCorrectionDialog();else openDiscountDialog()});accountPane.querySelector('[data-account-settle]')?.addEventListener('click',()=>{discountOpen=false;settleHallAccount()});accountPane.querySelector('[data-account-followup-open]')?.addEventListener('click',()=>settleHallAccount());const bill=accountPane.querySelector('.sc-hall-bill-lines');if(bill){bill.scrollTop=accountBillScrollTop;bill.addEventListener('scroll',()=>{accountBillScrollTop=bill.scrollTop},{passive:true})}}
++function renderAccount(){const currentBill=accountPane.querySelector('.sc-hall-bill-lines');if(currentBill)accountBillScrollTop=currentBill.scrollTop;if(!account?.table){renderAccountEmpty();return}const t=account.table;if(!Number(t.session_id)){renderAccountEmpty(canOrder?'این میز آزاد است؛ با انتخاب «ثبت سفارش» حساب آن باز می‌شود.':'این میز آزاد است.');if(canOrder){const b=actionButton('ثبت سفارش',()=>openOrder(t.id,'hall-free'),'primary');accountPane.querySelector('.sc-hall-account__empty').append(b)}return}const lastOrder=t.last_order_at?`آخرین سفارش ${ago(t.last_order_at)}`:'هنوز سفارش تأییدشده‌ای ندارد',hasAccounted=Boolean((account.order_rounds||[]).length||(account.lines||[]).length||financeAccount?.fully_credited_empty),canMove=canOrder&&featureTableMove&&!tableMovePending&&tableMoveUncertainSessionId!==Number(t.session_id||0)&&Number(t.pending_order_count||0)===0&&moveTargets(t).length>0,financial=financeSummary(t),financeReady=canCashier&&featureSettlement&&Boolean(financeAccount)&&hasAccounted,lockedHint=financeError||'حساب مالی آماده نیست.',prepAvailable=canOrder&&(account.order_rounds||[]).some(r=>Number(r.order_id)>0&&String(r.status||'accounted')==='accounted'),customerAvailable=canCashier&&Array.isArray(financeAccount?.receipts)&&financeAccount.receipts.length>0,showPrint=featureReprint&&(canOrder||canCashier),liveTable=(snap?.tables||[]).find(x=>Number(x.id)===Number(t.id))||t,st=tableOperationalState(liveTable),recovery=settlementRecoveryBySession.get(Number(t.session_id||0))||null,alert='',summary=`<div class="sc-hall-payable sui-account-summary${financial.discount>0?' is-discounted':''}">${financial.discount>0?`<div class="sc-hall-summary-row"><span>جمع کل</span><b>${money(financial.gross)}</b></div><div class="sc-hall-summary-row is-discount"><span>تخفیف ${esc(financial.discountLabel)}</span><b>− ${money(financial.discount)}</b></div>`:''}${financial.tax>0?`<div class="sc-hall-summary-row is-tax"><span>مالیات</span><b>+ ${money(financial.tax)}</b></div>`:''}<div class="sc-hall-summary-row is-payable"><span>${esc(financial.label)}</span><strong>${finalMoney(financial.amount)}</strong></div>${financial.paid>0?`<div class="sc-hall-summary-row is-paid"><span>پرداخت‌شده تا این لحظه</span><b>${money(financial.paid)}</b></div>`:''}</div>`,discountType=String(discountDraftType||financeAccount?.session?.discount_type||'percent'),discountValue=Number(financeAccount?.session?.discount_value||0),discountPopover='';accountPane.innerHTML=`<div class="sc-hall-account-card sui-account-panel"><header class="sc-hall-account-head sui-account-head is-selected"><div class="sc-hall-account-number sui-account-table-badge"><small>میز</small><strong>${L.integer(t.table_number||t.id)}</strong></div><div class="sc-hall-account-copy sui-account-identity"><strong class="sc-hall-account-title">حساب میز</strong><div class="sc-hall-account-context sui-account-meta">${String(t.zone_label||'').trim()?`<span>${esc(t.zone_label)}</span><i></i>`:''}<span class="is-emphasis">${esc(duration(t.started_at))}</span></div></div><div class="sc-hall-account-head-actions">${canMove?'<button class="sc-button sc-button--secondary sc-hall-context-action" type="button" data-account-move>تغییر میز</button>':''}${showPrint?`<div class="sc-hall-print-control" data-account-print-control><button class="sc-icon-button sc-hall-print-trigger" type="button" data-account-print-toggle aria-label="چاپ مجدد" aria-haspopup="menu" aria-expanded="false">${uiIcon('print')}</button><div class="sc-hall-print-menu" data-account-print-menu role="menu" hidden><button type="button" role="menuitem" data-account-print-preparation ${prepAvailable?'':'disabled'}><span>فیش آماده‌سازی</span><small>چاپ مجدد فیش ثبت‌شده</small></button><button type="button" role="menuitem" data-account-print-customer ${customerAvailable?'':'disabled'}><span>فیش مشتری</span><small>${customerAvailable?'چاپ مجدد فیش ثبت‌شده':'هنوز فیش مشتری برای این حساب ثبت نشده'}</small></button></div></div>`:''}<button class="sc-icon-button" type="button" data-account-close aria-label="بستن حساب">×</button></div></header>${alert}${accountNotices()}<section class="sc-hall-bill sui-account-content"><div class="sc-hall-bill-head sui-account-section-head"><strong>نوبت‌های سفارش</strong><span>${L.integer((account.lines||[]).length)} قلم · ${L.integer((account.lines||[]).reduce((n,l)=>n+Number(l.quantity||0),0))} عدد${account.order_rounds?.length?` · ${L.integer(account.order_rounds.length)} نوبت`:''}</span></div><div class="sc-order-cart__columns sc-account-columns" aria-hidden="true"><span>آیتم</span><span>تعداد</span><span>مبلغ</span></div><div class="sc-hall-bill-lines">${pendingAccountSummary()}${accountRounds()}</div></section><footer class="sc-hall-checkout sui-account-footer">${summary}${discountPopover}<div class="sc-hall-account-actions sui-account-actions">${canCashier&&featureSettlement?`<button class="sc-button sui-account-action is-primary" type="button" data-account-settle ${financeReady?'':`disabled title="${esc(lockedHint)}"`}>${uiIcon('ticket')}<span>تسویه</span></button>`:''}${canCashier&&featureDiscount?renderDiscountAction(financeReady,lockedHint,financial):''}${canOrder?`<button class="sc-button sc-button--secondary sui-account-action is-soft" type="button" data-account-order>${uiIcon('add')}<span>افزودن سفارش</span></button>`:''}</div>${financeReady&&recovery?`<div class="sc-hall-settlement-recovery"><div><strong>تسویه نیازمند پیگیری است</strong><small>${esc(recovery.message||'تلاش قبلی کامل نشد.')}</small></div><button class="sc-button sc-button--secondary" type="button" data-account-followup-open>ادامه پیگیری</button></div>`:''}</footer></div>`;accountPane.querySelector('[data-account-close]')?.addEventListener('click',()=>closeSelectedAccount());accountPane.querySelectorAll('[data-pending-approve],[data-pending-reject]').forEach(b=>b.addEventListener('click',e=>{const oid=Number(e.currentTarget.dataset.pendingApprove||e.currentTarget.dataset.pendingReject||0),tid=Number(e.currentTarget.dataset.pendingTable||0),order=(account?.pending_orders||[]).find(o=>Number(o.id)===oid);if(!order||tid!==Number(account?.table?.id||0))return;SoknaUI.busy(e.currentTarget,()=>setPendingOrderStatus({...order,table_id:tid},e.currentTarget.hasAttribute('data-pending-reject')?'cancelled':'accounted')).catch(err=>actionError(err,'تعیین تکلیف سفارش انجام نشد'))}));accountPane.querySelector('[data-price-details]')?.addEventListener('click',openAccountPriceChanges);accountPane.querySelector('[data-account-move]')?.addEventListener('click',e=>SoknaUI.busy(e.currentTarget,()=>moveTable(t)).catch(err=>actionError(err,'تغییر میز انجام نشد')));accountPane.querySelector('[data-account-order]')?.addEventListener('click',()=>openOrder(t.id,'account'));accountPane.querySelectorAll('[data-account-line-edit]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openAccountItemEditor(Number(b.dataset.accountLineEdit||0))}));accountPane.querySelectorAll('[data-account-line]').forEach(row=>row.addEventListener('dblclick',e=>{if(e.target.closest('button,input,select,textarea,a'))return;const id=Number(row.dataset.accountLine||0);if(id>0&&row.querySelector('[data-account-line-edit]'))openAccountItemEditor(id)}));accountPane.querySelectorAll('[data-item-stage-delta]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();stageOrderItem(e.currentTarget)}));accountPane.querySelectorAll('[data-item-adjust-cancel]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();{const id=Number(e.currentTarget.dataset.itemAdjustCancel||0);accountAdjustmentDrafts.delete(id);accountAdjustmentReasons.delete(id);accountAdjustmentNotes.delete(id);accountAdjustmentModes.delete(id);accountServiceDistributionDrafts.delete(id);accountItemNoteDrafts.delete(id);}accountEditFeedback=null;renderAccount()}));accountPane.querySelectorAll('[data-item-adjust-reason]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=Number(b.dataset.itemId||0),reason=String(b.dataset.itemAdjustReason||'customer');if(id<1)return;accountAdjustmentReasons.set(id,reason);if(reason!=='other')accountAdjustmentNotes.delete(id);renderAccount()}));accountPane.querySelectorAll('[data-item-adjust-note]').forEach(input=>input.addEventListener('input',e=>{e.stopPropagation();const id=Number(e.target.dataset.itemAdjustNote||0);e.target.value=human(e.target.value);if(id>0)accountAdjustmentNotes.set(id,e.target.value)}));accountPane.querySelectorAll('[data-item-adjust-mode]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=Number(b.dataset.itemId||0),mode=String(b.dataset.itemAdjustMode||'dine_in');if(id<1||!['dine_in','takeaway'].includes(mode))return;accountAdjustmentModes.set(id,mode);accountEditFeedback=null;renderAccount()}));accountPane.querySelectorAll('[data-item-prep-note]').forEach(input=>{input.addEventListener('click',e=>e.stopPropagation());input.addEventListener('input',e=>{e.stopPropagation();const id=Number(e.target.dataset.itemPrepNote||0);e.target.value=human(e.target.value);if(id>0)accountItemNoteDrafts.set(id,e.target.value);accountEditFeedback=null})});accountPane.querySelectorAll('[data-item-adjust-note]').forEach(input=>input.addEventListener('click',e=>e.stopPropagation()));accountPane.querySelectorAll('[data-item-adjust-apply]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();SoknaUI.busy(e.currentTarget,()=>commitOrderItemAdjustment(e.currentTarget)).catch(err=>actionError(err,'اصلاح سفارش انجام نشد'))}));const printToggle=accountPane.querySelector('[data-account-print-toggle]'),printMenu=accountPane.querySelector('[data-account-print-menu]');printToggle?.addEventListener('click',e=>{e.stopPropagation();discountOpen=false;const next=Boolean(printMenu?.hidden);if(printMenu)printMenu.hidden=!next;printToggle.setAttribute('aria-expanded',next?'true':'false')});printMenu?.addEventListener('click',e=>e.stopPropagation());accountPane.querySelector('[data-account-print-preparation]')?.addEventListener('click',e=>SoknaUI.busy(e.currentTarget,async()=>{closePrintMenu();await reprintPreparationFromMenu()}));accountPane.querySelector('[data-account-print-customer]')?.addEventListener('click',e=>SoknaUI.busy(e.currentTarget,async()=>{closePrintMenu();await reprintCustomerReceiptFromMenu()}));accountPane.querySelector('[data-account-discount]')?.addEventListener('click',e=>{e.stopPropagation();closePrintMenu();if(e.currentTarget.hasAttribute('data-account-discount-followup'))SoknaUI.busy(e.currentTarget,followCorrection).catch(err=>actionError(err,'پیگیری اصلاحیه'));else if(e.currentTarget.hasAttribute('data-account-discount-correct'))openCorrectionDialog();else openDiscountDialog()});accountPane.querySelector('[data-account-settle]')?.addEventListener('click',()=>{discountOpen=false;settleHallAccount()});accountPane.querySelector('[data-account-followup-open]')?.addEventListener('click',()=>settleHallAccount());const bill=accountPane.querySelector('.sc-hall-bill-lines');if(bill){bill.scrollTop=accountBillScrollTop;bill.addEventListener('scroll',()=>{accountBillScrollTop=bill.scrollTop},{passive:true})}}
+ async function loadAccount(id){
+     const desired=Number(id);
+     if(desired<1||desired!==Number(selectedTableId))return;
+--- a/public/assets/staff-app/public-hall-transport.js
++++ b/public/assets/staff-app/public-hall-transport.js
+@@ -6,7 +6,7 @@
+ const uid=(p='staff')=>`${p}-${Date.now().toString(36)}-${Math.random().toString(16).slice(2,10)}`;
+ const now=()=>window.SoknaLocale.nowInstant(),later=(s=120)=>new Date(Date.parse(window.SoknaLocale.nowInstant())+s*1000).toISOString(),sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+ const TEST=window.__SOKNA_STAFF_TRANSPORT_TEST__||{},OFFLINE_LAN_BOOTSTRAP=body?.dataset.lanOfflineBootstrap==='1',REQUEST_TIMEOUT_MS=Number(TEST.requestTimeoutMs||7000),RESULT_TIMEOUT_MS=Number(TEST.resultTimeoutMs||4500),WORKFLOW_DEADLINE_MS=Number(TEST.workflowDeadlineMs||12000),POLL_INTERVAL_MS=Number(TEST.pollIntervalMs||350),LEDGER_TTL_MS=Number(TEST.ledgerTtlMs||7*24*60*60*1000),LEDGER_MAX=Number(TEST.ledgerMax||100),WATCH_TIMEOUT_MS=Number(TEST.watchTimeoutMs||10500),VISIBILITY_POLL_MS=Number(TEST.visibilityPollMs||1200),LAN_READY_READ_PREFERENCE_MS=Number(TEST.lanReadyReadPreferenceMs||140),LAN_READY_MUTATION_PREFERENCE_MS=Number(TEST.lanReadyMutationPreferenceMs||100);
+-let stale=true,lastSync='',publicCommandReady=false,publicWatchRevalidationRequired=false,correctionContractReady=false;
++let stale=true,lastSync='',publicCommandReady=false,publicWatchRevalidationRequired=false,correctionContractReady=false,correctionTerminalReady=false;
+ const readModelMeta=new Map();
+ const modelMetaFor=key=>readModelMeta.get(key)||{stale:true,last_sync_at:'',transport:'unknown'};
+ function commandReadyFromConnectivity(connectivity){const c=connectivity&&typeof connectivity==='object'?connectivity:{};return c.local_fresh===true&&c.active!==false&&c.remote_enabled!==false}
+@@ -77,6 +77,7 @@
+ function pendingFinalizationForTable(tableId){const id=Number(tableId||0);if(id<0)return null;return readLedger().find(row=>row.kind==='table_draft.finalize_atomic'&&(Number(row.table_id||0)===id||Number(row.table_id||0)===0))||null;}
+ function pendingCorrectionForSession(sessionId){const id=Number(sessionId||0);return readLedger().find(row=>row.kind==='settlement.discount_correction'&&(Number(row.session_id||0)===id||!Number(row.session_id||0)))||null;}
+ function correctionSupported(){const m=modelMetaFor('operations');return correctionContractReady&&!m.stale&&(publicCommandReady||(lanState==='ready'&&lanRealtimeKinds!==null&&['settlement.discount_correction_preview','settlement.discount_correction','settlement.discount_correction_status'].every(k=>lanRealtimeKinds.has(k))));}
++function correctionTerminalSupported(){return correctionTerminalReady&&correctionSupported()&&(publicCommandReady||(lanState==='ready'&&lanSupportsRealtime('settlement.discount_correction_abandon')));}
+ function canCorrectDiscount(sessionId){return correctionSupported()&&!pendingCorrectionForSession(sessionId)&&!ledgerCorrupt;}
+ function pendingSettlementForSession(sessionId){const id=Number(sessionId||0);return readLedger().find(row=>row.kind==='settlement.commit'&&(Number(row.session_id||0)===id||!Number(row.session_id||0)))||null;}
+ const activeCommands=new Set();
+@@ -108,7 +109,7 @@
+ let recoveryRunning=false;const recoverySchedule=new Map();
+ async function recoverPendingCommands(){
+  if(recoveryRunning||document.hidden)return;recoveryRunning=true;
+- try{const rows=readLedger().filter(r=>['table_draft.finalize_atomic','settlement.commit','settlement.discount_correction'].includes(r.kind)&&!activeCommands.has(String(r.request_id)));
++ try{const rows=readLedger().filter(r=>['table_draft.finalize_atomic','settlement.commit','settlement.discount_correction','settlement.discount_correction_abandon'].includes(r.kind)&&!activeCommands.has(String(r.request_id)));
+  const live=new Set(rows.map(r=>String(r.request_id)));for(const id of recoverySchedule.keys())if(!live.has(id))recoverySchedule.delete(id);
+  const due=rows.filter(r=>(recoverySchedule.get(String(r.request_id))?.next||0)<=Date.now()).sort((a,b)=>(recoverySchedule.get(String(a.request_id))?.last||0)-(recoverySchedule.get(String(b.request_id))?.last||0));
+  const row=due[0];if(!row)return;const id=String(row.request_id),previous=recoverySchedule.get(id)||{failures:0};
+@@ -215,9 +216,9 @@
+  activeCommands.add(requestId);try{
+  let routeHint=String(record.route||''),recovered=null,correctionLanAttempted=false;if(remembered.reused){recovered=await readCommandResult(requestId,'',Math.min(deadlineAt,Date.now()+900),routeHint,kind);if(recovered)return recovered;}
+  if(!OFFLINE_LAN_BOOTSTRAP&&lanConfigured()&&Date.now()>=lanDisabledUntil&&(lanState==='ready'||(stale&&lanState==='unknown'))){try{routeHint=(await raceModelRoute('operations',{preferLanMs:lanState==='ready'?LAN_READY_MUTATION_PREFERENCE_MS:0})).route}catch{}}
+- kickLanProbe(false);if(routeHint!=='public'&&lanState==='ready'&&lanSupportsRealtime(kind)){markCommandRoute(requestId,'lan');routeHint='lan';if(kind==='settlement.discount_correction')correctionLanAttempted=true;try{const direct=await lanJson('realtime',{method:'POST',body:envelope,timeoutMs:Math.min(1600,Math.max(400,deadlineAt-Date.now()))}),state=String(direct.state||'');if(state==='committed'){forgetCommand(requestId);stale=false;if(!['settlement.discount_preview','settlement.discount_correction_preview','settlement.discount_correction_status'].includes(kind))refreshProjectedSurface();return {...(direct.result||{success:true}),_transport:'lan'};}if(state==='rejected'){forgetCommand(requestId);const e=requestError(String(direct.error_code||'request_failed'),String(direct.result?.message||humanError(direct.error_code)));e.details=direct.result?.details||{};e.definitive=true;throw e}}catch(e){const status=Number(e?.http_status||0),code=String(e?.code||'');if(e?.definitive){forgetCommand(requestId);throw e}if(status===401)suspendLan('unauthorized',60000);else if(code==='unsupported_kind'&&status===422){if(lanRealtimeKinds)lanRealtimeKinds.delete(kind);if(kind==='settlement.discount_correction'){forgetCommand(requestId);throw e;}}else if(!e?.blocked_before_send)suspendLan(code||'write_failed',3000);if(code!=='unsupported_kind'&&!e?.unknown_outcome&&status>=400&&status<500&&status!==401){forgetCommand(requestId);throw e}}}
+- if(kind==='settlement.discount_correction'&&correctionLanAttempted){const existing=await readCommandResult(requestId,'',Math.min(deadlineAt,Date.now()+2200),'lan',kind);if(existing)return existing;const e=requestError('request_pending','نتیجه اصلاحیه در شبکه داخلی نامعلوم است؛ درخواست جدید ارسال نشد.');e.request_id=requestId;e.unknown_outcome=true;throw e;}
+- if(kind==='settlement.discount_correction'&&!correctionLanAttempted&&(OFFLINE_LAN_BOOTSTRAP||!publicCommandReady)){forgetCommand(requestId);throw requestError('local_unavailable');}
++ kickLanProbe(false);if(routeHint!=='public'&&lanState==='ready'&&lanSupportsRealtime(kind)){markCommandRoute(requestId,'lan');routeHint='lan';if(['settlement.discount_correction','settlement.discount_correction_abandon'].includes(kind))correctionLanAttempted=true;try{const direct=await lanJson('realtime',{method:'POST',body:envelope,timeoutMs:Math.min(1600,Math.max(400,deadlineAt-Date.now()))}),state=String(direct.state||'');if(state==='committed'){forgetCommand(requestId);stale=false;if(!['settlement.discount_preview','settlement.discount_correction_preview','settlement.discount_correction_status'].includes(kind))refreshProjectedSurface();return {...(direct.result||{success:true}),_transport:'lan'};}if(state==='rejected'){forgetCommand(requestId);const e=requestError(String(direct.error_code||'request_failed'),String(direct.result?.message||humanError(direct.error_code)));e.details=direct.result?.details||{};e.definitive=true;throw e}}catch(e){const status=Number(e?.http_status||0),code=String(e?.code||'');if(e?.definitive){forgetCommand(requestId);throw e}if(status===401)suspendLan('unauthorized',60000);else if(code==='unsupported_kind'&&status===422){if(lanRealtimeKinds)lanRealtimeKinds.delete(kind);if(kind==='settlement.discount_correction'){forgetCommand(requestId);throw e;}}else if(!e?.blocked_before_send)suspendLan(code||'write_failed',3000);if(code!=='unsupported_kind'&&!e?.unknown_outcome&&status>=400&&status<500&&status!==401){forgetCommand(requestId);throw e}}}
++ if(['settlement.discount_correction','settlement.discount_correction_abandon'].includes(kind)&&correctionLanAttempted){const existing=await readCommandResult(requestId,'',Math.min(deadlineAt,Date.now()+2200),'lan',kind);if(existing)return existing;const e=requestError('request_pending','نتیجه اصلاحیه در شبکه داخلی نامعلوم است؛ درخواست جدید ارسال نشد.');e.request_id=requestId;e.unknown_outcome=true;throw e;}
++ if(['settlement.discount_correction','settlement.discount_correction_abandon'].includes(kind)&&!correctionLanAttempted&&(OFFLINE_LAN_BOOTSTRAP||!publicCommandReady)){forgetCommand(requestId);throw requestError('local_unavailable');}
+  if(OFFLINE_LAN_BOOTSTRAP){const recoveredLan=await readCommandResult(requestId,'',Math.min(deadlineAt,Date.now()+2200),'lan',kind);if(recoveredLan)return recoveredLan;const e=requestError('request_pending','نتیجه عملیات LAN هنوز قطعی نشده است؛ همان درخواست با همان شناسه دوباره بررسی می‌شود.');e.request_id=requestId;e.unknown_outcome=true;throw e;}
+  if(!publicCommandReady){if(!remembered.reused&&routeHint!=='lan')forgetCommand(requestId);throw requestError('local_unavailable');}
+  markCommandRoute(requestId,'public');routeHint='public';let initialTrace='';try{const remaining=deadlineAt-Date.now();if(remaining<=0)throw requestError('request_timeout');const accepted=await json(u('/api/staff/realtime'),{method:'POST',timeoutMs:Math.min(REQUEST_TIMEOUT_MS,remaining),body:JSON.stringify(envelope)});initialTrace=String(accepted.trace_id||'')}
+@@ -227,7 +228,7 @@
+  }catch(e){if(readLedger().some(row=>String(row.request_id)===requestId)){e.unknown_outcome=true;e.request_id=requestId;}throw e;}finally{activeCommands.delete(requestId);}
+ }
+ function caps(){return {order:body?.dataset.canOrder==='1',cashier:body?.dataset.canCashier==='1',supervise:body?.dataset.canSupervise==='1'};}
+-async function operations(){const j=await model('operations');requireReadModelShape('operations',j);const p=j.payload,h=committedHall(p.hall,j);correctionContractReady=j.stale!==true&&p.finance_projection?.status==='ready'&&p.finance_projection?.remaining_discount_correction_contract===1;return {j,p,h};}
++async function operations(){const j=await model('operations');requireReadModelShape('operations',j);const p=j.payload,h=committedHall(p.hall,j);correctionContractReady=j.stale!==true&&p.finance_projection?.status==='ready'&&p.finance_projection?.remaining_discount_correction_contract===1;correctionTerminalReady=correctionContractReady&&p.finance_projection?.remaining_discount_correction_terminal_contract===1;return {j,p,h};}
+ async function financeAccount(sessionId){const {p}=await operations();if(p.finance_projection?.status==='blocked'||p.finance_projection?.status==='unavailable')throw requestError('finance_projection_unavailable','اطلاعات مالی این حساب نیازمند بررسی در سامانه اصلی کافه است؛ برای جلوگیری از اشتباه تسویه آنلاین موقتاً غیرفعال است.');if([...committedTables].some(([id,patch])=>Number(patch.row.session_id||0)===Number(sessionId)||(p.hall?.tables||[]).some(t=>Number(t.id)===id&&Number(t.session_id||0)===Number(sessionId))))throw requestError('request_pending','وضعیت تازه ثبت شده است؛ جزئیات مالی در حال تازه‌شدن است.');const a=(p.settlement_accounts||[]).find(x=>Number(x.session_id||0)===Number(sessionId));if(!a)throw new Error('حساب مالی تازه برای این میز در دسترس نیست.');if(a.account&&typeof a.account==='object')return {account:a.account};return {account:{session:{id:Number(a.session_id),table_name:String(a.table_name||''),discount_type:null,discount_value:0},subtotal:Number(a.remaining_total||0),remaining_subtotal:Number(a.remaining_total||0),remaining_discount:0,remaining_tax:0,paid_total:0,remaining_total:Number(a.remaining_total||0),signature:String(a.signature||''),receipts:[],lines:[]}};}
+ async function hallRequest(url,opt={}){const parsed=absolute(url),action=String(parsed.searchParams.get('action')||'');if(parsed.pathname.includes('finance')&&action==='account')return financeAccount(Number(parsed.searchParams.get('session_id')||0));if(parsed.pathname.includes('finance')&&action==='discount_correction_status')return correctionStatus(parsed);if(action==='snapshot'){const {j,p,h}=await operations(),c=caps();return {...h,success:true,permissions:{orders_floor:c.order,cashier_accounts:c.cashier,shift_supervision:c.supervise},waiter_calls:Array.isArray(h.waiter_calls)?h.waiter_calls:(p.waiter_calls||[]),remote_stale:!!j.stale,last_sync_at:j.last_sync_at||'',order_acceptance:h.order_acceptance??null,print_quick_preferences:h.print_quick_preferences??null,accommodation_enabled:typeof h.accommodation_enabled==='boolean'?h.accommodation_enabled:null,hall_settings_available:h.hall_settings_available===true,final_amount_rial:h.final_amount_rial===true,can_manage_connections:false};}if(action==='account'){const id=Number(parsed.searchParams.get('table_id')||0),{h}=await operations(),a=h.accounts?.[String(id)]||h.accounts?.[id];if(committedTables.has(id))throw requestError('request_pending','وضعیت میز ثبت شده است؛ جزئیات حساب در حال تازه‌شدن است.');if(!a)throw new Error('حساب این میز در اطلاعات همگام‌شده موجود نیست.');const c=caps();return {...a,permissions:{orders_floor:c.order,cashier_accounts:c.cashier,shift_supervision:c.supervise}};}if(action==='search'||action==='settlement_search'){const j=await model('subscribers'),q=String(parsed.searchParams.get('q')||'').trim().toLocaleLowerCase('fa-IR').replace(/ي/g,'ی').replace(/ك/g,'ک');return {success:true,rows:(j.payload?.rows||[]).filter(r=>Number(r.active)===1&&String((r.name||'')+' '+(r.mobile||'')).toLocaleLowerCase('fa-IR').replace(/ي/g,'ی').replace(/ك/g,'ک').includes(q)).slice(0,20)}};throw new Error('این عملیات در دسترسی راه‌دور فعال نیست.');}
+ // Status-only reconciliation for a Hall move. Never issues a second command POST.
+@@ -253,9 +254,9 @@
+ };
+ async function correctionStatus(parsed){const session_id=Number(parsed.searchParams.get('session_id')||0),request_id=String(parsed.searchParams.get('request_id')||'');if(!correctionSupported()||session_id<1||!/^[A-Za-z0-9._:-]{8,96}$/.test(request_id))throw requestError('local_unavailable','استعلام اصلاحیه در دسترس نیست.');const result=await realtime('settlement.discount_correction_status',{session_id,request_id});return {success:true,result};}
+ async function financeRequest(url,opt={}){const parsed=absolute(url),action=String(parsed.searchParams.get('action')||'');if(action==='account')return financeAccount(Number(parsed.searchParams.get('session_id')||0));if(action==='discount_correction_status')return correctionStatus(parsed);throw new Error('این خواندن مالی در دسترسی راه‌دور فعال نیست.');}
+-async function financePost(url,payload={}){const p={...payload};delete p.csrf_token;const action=String(p.action||'');delete p.action;if(action==='late_served_catalog'){const result=await realtime('settlement.late_catalog',p);return {success:true,...result}}if(action==='late_served_commit'){const result=await realtime('settlement.late_commit',p);return {success:true,result}}if(action==='review'){const review=await realtime('settlement.review',p);return {success:true,review};}if(action==='discount_correction_preview'||action==='discount_correction'){if(!canCorrectDiscount(p.session_id))throw requestError('request_pending','مسیر اصلاح تخفیف مانده آماده نیست یا اصلاحیه قبلی تعیین تکلیف نشده است.');const result=await realtime('settlement.'+action,p);return {success:true,result};}if(action==='discount_preview'){const result=await realtime('settlement.discount_preview',p);return {success:true,result};}if(action==='settle'){const result=await realtime('settlement.commit',p);return {success:true,result};}if(action==='discount'){const result=await realtime('settlement.discount',p);return {success:true,result};}if(action==='receipt_reprint'){const result=await realtime('settlement.receipt_reprint',p);return {success:true,result};}if(action==='followup_detach'){const result=await realtime('settlement.followup_detach',p);return {success:true,result};}if(action==='followup_destination'){const result=await realtime('settlement.followup_destination',p);return {success:true,result};}throw new Error('این عملیات مالی در دسترسی راه‌دور فعال نیست.');}
++async function financePost(url,payload={}){const p={...payload};delete p.csrf_token;const action=String(p.action||'');delete p.action;if(action==='late_served_catalog'){const result=await realtime('settlement.late_catalog',p);return {success:true,...result}}if(action==='late_served_commit'){const result=await realtime('settlement.late_commit',p);return {success:true,result}}if(action==='review'){const review=await realtime('settlement.review',p);return {success:true,review};}if(action==='discount_correction_abandon'){if(!correctionTerminalSupported())throw requestError('local_unavailable','تعیین تکلیف در نسخه فعلی سامانه اصلی در دسترس نیست.');const result=await realtime('settlement.discount_correction_abandon',p);return {success:true,result};}if(action==='discount_correction_preview'||action==='discount_correction'){if(!canCorrectDiscount(p.session_id))throw requestError('request_pending','مسیر اصلاح تخفیف مانده آماده نیست یا اصلاحیه قبلی تعیین تکلیف نشده است.');const result=await realtime('settlement.'+action,p);return {success:true,result};}if(action==='discount_preview'){const result=await realtime('settlement.discount_preview',p);return {success:true,result};}if(action==='settle'){const result=await realtime('settlement.commit',p);return {success:true,result};}if(action==='discount'){const result=await realtime('settlement.discount',p);return {success:true,result};}if(action==='receipt_reprint'){const result=await realtime('settlement.receipt_reprint',p);return {success:true,result};}if(action==='followup_detach'){const result=await realtime('settlement.followup_detach',p);return {success:true,result};}if(action==='followup_destination'){const result=await realtime('settlement.followup_destination',p);return {success:true,result};}throw new Error('این عملیات مالی در دسترسی راه‌دور فعال نیست.');}
+ const financeAdapter={host:'public',request:financeRequest,post:financePost,pendingSettlementForSession,reconcileSettlement:sessionId=>reconcileCommand(pendingSettlementForSession(sessionId))};
+-const hallAdapter={host:'public',request:hallRequest,mutate:hallMutate,moveStatus:hallMoveStatus,financeMutate:payload=>financePost('',payload),canCorrectDiscount,confirmCorrectionStatus:(sessionId,requestId)=>{const row=pendingCorrectionForSession(sessionId);if(row&&String(row.request_id)===String(requestId))forgetCommand(requestId);},orderTransport,canMutate:()=>liveMutationReady(),lastSync:()=>lastSync,hasUnresolvedMutations};
++const hallAdapter={host:'public',request:hallRequest,mutate:hallMutate,moveStatus:hallMoveStatus,financeMutate:payload=>financePost('',payload),canCorrectDiscount,canResolveCorrection:correctionSupported,canAbandonCorrection:correctionTerminalSupported,pendingCorrectionForSession,confirmCorrectionStatus:(sessionId,requestId)=>{const row=pendingCorrectionForSession(sessionId);if(row&&String(row.request_id)===String(requestId))forgetCommand(requestId);},orderTransport,canMutate:()=>liveMutationReady(),lastSync:()=>lastSync,hasUnresolvedMutations};
+ const preparationAdapter={host:'public',load:async()=>{const j=await model('preparation');return j.payload||{orders:[],permissions:{}}},mutate:async payload=>{const p={...payload};if(String(p.action||'')==='claim')p.action='claim_order_area';return realtime('preparation.mutate',p)},normalizeAction:action=>String(action||'')==='claim'?'claim_order_area':String(action||''),canMutate:()=>liveMutationReady(),isStale:()=>modelMetaFor('preparation').stale,lastSync:()=>modelMetaFor('preparation').last_sync_at,meta:()=>({...modelMetaFor('preparation'),connectivity:null,mutation_ready:liveMutationReady()})};
+ let watchCursor='',watchStopped=false,watchRunning=false,watchAbort=null,projectionRefreshTimer=0,watchFailureStreak=0;
+ function refreshProjectedSurface(){clearTimeout(projectionRefreshTimer);projectionRefreshTimer=setTimeout(()=>{if(document.hidden)return;window.SoknaSharedHall?.refresh?.();if(body?.dataset.page==='preparation')window.SoknaStaffPreparation?.load?.();},60)}
+--- a/public/src/Realtime/RealtimeService.php
++++ b/public/src/Realtime/RealtimeService.php
+@@ -16,7 +16,7 @@
+         'waiter_call.create', 'waiter_call.status', 'waiter_call.cancel',
+         'order.edit', 'order.append', 'order.cancel', 'order.staff_status',
+         'hall.acceptance_update','hall.waiter_status', 'hall.table_move', 'hall.order_reprint', 'hall.order_item_adjust',
+-        'settlement.commit', 'settlement.late_catalog', 'settlement.late_commit', 'settlement.review', 'settlement.discount_preview', 'settlement.discount', 'settlement.discount_correction_preview', 'settlement.discount_correction', 'settlement.discount_correction_status', 'settlement.receipt_reprint', 'settlement.followup_detach', 'settlement.followup_destination', 'preparation.mutate',
++        'settlement.commit', 'settlement.late_catalog', 'settlement.late_commit', 'settlement.review', 'settlement.discount_preview', 'settlement.discount', 'settlement.discount_correction_preview', 'settlement.discount_correction', 'settlement.discount_correction_status', 'settlement.discount_correction_abandon', 'settlement.receipt_reprint', 'settlement.followup_detach', 'settlement.followup_destination', 'preparation.mutate',
+         'table_draft.get', 'table_draft.create', 'table_draft.edit', 'table_draft.finalize', 'table_draft.finalize_atomic', 'table_draft.cancel',
+         'notification.push.subscribe', 'notification.push.unsubscribe', 'notification.preferences.save',
+         'account.password_change',
+@@ -53,6 +53,7 @@
+         'settlement.discount_correction_preview' => '*',
+         'settlement.discount_correction' => '*',
+         'settlement.discount_correction_status' => '*',
++        'settlement.discount_correction_abandon' => '*',
+         'settlement.receipt_reprint' => 'finance.settle',
+         'settlement.followup_detach' => 'finance.settle',
+         'settlement.followup_destination' => 'finance.settle',

@@ -1,0 +1,45 @@
+{
+  "changed": {
+    "local/public/assets/staff-app/hall-workspace.js": {
+      "before": "6cd2f3b3e6d532998d5454cc69048bd823b653e7c4eb1d5b4e9ed588aecda7cb",
+      "after": "de4c09fb9523e2dddca04caf86b68b0aac1e2e38f2f4d3946511c4ed37b6bfb6"
+    },
+    "local/src/Domain/Finance/SettlementService.php": {
+      "before": "9fa67664e5ae7bde2b330fbd643ad16b4e05abbf8a30bd655871d8fc27a43e9b",
+      "after": "158b430f72817114f5b99a98fcee2a49071eb3ddc881230ac35a498a2ab638d5"
+    },
+    "local/src/Domain/LanStaff/LanStaffGatewayService.php": {
+      "before": "c960e80b3ead028b3207765a9768fc2c403f795a831072f09f7c151f5531cf41",
+      "after": "cd8dcbc1415438f8448c1b5ada3899e98e787d2c60baa9c40756df0f52d93725"
+    },
+    "local/src/Domain/PublicEdge/PublicProjectionBuilder.php": {
+      "before": "cb2a998ad92edb989aa3ee18d7f3cb012e533b466e551313a915744afa04236d",
+      "after": "a5c8e4235f4ee41dd6f47a958a27542720948f8be596eb64045306ce26f474e8"
+    },
+    "local/src/Relay/RealtimeDispatchService.php": {
+      "before": "14be499b2fb22854b73b65859073a8d22f1aa7b7f7111cd32a7aecfce91ee90f",
+      "after": "ac124b0ef57bd929d4e81aeb99b0536b8de83b4f19e2770fcbb93204b8538528"
+    },
+    "local/src/Relay/SettlementRealtimeAdapter.php": {
+      "before": "d29401c8de531e3acbf472277e15724f9525629105833917e2bf52ad7c2920df",
+      "after": "2a69628b0e83a678385ff65b31bf3f331ecdf8a30cfadd976bd807b579040922"
+    },
+    "public/assets/staff-app/hall-workspace.js": {
+      "before": "322dfef777002ac8b9b420af1968000958ad80ef1ec1afd8b3eebaebdcd8a142",
+      "after": "998f4c110c9e1366b3ce9629a28558cca2bdd131d6f284b9822e68a367f300c6"
+    },
+    "public/assets/staff-app/public-hall-transport.js": {
+      "before": "d5f83b1ba44dd4d97eb9bb1ac6c79a9e590890c368b009cd36744dfa9342506a",
+      "after": "a2f897f3d1890e6a43720233b8a6f5e9940500c6f399385cbbf83936db6b78d7"
+    },
+    "public/src/Realtime/RealtimeService.php": {
+      "before": "3a5585e5ebaca23628cdaf6f25cf7a9d92b0799271180bfcd1df0d64e58ef45a",
+      "after": "dcd701715c631995c8bef7b7826d712362f921709bc164afee6bc8abf68102cc"
+    }
+  },
+  "canonical": {
+    "local": "53b1497fb462bb1d104a8d4d42a58223432eaa72f71b114e3306a3113ebd9067",
+    "public": "08c332f092281fc4b9f2fc0476c41a03550a12d7e95c1da83fbf23291eddf235"
+  },
+  "files": 883
+}
