@@ -59,10 +59,8 @@ jobs:
           php8.3 qa/checkpoint77/public-35iq-upgrade.php commit "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/fixture/new-web" "$pkg" | tee -a "$RUNNER_TEMP/receipt/upgrade.log"
           test "$(grep -c '^PASS ' "$RUNNER_TEMP/receipt/upgrade.log")" = 3
           cp "$RUNNER_TEMP/fixture/factory-evidence-decision.json" "$RUNNER_TEMP/receipt/"
-      - uses: actions/upload-artifact@v4
+      - name: Report QA receipt without artifact storage
         if: always()
-        with:
-          name: SOKNA-CHECKPOINT77-PUBLIC-35IQ-MIGRATION-MARIADB-${{ matrix.mariadb }}-QA
-          path: ${{ runner.temp }}/receipt/
-          if-no-files-found: warn
-          retention-days: 30
+        run: |
+          if test -f "$RUNNER_TEMP/receipt/upgrade.log"; then cat "$RUNNER_TEMP/receipt/upgrade.log"; fi
+          if test -f "$RUNNER_TEMP/receipt/factory-evidence-decision.json"; then sha256sum "$RUNNER_TEMP/receipt/factory-evidence-decision.json"; fi
