@@ -57,7 +57,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/delivery"
           python3 - <<'PY'
-          import urllib.request,urllib.error,http.cookiejar,json,pathlib,hashlib,os
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib,hashlib,os,subprocess
           work=pathlib.Path('/var/www/sokna-public-clean-canary');c=json.loads((work/'contract.json').read_text());rows=[]
           for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu')]:
               origin=f'http://127.0.0.1:{port}{base}'
@@ -86,9 +86,9 @@ jobs:
               assert all(hashlib.sha256((web/n).read_bytes()).hexdigest()==sha for n,sha in c['protected'].items())
               # Fresh install must contain no historical update transaction or fence.
               state=web/'storage/routine-update-v2/state.json'
-              if state.exists():
-                  st=json.loads(state.read_text());assert st.get('db_forward_fence') is None and st.get('pending_verification') is None and st.get('activation_journal') is None
-              assert not (web/'storage/maintenance.lock').exists()
+              if subprocess.run(['sudo','-u','www-data','test','-f',str(state)]).returncode==0:
+                  st=json.loads(subprocess.check_output(['sudo','-u','www-data','cat',str(state)]));assert st.get('db_forward_fence') is None and st.get('pending_verification') is None and st.get('activation_journal') is None
+              assert subprocess.run(['sudo','-u','www-data','test','-f',str(web/'storage/maintenance.lock')]).returncode==1
               assert h['routine_update']['active_version']==c['target'] and not h['routine_update']['pending_verification']
               # Pairing alone deliberately does not publish a guest menu.
               try:
