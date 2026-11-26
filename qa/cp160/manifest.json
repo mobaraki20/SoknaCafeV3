@@ -1,0 +1,49 @@
+{
+  "changed": {
+    "local/public/assets/finance-workspace.js": {
+      "before": "a83babe13680fa70f4959643c466e85bc25cbacedcda5f26b3a25d47d7d0f97d",
+      "after": "269ccb71f537d809124d63eb37ef3c4c491cffa96846720360e757eeba2351aa"
+    },
+    "local/public/assets/product-ui.css": {
+      "before": "a39b50c769204bc32cc1076b42a94a3fcf1c1700580ac2c58c9359ed43f14b06",
+      "after": "4f2eafb6cf6d1b4833dd9cee3802039195e269fd56778ac9d3cffe849b110d0d"
+    },
+    "local/public/assets/reports-workspace.js": {
+      "before": "9ab266650393f193577c3438045f9664e39c5994d89ac258f84b93bf573edd9a",
+      "after": "eafa09f96ab179d8f944e376a89f4ccc2eeae18460dc735ceea37575618a85fb"
+    },
+    "local/public/assets/staff-app/data-panels.js": {
+      "before": "6926a0e0ac84876c186a82ec5790129aca201ca7716cb7f74d4b818496c681c0",
+      "after": "1cea232f809b7069a04e37b225916c1636118285ee05eb1b18bc7b7525b0b539"
+    },
+    "local/public/finance/index.php": {
+      "before": "c7b976119e9a5c4e186654a3ebe14a34c8f6a2e4023c8c490ecc6804c4807ef0",
+      "after": "d30b59297f2651d5977b59a473f4f817a875727319e8cc5019e2cb8a423b5b1b"
+    },
+    "local/resources/shared-staff-ui/reports-workspace.php": {
+      "before": "ccee3d350f0a706d02f1454acd111d26a6d12847948173135d82631592f17978",
+      "after": "eea66cfaa499c5ea9ac7e59644e551319e967ce31261e4fd55f40fe79b586d9a"
+    },
+    "public/assets/product-ui.css": {
+      "before": "81bcc972037aeb9b4bfb063381b0391e370dca1c50dc46ca5445f896e5e82728",
+      "after": "b8e34971af0ca1489c8d4fe2d45aaac8e7cd35315687878474ef80196378d209"
+    },
+    "public/assets/reports-workspace.js": {
+      "before": "4b08e38ab2d440b9ba3a478afdfc6b27cf3c833da88ae09f616dae50c5985e4d",
+      "after": "6149094dd591c7ea170a513f2d8a8bbe79a3d99bc0eaf25b860033b2b9acc2fa"
+    },
+    "public/assets/staff-app/data-panels.js": {
+      "before": "b59a21a1f38d7e9eb618fbda22d1e53b78b9a45bea9eb142263af6469e86fd12",
+      "after": "1cd25f0a2f63836e9dc0043704899a20aa736a206022564d29522adb4808d179"
+    },
+    "public/resources/shared-staff-ui/reports-workspace.php": {
+      "before": "f659d9d6817dce0e54dc90f38295e3d120293543619c6cf875d73deda9af2d86",
+      "after": "6f8953e424274e3a2cdbc615043df66a8583ed090def64f6637a267beaaa37c6"
+    }
+  },
+  "canonical": {
+    "local": "eac608b60138d797612fb79fd479392efa1a3fe45eb7e5caa99517edccd62212",
+    "public": "c6e09722b1c47e7c4dd7b50395a30924e1a879b8741c6b63a44d308aa81f94f9"
+  },
+  "files": 883
+}
