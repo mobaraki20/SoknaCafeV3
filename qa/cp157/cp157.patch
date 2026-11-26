@@ -1,0 +1,151 @@
+--- a/local/public/assets/finance-workspace.js
++++ b/local/public/assets/finance-workspace.js
+@@ -7,7 +7,7 @@
+ function restoreView(v){requestAnimationFrame(()=>{if(v.invoice!==null){const n=$('[data-invoice-list]');if(n)n.scrollTop=v.invoice}if(v.accounts!==null){const n=$('[data-account-list]');if(n)n.scrollTop=v.accounts}if(v.followups!==null){const n=$('[data-followup-list]');if(n)n.scrollTop=v.followups}window.scrollTo(v.x,v.y)})}
+ const toast=(m,tone='success',title='')=>window.SoknaUI?.toast?.(m,{tone,title});const T=window.SoknaSettlementTender;let snap=null,account=null,accountTarget='accounts',selectedInvoiceId=0,selectedReservation=null,financeTender=T?.fresh?.()||null,tenderDialog=null;
+ let refreshToken=0,reservationToken=0,accountSelection=0,accountReady=false,snapshotReady=false,tenderContext=null;
+-let invoiceRows=[],invoicePage={page:1,total:0,pages:1,page_size:25},invoiceLoading=true,invoiceError='',invoiceListToken=0,invoiceSearchTimer=null;
++let invoiceRows=[],invoicePage={page:1,total:0,pages:1,page_size:25},invoiceLoading=true,invoiceError='',invoiceListToken=0,invoiceSearchTimer=null,invoiceFailedPage=1;
+ const money=n=>L.money(n),finalMoney=n=>window.SoknaFinalAmountCurrency?.format?.(n,root.dataset.finalAmountRial==='1')||L.money(n),finalInput=n=>window.SoknaFinalAmountCurrency?.inputValue?.(n,root.dataset.finalAmountRial==='1')||String(n),parseFinal=n=>window.SoknaFinalAmountCurrency?.parseInput?.(n,root.dataset.finalAmountRial==='1')??null,el=(t,c,txt)=>{const x=document.createElement(t);if(c)x.className=c;if(txt!==undefined)x.textContent=txt;return x};
+ const requestId=prefix=>prefix+(globalThis.crypto?.randomUUID?crypto.randomUUID():(Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12)));
+ // One unresolved financial POST per tab. Storage is required before the FIRST POST:
+@@ -75,7 +75,7 @@
+  const box=$('[data-receipt-list]'),count=$('[data-invoice-count]'),pages=$('[data-invoice-pages]');if(!box)return;
+  box.replaceChildren();pages?.replaceChildren();
+  if(invoiceLoading){if(count)count.textContent='در حال جست‌وجو';box.append(el('div','sc-empty','در حال جست‌وجوی آرشیو فاکتورها…'));return;}
+- if(invoiceError){if(count)count.textContent='—';box.append(el('div','sc-empty sc-error',invoiceError));return;}
++ if(invoiceError){if(count)count.textContent='—';const failure=el('div','sc-empty sc-error',invoiceError);failure.append(button('تلاش مجدد',()=>fetchInvoices(invoiceFailedPage),'secondary'));box.append(failure);return;}
+  if(count)count.textContent=`${L.integer(invoicePage.total)} فاکتور`;
+  if(!invoiceRows.length){box.append(el('div','sc-empty','فاکتوری با این مشخصات پیدا نشد.'));return;}
+  invoiceRows.forEach(r=>{const row=el('button','sc-finance-invoice-row'+(Number(r.id)===selectedInvoiceId?' is-selected':''));row.type='button';row.dataset.invoiceId=String(r.id);const main=el('span','sc-finance-invoice-row__main');main.append(el('strong','sc-canonical-id',`فاکتور ${L.canonical(r.invoice_number)}`),el('span','',`${L.humanDigits(r.table_name_snapshot)} · ${destinationLabel(r.destination)}`),el('small','',`زمان صدور: ${L.dateTime(r.settled_at)} · روز کاری: ${r.business_date?L.date(r.business_date):'—'}${r.actor_name?' · '+r.actor_name:''}`));const value=el('span','sc-finance-invoice-row__value');value.append(el('strong','',`${r.status==='reversal'?'− ':''}${finalMoney(r.total)}`),badge(settlementStatus(r.status),statusTone(r.status)));row.append(main,value,el('span','sc-finance-chevron','‹'));row.addEventListener('click',()=>loadInvoice(Number(r.id)));box.append(row)});
+@@ -86,6 +86,7 @@
+  }
+ }
+ async function fetchInvoices(page=1){
++ invoiceFailedPage=page;
+  const token=++invoiceListToken;++financeInvoiceLoadToken;selectedInvoiceId=0;const detail=$('[data-invoice-detail]');detail?.replaceChildren();detail?.classList.add('sc-hidden');
+  const queryFields=['[data-invoice-from]','[data-invoice-to]'];if(queryFields.some(s=>!validDateField($(s)))){invoiceLoading=false;invoiceRows=[];invoiceError='بازه تاریخ معتبر نیست.';renderReceipts();return;}
+  const query=new URLSearchParams({action:'invoices',page:String(page)});
+@@ -96,8 +97,10 @@
+  try{
+   const response=await request(`${api}?${query.toString()}`);
+   if(token!==invoiceListToken)return;
+-  invoiceRows=Array.isArray(response.result?.rows)?response.result.rows:[];
+-  invoicePage=response.result?.pagination||{page,total:0,pages:1,page_size:25};
++  const result=response.result,pagination=result?.pagination;
++  if(!Array.isArray(result?.rows)||!pagination||!['page','page_size','total','pages'].every(k=>Number.isSafeInteger(pagination[k]))||pagination.page<1||pagination.page_size<1||pagination.total<0||pagination.pages<1||pagination.page>pagination.pages||result.rows.length>pagination.page_size||result.rows.length>pagination.total||result.rows.some(row=>!Number.isSafeInteger(Number(row?.id))||Number(row.id)<1||typeof row.invoice_number!=='string'||!row.invoice_number))throw new Error('پاسخ فهرست فاکتورها معتبر نیست؛ دوباره تلاش کنید.');
++  invoiceRows=result.rows;
++  invoicePage=pagination;
+  }catch(e){if(token!==invoiceListToken)return;invoiceError=e?.message||'جست‌وجوی فاکتورها انجام نشد.';invoiceRows=[];}
+  finally{if(token===invoiceListToken){invoiceLoading=false;renderReceipts();}}
+ }
+--- a/local/public/assets/reports-workspace.js
++++ b/local/public/assets/reports-workspace.js
+@@ -284,20 +284,33 @@
+    if(Number(category?.value||0)>0)filters.category_id=Number(category.value);
+    if(Number(family?.value||0)>0)filters.family_id=Number(family.value);
+    if(keyword?.value?.trim())filters.keyword=keyword.value.trim();
++   // Only the last successfully executed, still-current scope may auto-run.
++   const action=lastScope?.get('action'),form=$('[data-report-form]');
++   const sameRange=lastScope&&lastScope.get('from')===form.elements.from.value&&lastScope.get('to')===form.elements.to.value;
++   filters.item_sales_mode=sameRange?({item_sales:'individual',item_sales_group:lastScope.get('group_type')==='family'?'family':'category',item_sales_keyword:'keyword'}[action]||'none'):'none';
++   // Preferences contain filter choices, never cached financial data.
+    e.detail.filters=filters;
+  });
+  root.addEventListener('sokna:report-view-restore',async e=>{
+    invalidateSales();
++   clearTimeout(lookupTimer);++searchToken;input.value='';opts.replaceChildren();
+    items.clear();for(const item of e.detail?.items||[]){const id=Number(item.id),name=String(item.name||'');if(Number.isSafeInteger(id)&&id>0&&name.trim()&&items.size<30)items.set(id,{id,name})}display();
+-   const filters=e.detail?.filters||{};
++   const restoreToken=reportToken,filters=e.detail?.filters||{};
+    if(keyword){keyword.value=String(filters.keyword||'');keywordRun.disabled=keyword.value.trim().length<2;}
+    await groupLoad;
++   // An older asynchronous restore must not replace a more recent selection.
++   if(restoreToken!==reportToken)return;
+    if(category&&filters.category_id&&[...category.options].some(o=>o.value===String(filters.category_id))){category.value=String(filters.category_id);updateGroups();}
+    else if(category){category.value='';updateGroups();}
+    if(family){family.value=filters.family_id&&[...family.options].some(o=>o.value===String(filters.family_id))?String(filters.family_id):'';}
+-   if(reportSectionKey==='item-sales'){
+-     if(items.size)run.click();else if(category?.value&&groupRun)groupRun.click();else if(keyword?.value?.trim().length>=2&&keywordRun)keywordRun.click();
+-   }
++   if(reportSectionKey!=='item-sales')return;
++   const mode=filters.item_sales_mode||'none';
++   if(mode==='individual'&&items.size){run.click();return;}
++   if(mode==='keyword'&&keyword?.value?.trim().length>=2&&keywordRun){keywordRun.click();return;}
++   if(mode==='category'&&category?.value&&!category.disabled&&groupRun){if(family)family.value='';groupRun.click();return;}
++   if(mode==='family'&&category?.value&&!category.disabled&&family?.value&&groupRun){groupRun.click();return;}
++   // Legacy or unavailable scopes must never silently become another report.
++   statusText(mode==='none'?'انتخاب‌های نما بازیابی شد؛ نوع گزارش را انتخاب و اجرا کنید.':'محدوده گزارش ذخیره‌شده در دسترس نیست؛ انتخاب‌ها را بررسی کنید.',mode!=='none');
+  });
+  input.addEventListener('input',()=>{clearTimeout(lookupTimer);const token=++searchToken;opts.replaceChildren();const q=input.value.trim();if(!q)return;lookupTimer=setTimeout(async()=>{
+     try{const j=await request(new URLSearchParams({action:'item_lookup',q}),{emitMeta:false});if(token!==searchToken)return;
+--- a/local/src/Domain/Account/UserUiPreferenceService.php
++++ b/local/src/Domain/Account/UserUiPreferenceService.php
+@@ -69,9 +69,11 @@
+                 }
+                 foreach(['keyword'=>60,'activity_family'=>36,'activity_q'=>120] as $key=>$max){
+                     $raw=$rawFilters[$key]??null;if(!is_string($raw))continue;
+-                    $val=preg_replace('/\s+/u',' ',trim($raw));
++                    $val=$key==='keyword'?trim($raw):preg_replace('/\s+/u',' ',trim($raw));
+                     if(is_string($val)&&$val!==''&&preg_match('/^.{1,'.$max.'}$/us',$val)===1)$filters[$key]=$val;
+                 }
++                $mode=$rawFilters['item_sales_mode']??null;
++                if(is_string($mode)&&in_array($mode,['none','individual','category','family','keyword'],true))$filters['item_sales_mode']=$mode;
+                 $views[]=['name'=>$name,'from'=>$from,'to'=>$to,'section'=>$section,'items'=>array_values($selected),'filters'=>$filters];
+                 if(count($views)>=12)break;
+             }
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -250,20 +250,33 @@
+    if(Number(category?.value||0)>0)filters.category_id=Number(category.value);
+    if(Number(family?.value||0)>0)filters.family_id=Number(family.value);
+    if(keyword?.value?.trim())filters.keyword=keyword.value.trim();
++   // Only the last successfully executed, still-current scope may auto-run.
++   const action=lastScope?.get('action'),form=$('[data-report-form]');
++   const sameRange=lastScope&&lastScope.get('from')===form.elements.from.value&&lastScope.get('to')===form.elements.to.value;
++   filters.item_sales_mode=sameRange?({item_sales:'individual',item_sales_group:lastScope.get('group_type')==='family'?'family':'category',item_sales_keyword:'keyword'}[action]||'none'):'none';
++   // Preferences contain filter choices, never cached financial data.
+    e.detail.filters=filters;
+  });
+  root.addEventListener('sokna:report-view-restore',async e=>{
+    invalidateSales();
++   clearTimeout(lookupTimer);++searchToken;input.value='';opts.replaceChildren();
+    items.clear();for(const item of e.detail?.items||[]){const id=Number(item.id),name=String(item.name||'');if(Number.isSafeInteger(id)&&id>0&&name.trim()&&items.size<30)items.set(id,{id,name})}display();
+-   const filters=e.detail?.filters||{};
++   const restoreToken=reportToken,filters=e.detail?.filters||{};
+    if(keyword){keyword.value=String(filters.keyword||'');keywordRun.disabled=keyword.value.trim().length<2;}
+    await groupLoad;
++   // An older asynchronous restore must not replace a more recent selection.
++   if(restoreToken!==reportToken)return;
+    if(category&&filters.category_id&&[...category.options].some(o=>o.value===String(filters.category_id))){category.value=String(filters.category_id);updateGroups();}
+    else if(category){category.value='';updateGroups();}
+    if(family){family.value=filters.family_id&&[...family.options].some(o=>o.value===String(filters.family_id))?String(filters.family_id):'';}
+-   if(reportSectionKey==='item-sales'){
+-     if(items.size)run.click();else if(category?.value&&groupRun)groupRun.click();else if(keyword?.value?.trim().length>=2&&keywordRun)keywordRun.click();
+-   }
++   if(reportSectionKey!=='item-sales')return;
++   const mode=filters.item_sales_mode||'none';
++   if(mode==='individual'&&items.size){run.click();return;}
++   if(mode==='keyword'&&keyword?.value?.trim().length>=2&&keywordRun){keywordRun.click();return;}
++   if(mode==='category'&&category?.value&&!category.disabled&&groupRun){if(family)family.value='';groupRun.click();return;}
++   if(mode==='family'&&category?.value&&!category.disabled&&family?.value&&groupRun){groupRun.click();return;}
++   // Legacy or unavailable scopes must never silently become another report.
++   statusText(mode==='none'?'انتخاب‌های نما بازیابی شد؛ نوع گزارش را انتخاب و اجرا کنید.':'محدوده گزارش ذخیره‌شده در دسترس نیست؛ انتخاب‌ها را بررسی کنید.',mode!=='none');
+  });
+  input.addEventListener('input',()=>{clearTimeout(lookupTimer);const token=++searchToken;opts.replaceChildren();const q=input.value.trim();if(!q)return;lookupTimer=setTimeout(async()=>{
+     try{const j=await request(new URLSearchParams({action:'item_lookup',q}),{emitMeta:false});if(token!==searchToken)return;
+--- a/public/src/Auth/UserUiPreferenceService.php
++++ b/public/src/Auth/UserUiPreferenceService.php
+@@ -69,9 +69,11 @@
+                 }
+                 foreach(['keyword'=>60,'activity_family'=>36,'activity_q'=>120] as $key=>$max){
+                     $raw=$rawFilters[$key]??null;if(!is_string($raw))continue;
+-                    $val=preg_replace('/\s+/u',' ',trim($raw));
++                    $val=$key==='keyword'?trim($raw):preg_replace('/\s+/u',' ',trim($raw));
+                     if(is_string($val)&&$val!==''&&preg_match('/^.{1,'.$max.'}$/us',$val)===1)$filters[$key]=$val;
+                 }
++                $mode=$rawFilters['item_sales_mode']??null;
++                if(is_string($mode)&&in_array($mode,['none','individual','category','family','keyword'],true))$filters['item_sales_mode']=$mode;
+                 $views[]=['name'=>$name,'from'=>$from,'to'=>$to,'section'=>$section,'items'=>array_values($selected),'filters'=>$filters];
+                 if(count($views)>=12)break;
+             }

@@ -1,0 +1,29 @@
+{
+  "changed": {
+    "local/public/assets/finance-workspace.js": {
+      "before": "73e120798725b5067515ddaacdc4b210e657cc1cf832c71da739996077747c21",
+      "after": "02bd415a7c2528e19d31b1cc6e70924f4851b057dd14383a835d39aeddbed94a"
+    },
+    "local/public/assets/reports-workspace.js": {
+      "before": "b43936fb773a9b8d012fad2c011672cb65e7368f262ce400d964eb80f2ee23e5",
+      "after": "e5c71429c5a6bc98cfaff68cd4c5d87ef4ad02651fa7b429046fa344bbd0321e"
+    },
+    "local/src/Domain/Account/UserUiPreferenceService.php": {
+      "before": "96c328c2aee1b51d5db4a8444cbf8e5c3ebd33ae4f04b6d5aa52a13ab4cebd6c",
+      "after": "c427a0e1564efa12d93d7e493b3e72658fd0010c98c61c89b5f571c1e9e506f3"
+    },
+    "public/assets/reports-workspace.js": {
+      "before": "c69eb77b2d219fd245df74f6e1d4c12f9a551d7deeb5af2aac302726b71b111d",
+      "after": "2a760b0c696701e3f82989074712d69e279cfce3a5c115c896fe6e6b9d64f922"
+    },
+    "public/src/Auth/UserUiPreferenceService.php": {
+      "before": "ec1ae0a83210544c61df84870f52f18acf4909b01b586fdf71157b2e70bf1b2f",
+      "after": "ea6181060a45b718acbe7da60dfaeedb3cddf81d54da156badd1a469bb849485"
+    }
+  },
+  "canonical": {
+    "local": "bbd225fd49dd2129b0f4a3af72db14a1a2eb2d28b5d927db4081bf46a4ea000c",
+    "public": "0c372b8cd25ad9a3fc1dd4ad525158150313d57c3eba8df9ea6563e14c5d0cd3"
+  },
+  "files": 883
+}
