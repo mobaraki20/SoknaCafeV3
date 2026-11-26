@@ -53,7 +53,7 @@ jobs:
           echo 'b47733907911306fa8b380778e575df29534ccbefa98f7728757cc3dc899b6f3  0002_m4_guest_public_projection.sql' | sha256sum -c -
           echo 'eb89c8dc847665f15bd135de0345c3105bba6bea570edf714b287faa72c3e16e  0003_g3_emergency_update_takeover.sql' | sha256sum -c -
           echo '03236b951ff24405bb90b5faeea0ddb636933487088b22ea04ed76d4e3c36435  0004_remote_read_event_cursor.sql' | sha256sum -c -
-          echo 'ed625f9a4ef082dcdba945166b096f7117f8d8824f16c2c276e26e876ab020  0005_transport_v2.sql' | sha256sum -c -
+          echo 'ed625f9a4ef082dcdba945166b096f7117f8d8824f16c2c2c276e26e876ab020  0005_transport_v2.sql' | sha256sum -c -
           echo '653cf1fe988a0236fc263b65da52053e7e01295a8abb2b6adff044322c8384f5  0006_lan_staff_browser_credentials.sql' | sha256sum -c -
       - name: Build independent reference and print schema only
         shell: bash
