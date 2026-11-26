@@ -1,0 +1,176 @@
+name: SOKNA EXEC03 ACCEPT03 browser recovery
+on:
+  push:
+    branches: [qa/cp133-marketing-20261126]
+    paths: [.github/workflows/sokna-exec03-accept03-browser.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout reviewable QA source data
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Verify and apply direct source delta
+        run: |
+          mkdir -p "$RUNNER_TEMP/cp148-qa"
+          python3 qa/cp148/prepare-source.py "$RUNNER_TEMP/cp148-qa" "$RUNNER_TEMP/cp148-input" | tee "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP150 candidate delta
+        run: python3 qa/cp150/apply-cp150.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP151 candidate delta
+        run: python3 qa/cp151/apply-cp151.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152 candidate delta
+        run: python3 qa/cp152/apply-cp152.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152B candidate delta
+        run: python3 qa/cp152b/apply-cp152b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152C candidate delta
+        run: python3 qa/cp152c/apply-cp152c.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152D candidate delta
+        run: python3 qa/cp152d/apply-cp152d.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP153 candidate delta
+        run: python3 qa/cp153/apply-cp153.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP154 candidate delta
+        run: python3 qa/cp154/apply-cp154.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP155 candidate delta
+        run: python3 qa/cp155/apply-cp155.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP156 candidate delta
+        run: python3 qa/cp156/apply-cp156.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP157 candidate delta
+        run: python3 qa/cp157/apply-cp157.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP157B candidate delta
+        run: python3 qa/cp157b/apply-cp157b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP158 candidate delta
+        run: python3 qa/cp158/apply-cp158.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP159 candidate delta
+        run: python3 qa/cp159/apply-cp159.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP159B candidate delta
+        run: python3 qa/cp159b/apply-cp159b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP160 candidate delta
+        run: python3 qa/cp160/apply-cp160.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Prepare browser driver
+        run: npm install --prefix "$RUNNER_TEMP/cp148-qa/pw" playwright --no-audit --no-fund
+      - name: Execute new browser recovery and display controls
+        run: |
+          set -euo pipefail
+          QA_WORK="$RUNNER_TEMP/cp148-qa"
+          export QA_DB_PASSWORD=synthetic-cp116-ci-only SOKNA_QA_DISPOSABLE=YES TMPDIR="$QA_WORK"
+          php qa/cp148/preflight.php
+          cp qa/cp160/fixture.php "$QA_WORK/"
+          cd "$QA_WORK"
+          export RUNNER_TEMP="$QA_WORK"
+          php fixture.php "$QA_WORK/local" | tee exec03a3-db-results.txt
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$QA_WORK/local/public" >exec03a3-local.log 2>&1 &
+          lp=$!
+          trap 'kill "$lp" 2>/dev/null || true' EXIT
+          sleep 2
+          cat >exec03a3-browser.cjs <<'JS'
+          const {chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright'),fs=require('fs');
+          const f=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/cp144-fixture.json')),local='http://127.0.0.1:18765',pub='http://127.0.0.1:18766/public',shots=process.env.RUNNER_TEMP+'/exec03a3-screenshots';fs.mkdirSync(shots,{recursive:true});let fail=0;const results={};
+          function ck(x,n){if(!x)throw Error(n);console.log('PASS '+n)}async function group(n,fn){if(process.env.QA_LOCAL_ONLY==='1'&&n.includes('Public')){console.log('GROUP SKIP '+n+' (Public fixture/sync failed)');results[n]='SKIP';fail++;return;}try{await fn();results[n]='PASS';console.log('GROUP PASS '+n)}catch(e){fail++;results[n]='FAIL';console.log('GROUP FAIL '+n+' '+e.stack)}}
+          async function auth(p,base,user){await p.goto(base+(base===local?'/login.php':'/staff/login'));const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key=base===local?user:'user:'+f.users.find(u=>u.name===user).id;if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${key}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user+' '+base);}
+          async function post(p,sel,path,data){const csrf=await p.locator(sel).getAttribute('data-csrf');const r=await p.request.post(local+path,{data:{...data,csrf_token:csrf}});return {status:r.status(),body:await r.json()}}
+          async function get(p,url){const r=await p.request.get(url);return {status:r.status(),body:await r.json()}}
+          async function account(p,session){const r=await get(p,local+'/finance/api.php?action=account&session_id='+session);ck(r.status===200,'account read');return r.body.account;}
+          async function shot(p,n){await p.screenshot({path:shots+'/'+n+'.png',animations:'disabled'})}
+          async function ready(el){await el.waitFor({state:'visible'});const end=Date.now()+24000;while(Date.now()<end){if(await el.isEnabled())return;await new Promise(r=>setTimeout(r,200));}throw Error('control not ready '+el)}
+          async function waitAccount(p,sid,fn,label){let end=Date.now()+30000;while(Date.now()<end){const r=await get(p,local+'/finance/api.php?action=account&session_id='+sid);if(r.status===200&&fn(r.body.account)){ck(true,label);return r.body.account}await p.waitForTimeout(300)}throw Error(label)}
+          async function publicProjection(p,sid,amount){let end=Date.now()+30000;while(Date.now()<end){const r=await get(p,pub+'/api/staff/read?model=operations');if(r.status===200&&r.body.payload?.settlement_accounts?.some(x=>Number(x.session_id)===sid&&x.account?.remaining_discount===amount)){ck(true,'Public projected '+amount);return;}await p.waitForTimeout(400)}throw Error('Public projection stale '+amount)}
+          const fin='[data-finance-workspace]',prep='[data-preparation-workspace]';
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});async function withPage(base,user,fn,width=1280){const ctx=await b.newContext({viewport:{width,height:900},locale:'fa-IR'});const p=await ctx.newPage();p.setDefaultTimeout(16000);try{await auth(p,base,user);await fn(p)}finally{await ctx.close()}}
+          
+          
+          
+          
+          const invoice='[data-invoice-id]',detail='[data-invoice-detail]',search='[data-global-search-input]',results='[data-global-search-results]';
+          async function invoices(p){await p.goto(local+'/finance/');await p.locator('[data-tab="documents"]').click();await p.locator(invoice).first().waitFor({state:'visible'});ck(await p.locator(invoice).count()>=2,'real invoices loaded');}
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function waitTest(fn){for(let i=0;i<100;i++){if(await fn())return;await sleep(100)}throw Error('state not reached')}
+          await group('HELP-L560 L569 real search keyboard and stale response desktop',()=>withPage(local,'qa-target',async p=>{
+           await p.goto(local+'/finance/');const s=p.locator(search),r=p.locator(results);await s.waitFor({state:'visible'});
+           await s.fill('QA150');await r.locator('[role=option]').first().waitFor({state:'visible'});
+           ck(await s.getAttribute('aria-activedescendant')===null,'no old active descendant');
+           await s.press('ArrowDown');ck(!!(await s.getAttribute('aria-activedescendant')),'keyboard selects result');
+           await s.press('End');const active=await s.getAttribute('aria-activedescendant');ck(await r.locator('[aria-selected=true]').count()===1&&await p.locator('#'+active).count()===1,'one selected valid target');
+           await shot(p,'search-results-desktop');
+           await s.press('Escape');ck(await r.isHidden()&&await s.getAttribute('aria-activedescendant')===null,'escape clears rows and aria');
+           let entered=false,finished=false;let release;const gate=new Promise(r=>release=r);
+           const match=url=>url.pathname.endsWith('/search/api.php');
+           await p.route(match,async rt=>{try{const real=await rt.fetch();entered=true;await gate;await rt.fulfill({response:real})}catch(e){}finally{finished=true}});
+           await s.fill('QA150 item');await waitTest(()=>entered);await s.press('Escape');release();await waitTest(()=>finished);
+           ck(await r.isHidden()&&await r.locator('[role=option]').count()===0,'delayed response cannot reopen after escape');
+           await p.unroute(match);
+           await s.fill('QA150');await r.locator('[role=option]').first().waitFor({state:'visible'});await s.press('ArrowDown');await s.fill('');ck(await r.isHidden()&&await s.getAttribute('aria-activedescendant')===null,'empty query clears state');
+          }));
+          await group('FIN-L198 real detail failure and stale selection desktop',()=>withPage(local,'qa-target',async p=>{
+           await invoices(p);const first=p.locator(invoice).first(),id=await first.getAttribute('data-invoice-id');const match=u=>u.pathname.endsWith('/finance/api.php')&&u.searchParams.get('action')==='settlement';
+           await p.route(match,rt=>rt.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,message:'QA detail unavailable'})}));
+           await first.click();await p.locator(detail).getByText('QA detail unavailable',{exact:false}).first().waitFor({state:'visible'});
+           ck(!(await p.locator(detail).textContent()).includes('در حال دریافت'),'failure removes loading');
+           await shot(p,'invoice-error-desktop');await p.unroute(match);
+           await p.locator(invoice+'[data-invoice-id="'+id+'"]').click();await p.locator(detail+' .sc-finance-document').waitFor({state:'visible'});
+           ck(await p.locator(detail+' h2').isVisible(),'real detail recovered');
+           let entered=false,finished=false;let release;const gate=new Promise(r=>release=r);
+           await p.route(match,async rt=>{try{const real=await rt.fetch();entered=true;await gate;await rt.fulfill({response:real})}catch(e){}finally{finished=true}});
+           await p.locator(invoice+'[data-invoice-id="'+id+'"]').click();await waitTest(()=>entered);
+           await p.locator('[data-invoice-search]').fill('QA nonmatching 918273');await waitTest(()=>p.locator(detail).isHidden());
+           release();await waitTest(()=>finished);await p.waitForTimeout(500);
+           ck(await p.locator(detail).isHidden()&&await p.locator(detail+' .sc-finance-document').count()===0,'stale detail after filter stays hidden');await p.unroute(match);
+           await p.locator('[data-invoice-reset]').click();await p.locator(invoice).first().waitFor({state:'visible'});ck(await p.locator(invoice).count()>=2,'reset returns actual invoices');
+          }));
+          await group('FIN-L197 zero line renderer and FIN-L200 real list/detail amount desktop',()=>withPage(local,'qa-target',async p=>{
+           await invoices(p);const row=p.locator(invoice).first();const listMoney=await row.locator('.sc-finance-invoice-row__value strong').textContent();await row.click();
+           await p.locator(detail+' .sc-finance-document').waitFor({state:'visible'});
+           ck(listMoney.trim()===(await p.locator(detail+' .is-total dd').textContent()).trim(),'actual invoice final amount consistent');
+           const match=u=>u.pathname.endsWith('/finance/api.php')&&u.searchParams.get('action')==='settlement';
+           await p.route(match,async rt=>{const real=await rt.fetch();const data=await real.json();if(!data.settlement?.items?.length)throw Error('no real lines');data.settlement.items[0].line_final=0;data.settlement.items[0].line_total=123456;await rt.fulfill({response:real,json:data})});
+           await p.locator(invoice).first().click();await p.locator(detail+' .sc-finance-document__line').first().waitFor({state:'visible'});
+           const val=await p.locator(detail+' .sc-finance-document__line').first().locator(':scope > strong').textContent();
+           ck(val.trim()===(await p.evaluate(()=>window.SoknaLocale.money(0))).trim(),'zero final line not fallback to nonzero original');
+           await shot(p,'invoice-zero-renderer');await p.unroute(match);
+          }));
+          await b.close();fs.writeFileSync(process.env.RUNNER_TEMP+'/exec03a3-browser-summary.json',JSON.stringify(results));process.exitCode=fail?1:0})().catch(e=>{console.error(e);process.exitCode=1});
+          JS
+          node exec03a3-browser.cjs | tee exec03a3-browser-results.txt
+      - name: Preserve synthetic QA evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-EXEC03-ACCEPT03-BROWSER-QA
+          path: |
+            ${{ runner.temp }}/cp148-qa/source-results.txt
+            ${{ runner.temp }}/cp148-qa/exec03a3-*-results.txt
+            ${{ runner.temp }}/cp148-qa/exec03a3-*-summary.json
+            ${{ runner.temp }}/cp148-qa/exec03a3-screenshots/*.png
+          retention-days: 7
+          if-no-files-found: warn
