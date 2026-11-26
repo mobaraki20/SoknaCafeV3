@@ -1,0 +1,33 @@
+{
+  "files": 883,
+  "changed": {
+    "local/public/assets/finance-workspace.js": {
+      "before": "eefac27f6076ed9d72ca11d93055627cb48f63db9edfbece94c8461f1f4ab6ce",
+      "after": "73e120798725b5067515ddaacdc4b210e657cc1cf832c71da739996077747c21"
+    },
+    "local/public/assets/staff-app/hall-workspace.js": {
+      "before": "531f24406d35bca382c772aaab539cd4f713028d633faeac311cca52d2e66fed",
+      "after": "3e5d1303d559dbded9e0a1c80782d05201b9e4c1f2fb11bc2e814454e9670e93"
+    },
+    "local/public/finance/index.php": {
+      "before": "7534a2e5b0e60b764ee58ac7c396610c4a516ea0e5b387f723051be821b1d1cc",
+      "after": "917f7c0b7215a5cccee3ca28e48c2265f402a6b9f9010dd9e39717d4cebdfb72"
+    },
+    "local/src/Domain/Finance/FinanceWorkspaceService.php": {
+      "before": "e4b7edac8ad406031fef606e835f987895e7539509248536b3421fd2d653c1c3",
+      "after": "adbc6adb64451e35c3b753602d9b328164d2f3887a142b390d2b9d77b50a8057"
+    },
+    "local/src/Domain/Tax/TaxService.php": {
+      "before": "f34a77af562e2da438d1f26ad06523a67af8ebb9a1ad041e9c7ca5a2526a8b20",
+      "after": "02fe0959371c98615e6ca745e374f31418fd7207ccd6b33c9e00bf3cb034f975"
+    },
+    "public/assets/staff-app/hall-workspace.js": {
+      "before": "a6695152e39143c4df642e8bd37274bf019a15d54e55578db4d6b8f233140387",
+      "after": "322dfef777002ac8b9b420af1968000958ad80ef1ec1afd8b3eebaebdcd8a142"
+    }
+  },
+  "canonical": {
+    "local": "67aae5779f929f71bbeeb3de6d13a299504aae9862b1919fac8ab1765911726e",
+    "public": "4d081399cf95508eaf65e45b9da715338dd1ace3b68881631492bdfdbf3d9f46"
+  }
+}
