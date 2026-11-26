@@ -1,0 +1,19 @@
+{
+  "zip_sha256": "728e609b1b0d4764338bb5cd0998ce0c070f8d2e9ab09630a01c6ecbcbe44757",
+  "changed": {
+    "local/public/finance/api.php": {
+      "before": "872befe01adc06d9eb75b274d6b1f8da22c6d796cc274add6b74ed18f8e5deb0",
+      "after": "96596499ba5e44aae345b56f023d55be9dc0e3ef72dcf8995d8926aa59f2a730"
+    },
+    "local/src/Domain/Tax/TaxService.php": {
+      "before": "cb0005f08c48192ddcd2cab6436961ea71d77d5dbd8ab5bd794a60af7ea57946",
+      "after": "f34a77af562e2da438d1f26ad06523a67af8ebb9a1ad041e9c7ca5a2526a8b20"
+    }
+  },
+  "canonical": {
+    "local": "9f3e500239a7432d43b07a4fb5cab0e011310137717dcbe1c4ac783f60bb5e25",
+    "public": "064480deb596985e34c17f06a7fd39aec3045d5325b49ad3d96eedc772d33db5"
+  },
+  "files": 883,
+  "unchanged": 881
+}
