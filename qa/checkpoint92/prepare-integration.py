@@ -10,7 +10,7 @@ with zipfile.ZipFile(io.BytesIO(raw)) as z:
  assert z.testzip() is None and set(z.namelist())=={'handoff.py','manifest_gate.py','contract.json'}
  z.extractall(code)
 sys.path.insert(0,str(code))
-from handoff import *
+from handoff import H,J,strict,R,E,inspect,prepare,inventory,DOMAIN
 assert H((code/'handoff.py').read_bytes())=='15a72bf6f95634ae3be16ee87e3799ef857078b59b1cb132e8e5a4ee547f6350'
 assert H((code/'manifest_gate.py').read_bytes())=='bdde0ff21f4e4d97be5f5c584b6450292be9e2bb4f896bf6650855ab2d072682'
 c=strict((code/'contract.json').read_bytes());assert H((code/'contract.json').read_bytes())=='42b7722b3215dd87d8765c160f4e51fd77dcbc090e8bb1253db3892aed52a09f'
