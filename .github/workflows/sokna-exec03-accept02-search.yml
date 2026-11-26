@@ -1,0 +1,171 @@
+name: SOKNA EXEC03 ACCEPT02 search and inventory
+on:
+  push:
+    branches: [qa/cp133-marketing-20261126]
+    paths: [.github/workflows/sokna-exec03-accept02-search.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout reviewable QA source data
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Verify and apply direct source delta
+        run: |
+          mkdir -p "$RUNNER_TEMP/cp148-qa"
+          python3 qa/cp148/prepare-source.py "$RUNNER_TEMP/cp148-qa" "$RUNNER_TEMP/cp148-input" | tee "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP150 candidate delta
+        run: python3 qa/cp150/apply-cp150.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP151 candidate delta
+        run: python3 qa/cp151/apply-cp151.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152 candidate delta
+        run: python3 qa/cp152/apply-cp152.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152B candidate delta
+        run: python3 qa/cp152b/apply-cp152b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152C candidate delta
+        run: python3 qa/cp152c/apply-cp152c.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP152D candidate delta
+        run: python3 qa/cp152d/apply-cp152d.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP153 candidate delta
+        run: python3 qa/cp153/apply-cp153.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP154 candidate delta
+        run: python3 qa/cp154/apply-cp154.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP155 candidate delta
+        run: python3 qa/cp155/apply-cp155.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP156 candidate delta
+        run: python3 qa/cp156/apply-cp156.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP157 candidate delta
+        run: python3 qa/cp157/apply-cp157.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP157B candidate delta
+        run: python3 qa/cp157b/apply-cp157b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP158 candidate delta
+        run: python3 qa/cp158/apply-cp158.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP159 candidate delta
+        run: python3 qa/cp159/apply-cp159.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP159B candidate delta
+        run: python3 qa/cp159b/apply-cp159b.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP160 candidate delta
+        run: python3 qa/cp160/apply-cp160.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Execute new synthetic MariaDB search groups only
+        run: |
+          set -euo pipefail
+          QA_WORK="$RUNNER_TEMP/cp148-qa"
+          export QA_DB_PASSWORD=synthetic-cp116-ci-only SOKNA_QA_DISPOSABLE=YES TMPDIR="$QA_WORK"
+          php qa/cp148/preflight.php
+          cp qa/cp160/fixture.php "$QA_WORK/"
+          cd "$QA_WORK"
+          php fixture.php "$QA_WORK/local" | tee exec03-fixture-results.txt
+          cat >exec03-search.php <<'PHP'
+          <?php
+          declare(strict_types=1);
+          $root=realpath($argv[1]);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||!$root||basename($root)!=='local')exit(2);
+          require $root.'/bootstrap.php';
+          $core=sokna_local_bootstrap(require dirname($root).'/config.php');
+          $p=$core->database();
+          if($p->query('SELECT DATABASE()')->fetchColumn()!=='sokna_cp150')throw new RuntimeException('Unexpected database');
+          echo 'MariaDB '.$p->query('SELECT VERSION()')->fetchColumn().PHP_EOL;
+          $auth=$core->auth();
+          function ck(bool $b,string $label):void{if(!$b)throw new RuntimeException($label);echo "PASS $label\n";}
+          function group(string $label,callable $fn):void{global $failed;try{$fn();echo "GROUP PASS $label\n";}catch(Throwable $e){$failed++;echo "GROUP FAIL $label: ".$e->getMessage()."\n";}}
+          function member(PDO $p,string $name,array $caps):array{$p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,password_hash('qa-synthetic-only',PASSWORD_DEFAULT),$name]);$id=(int)$p->lastInsertId();foreach($caps as $cap)$p->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$id,$cap]);return ['id'=>$id,'role'=>'operator'];}
+          function hrefs(array $r):array{return array_column($r['actions'],'href');}
+          $failed=0;
+          $admin=$p->query("SELECT id,role FROM users WHERE username='qa-target'")->fetch(PDO::FETCH_ASSOC);
+          $cashier=$p->query("SELECT id,role FROM users WHERE username='qa-cashier'")->fetch(PDO::FETCH_ASSOC);
+          $view=member($p,'qa-exec03-inventory-view',['inventory_view']);$buy=member($p,'qa-exec03-inventory-buy',['inventory_operations']);$catalog=member($p,'qa-exec03-catalog',['catalog_manage']);$order=member($p,'qa-exec03-order',['orders_floor']);
+          $nav0=new \Sokna\Local\Search\NavigationSearchProvider($auth,false);
+          $nav1=new \Sokna\Local\Search\NavigationSearchProvider($auth,true);
+          group('HELP-L570 accommodation navigation and HELP-L562 order permission',function()use($nav0,$nav1,$cashier,$order,$admin){
+           ck(!in_array('nav:accommodation',array_column($nav0->search('اقامتگاه',$admin,10),'id'),true),'disabled accommodation transfer hidden');
+           ck(!in_array('nav:accommodation-connection',array_column($nav0->search('اقامتگاه',$admin,10),'id'),true),'disabled accommodation connection hidden');
+           ck(in_array('nav:settings-modules',array_column($nav0->search('اقامتگاه',$admin,10),'id'),true),'admin activation remains');
+           ck(in_array('nav:accommodation',array_column($nav1->search('اقامتگاه',$cashier,10),'id'),true),'enabled cashier transfer');
+           ck(!in_array('nav:staff',array_column($nav1->search('سفارش سریع',$cashier,10),'id'),true),'cashier cannot order');
+           ck(in_array('nav:staff',array_column($nav1->search('سفارش سریع',$order,10),'id'),true),'order role can order');
+          });
+          $inv=new \Sokna\Local\Search\InventorySearchProvider($p,$auth);
+          group('HELP-L565 L566 L568 inventory action permission and known zero',function()use($p,$inv,$view,$buy,$cashier){
+           $p->prepare("INSERT INTO inventory_items(item_code,name,base_unit,active) VALUES('qa-exec03-unique','كيك‌ ۱۲۳ نمونه آزمون','g',1)")->execute();$id=(int)$p->lastInsertId();
+           $p->prepare('INSERT INTO inventory_balances(inventory_item_id,quantity_base) VALUES(?,0)')->execute([$id]);
+           $st=$p->prepare("INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+           foreach(['inventory_initialized'=>'0','module.inventory.enabled'=>'1','module.supply.enabled'=>'1'] as $k=>$v)$st->execute([$k,$v]);
+           $q=\Sokna\Local\Search\SearchNormalizer::normalize('کیک ١٢٣ نمونه آزمون');
+           $a=$inv->search($q,$view,8);
+           ck(count($a)===1&&$a[0]['id']==='inventory:item:'.$id,'Persian and Arabic normalized SQL matches correct item');
+           ck(str_contains($a[0]['subtitle'],'هنوز تعیین نشده'),'unknown inventory distinguished');
+           ck(count($a[0]['actions'])===1,'view only no purchase');
+           ck(count($inv->search($q,$buy,8)[0]['actions'])===2,'buy capability enables purchase');
+           ck($inv->search($q,$cashier,8)===[],'cashier no inventory provider permission');
+           $st->execute(['module.supply.enabled','0']);ck(count($inv->search($q,$buy,8)[0]['actions'])===1,'disabled supply hides purchase');
+           $st->execute(['inventory_initialized','1']);$a=$inv->search($q,$view,8);
+           ck(!str_contains($a[0]['subtitle'],'هنوز تعیین نشده')&&str_contains($a[0]['subtitle'],'گرم'),'known zero and unit');
+          });
+          group('HELP-L563 catalog capability and item availability',function()use($p,$auth,$catalog,$order,$cashier){
+           $cat=(int)$p->query("SELECT id FROM categories WHERE category_key='qa150-cat'")->fetchColumn();
+           $p->prepare("INSERT INTO menus(menu_key,name,status) VALUES('qa-exec03-search','QA Search','active')")->execute();$m=(int)$p->lastInsertId();
+           $p->prepare('INSERT INTO menu_categories(menu_id,category_id) VALUES(?,?)')->execute([$m,$cat]);
+           $p->prepare("INSERT INTO items(item_code,category_id,name,price,available) VALUES('qa-exec03-search-item',?,'qaexecunique',10000,1)")->execute([$cat]);$id=(int)$p->lastInsertId();
+           $p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$m,$id]);
+           $provider=new \Sokna\Local\Search\CatalogSearchProvider($p,$auth);
+           $q='qaexecunique';
+           $a=$provider->search($q,$catalog,8);ck(count($a)===1&&hrefs($a[0])===['/catalog/?item='.$id],'catalog-only action');
+           $a=$provider->search($q,$order,8);ck(count($a)===1&&hrefs($a[0])===['/staff/?item='.$id],'order-only action');
+           ck($provider->search($q,$cashier,8)===[],'cashier no catalog provider');
+           $p->prepare('UPDATE items SET available=0 WHERE id=?')->execute([$id]);ck($provider->search($q,$order,8)===[],'unavailable item no order');
+           ck(count($provider->search($q,$catalog,8))===1,'catalog can still manage unavailable item');
+          });
+          group('HELP-L564 active table and open order search',function()use($p,$auth,$cashier,$admin){
+           $provider=new \Sokna\Local\Search\AdminSearchProvider($p,$auth);
+           $table=$p->query('SELECT id,table_number FROM cafe_tables WHERE active=1 ORDER BY id LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+           $a=$provider->search((string)$table['table_number'],$cashier,8);
+           $a=array_values(array_filter($a,fn($x)=>$x['id']==='table:'.$table['id']));ck(count($a)===1&&hrefs($a[0])===['/operator/?table_id='.$table['id']],'cashier operational table only');
+           $a=$provider->search('15000',$cashier,8);ck(count(array_filter($a,fn($x)=>$x['type']==='order'))===1,'open order found');
+           ck(!array_filter($provider->search('qa-target',$cashier,8),fn($x)=>in_array($x['type'],['user','personnel','setting'],true)),'no admin data for cashier');
+          });
+          exit($failed?1:0);
+          PHP
+          php -l exec03-search.php
+          php exec03-search.php "$QA_WORK/local" | tee exec03-search-results.txt
+      - name: Preserve synthetic QA evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-EXEC03-ACCEPT02-SEARCH-QA
+          path: |
+            ${{ runner.temp }}/cp148-qa/source-results.txt
+            ${{ runner.temp }}/cp148-qa/exec03-*-results.txt
+          retention-days: 7
+          if-no-files-found: warn
