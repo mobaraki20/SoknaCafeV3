@@ -1,4 +1,4 @@
-name: SOKNA CP100 exact existing Emergency bridge and refusal gate
+name: SOKNA CP100 exact existing Emergency bridge and refusal diagnostic
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
