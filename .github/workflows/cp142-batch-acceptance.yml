@@ -1,0 +1,189 @@
+name: SOKNA CP142 grouped real HTTP acceptance
+permissions:
+  contents: read
+  actions: read
+'on':
+  push:
+    branches:
+    - qa/cp133-marketing-20261126
+    paths:
+    - .github/workflows/cp142-batch-acceptance.yml
+jobs:
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+        - 3306:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval=5s --health-timeout=3s --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+    steps:
+    - name: Reconstruct exact CP141 once
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        cd "$RUNNER_TEMP"
+        /usr/bin/python3 - <<'PYCODE'
+        import hashlib,os,urllib.request,subprocess,yaml
+        url='https://raw.githubusercontent.com/mobaraki20/SoknaCafeV3/8c4af0dab6beb60e9d4b196dc1bb32c850dd1f6b/.github/workflows/cp141-discount-relay.yml'
+        raw=urllib.request.urlopen(url,timeout=30).read(200000)
+        assert hashlib.sha256(raw).hexdigest()=='4f5ad8fed347995aa7722ddb8479f3079ca8f95b48b6ad98d5cc5ef8f130e5ad'
+        steps=yaml.safe_load(raw)['jobs']['database']['steps']
+        assert steps[8]['name']=='Apply exact CP141 discount relay delta'
+        for step in steps[:9]:
+         assert 'run' in step and set(step)<= {'name','run','env'},step['name']
+         print('Pinned source: '+step['name'],flush=True)
+         subprocess.run(['bash','-e','-o','pipefail','-c',step['run']],env=dict(os.environ),check=True)
+        PYCODE
+    - name: Prepare local-db.php
+      run: |
+        set -euo pipefail
+        cat > "$RUNNER_TEMP/local-db.php" <<'QAEOF'
+        <?php
+        declare(strict_types=1);
+        if(PHP_SAPI!=='cli'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+        $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);
+        require $root.'/bootstrap.php';require_once $root.'/src/Setup/BrowserSetupService.php';
+        use Sokna\Local\Setup\BrowserSetupService;
+        function check($ok,string $name):void {if(!$ok)throw new RuntimeException('FAIL '.$name);echo 'PASS '.$name."\n";}
+        $server=new PDO('mysql:host=127.0.0.1;port=3306;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$server->exec('CREATE DATABASE sokna_cp139 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+        $dir=sys_get_temp_dir().'/sokna-cp139-'.bin2hex(random_bytes(6));mkdir($dir,0700,true);$setup=new BrowserSetupService(dirname($root),$root);
+        $status=$setup->installNew(['data_dir'=>$dir.'/data','db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_cp139','user'=>'root','pass'=>getenv('QA_DB_PASSWORD')],'admin_user'=>'qa-target','admin_password'=>'synthetic-qa-admin-not-real','cafe_name'=>'QA CP139','table_count'=>5]);
+        check(($status['success']??false)&&($status['health']['migrations_applied']??0)===93,'setup');$cfg=require dirname($root).'/config.php';$core=sokna_local_bootstrap($cfg);$pdo=$core->database();$actor=$pdo->query("SELECT id,role FROM users WHERE username='qa-target'")->fetch(PDO::FETCH_ASSOC);
+        $pdo->exec("UPDATE users SET active=0 WHERE username<>'qa-target'");
+        for($i=1;$i<=8;$i++){$u='qa-member-'.$i;$pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$u,password_hash('synthetic-member-only',PASSWORD_DEFAULT),sprintf('همکار آزمون %02d',$i)]);if($i===8){$cashier=(int)$pdo->lastInsertId();foreach(['orders_floor','cashier_accounts'] as $cap)$pdo->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$cashier,$cap]);}}
+        $pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',0)")->execute(['qa-disabled',password_hash('synthetic-disabled-only',PASSWORD_DEFAULT),'غیرفعال']);
+        echo 'ACTIVE_QA_COUNT '.count($core->auth()->activeLoginUsers()).PHP_EOL;check(count($core->auth()->activeLoginUsers())===9,'nine_active_login_users');
+        $clock=$core->businessClock()->assignment();$today=$clock['business_date'];$tables=$pdo->query('SELECT id FROM cafe_tables ORDER BY id LIMIT 5')->fetchAll(PDO::FETCH_COLUMN);check(count($tables)===5,'five_tables');$settle=$core->settlements();$fixtures=[];
+        foreach(['none','percent','fixed','partial','empty'] as $i=>$kind){$table=(int)$tables[$i];$pdo->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,?,?,?)")->execute(['qa139-session-'.$i,$table,$table,$today,$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$sid=(int)$pdo->lastInsertId();$fixtures[$kind]=['table'=>$table,'session'=>$sid];if($kind==='empty')continue;
+         $pdo->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',200000,?,?,?,?,?)")->execute(['qa139-order-'.$i,'qa139-token-'.$i,$table,$sid,13900+$i,$today,$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$oid=(int)$pdo->lastInsertId();$pdo->prepare('INSERT INTO order_items(order_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,?,?,?,?)')->execute([$oid,'آیتم آزمون',100000,2,2,'hot_bar',200000]);$lid=(int)$pdo->lastInsertId();
+         if($kind==='percent')$settle->setDiscount($sid,'percent',10,$actor);if($kind==='fixed')$settle->setDiscount($sid,'fixed',20000,$actor);
+         if($kind==='partial'){$a=$settle->account($sid);$args=['session_id'=>$sid,'expected_session_id'=>$sid,'expected_remaining_total'=>$a['remaining_total'],'expected_signature'=>$a['signature'],'mode'=>'itemized','destination'=>'direct','selection'=>[['order_item_id'=>$lid,'quantity'=>1]],'request_id'=>'qa139-itemized-payment','print_receipt'=>false];$review=$settle->review($args,$actor);$args['tenders']=[['type'=>'cash','amount'=>$review['total']]];$settle->settle($args,$actor);$a=$settle->account($sid);$before=$a['paid_total'];$p=$settle->previewDiscount($sid,'percent',10,$actor);$settle->setDiscount($sid,'percent',10,$actor,$p['expected_signature']);$a=$settle->account($sid);check(!empty($a['session']['remaining_discount_grant'])&&$a['paid_total']===$before&&$a['remaining_discount']===10000,'actual_remaining_grant_preserves_paid');}
+         $a=$settle->account($sid);$expected=$kind==='none'?0:($kind==='partial'?10000:20000);check($a['remaining_discount']===$expected,'actual_discount_'.$kind);}
+        file_put_contents(dirname($root).'/cp139-fixture.json',json_encode($fixtures));echo "LOCAL FIXTURE PASS\n";
+
+        $pdo->exec("INSERT INTO categories(category_key,name) VALUES('qa142-cat','QA142 category')");$cat=(int)$pdo->lastInsertId();
+        $insert=$pdo->prepare("INSERT INTO items(item_code,category_id,name,price) VALUES(?,?,?,500)");for($i=1;$i<=330;$i++)$insert->execute(['QA142-'.sprintf('%03d',$i),$cat,'QA142 item '.sprintf('%03d',$i)]);$item=(int)$pdo->lastInsertId();
+        $ins=$pdo->prepare('INSERT INTO tax_item_policy_versions(item_id,policy,custom_rate_bps,effective_from,created_by_user_id) VALUES(?,?,?,?,?)');for($i=1;$i<=22;$i++)$ins->execute([$item,'exempt',null,'2020-01-'.sprintf('%02d',$i).' 12:00:00',$actor['id']]);$ins->execute([$item,'custom_rate',0,'2021-01-01 00:00:00',$actor['id']]);$ins->execute([$item,'custom_rate',1500,'2099-01-01 00:00:00',$actor['id']]);
+        $pdo->exec("INSERT INTO settings(setting_key,setting_value) VALUES('module.tax.enabled','1') ON DUPLICATE KEY UPDATE setting_value='1'");
+        $yesterday=(new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');$table=$fixtures['none']['table'];$session=$fixtures['none']['session'];
+        $makeUser=function($name,$area)use($pdo){$pdo->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,password_hash('qa142-prep-only',PASSWORD_DEFAULT),$name]);$id=(int)$pdo->lastInsertId();foreach(['preparation','remote_access'] as $cap)$pdo->prepare("INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)")->execute([$id,$cap]);$pdo->prepare('INSERT INTO user_preparation_areas(user_id,area_key) VALUES(?,?)')->execute([$id,$area]);return ['id'=>$id];};
+        $bar=$makeUser('qa142-bar','bar');$kitchen=$makeUser('qa142-kitchen','kitchen');
+        $makeOrder=function($num,$date,$status='accounted',$station='hot_bar',$qty=1,$ordered=1)use($pdo,$table,$session,$clock){$pdo->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff',?,?,?,?,?,?,?)")->execute(['qa142-'.$num,'qa142-token-'.$num,$table,$session,$status,500*$qty,$num,$date,$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$id=(int)$pdo->lastInsertId();$pdo->prepare('INSERT INTO order_items(order_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,?,?,?,?)')->execute([$id,'QA142 prep '.$num,500,$qty,$ordered,$station,500*$qty]);return [$id,(int)$pdo->lastInsertId()];};
+        $adj=function($order,$line,$area,$key)use($pdo,$actor){$pdo->prepare("INSERT INTO order_item_adjustments(request_id,order_id,order_item_id,area_key,from_quantity,to_quantity,delta_quantity,preparation_claimed_before,preparation_ack_status,inventory_quantity_delta,inventory_effect,actor_user_id) VALUES(?,?,?,?,1,2,1,1,'pending',0,'none',?)")->execute([$key,$order,$line,$area,$actor['id']]);return (int)$pdo->lastInsertId();};
+        [$oldLocal,$oldLocalLine]=$makeOrder(14201,$yesterday,'accounted','hot_bar',2,1);$localAck=$adj($oldLocal,$oldLocalLine,'bar','qa142-local-ack');
+        [$oldPublic,$oldPublicLine]=$makeOrder(14202,$yesterday,'accounted','hot_bar',2,1);$publicAck=$adj($oldPublic,$oldPublicLine,'bar','qa142-public-ack');
+        [$normal,$normalLine]=$makeOrder(14203,$today,'accounted','kitchen');[$before,$beforeLine]=$makeOrder(14204,$today);[$after,$afterLine]=$makeOrder(14205,$today);[$failed,$failedLine]=$makeOrder(14206,$yesterday,'cancelled','kitchen',0,1);
+        $pdo->prepare("INSERT INTO whole_order_cancellations(order_id,request_id,reason,actor_user_id,original_total,preparation_dispatched,inventory_reversal_requested,preparation_notice_status) VALUES(?,?,?,?,500,1,1,'failed')")->execute([$failed,'qa142-failed','QA only',$actor['id']]);
+        $prep=$core->preparation();$prep->claim(['order_id'=>$after,'area'=>'bar'],$bar);$cancel=$core->orderStaffActions();$cancel->cancelWholeOrder(['order_id'=>$before,'request_id'=>'qa142-cancel-before','reason'=>'QA only'],$actor);$cancel->cancelWholeOrder(['order_id'=>$after,'request_id'=>'qa142-cancel-after','reason'=>'QA only'],$actor);
+        $iid=(string)($cfg['installation']['id']??'');if($iid==='')throw new RuntimeException('fixture installation id missing');
+        $secret=bin2hex(random_bytes(32));$cfg['public']['base_url']='http://127.0.0.1:18766/public';$cfg['public']['shared_secret']=$secret;
+        file_put_contents(dirname($root).'/config.php','<?php return '.var_export($cfg,true).';');
+        $remote=$pdo->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password') ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash),source_mode='local_password'");
+        $users=[['id'=>(int)$actor['id'],'name'=>'qa-target','password'=>'synthetic-qa-admin-not-real','role'=>'admin','caps'=>['*'],'areas'=>[]],['id'=>$bar['id'],'name'=>'qa142-bar','password'=>'qa142-prep-only','role'=>'operator','caps'=>['preparation.read','preparation.mutate'],'areas'=>['bar']],['id'=>$kitchen['id'],'name'=>'qa142-kitchen','password'=>'qa142-prep-only','role'=>'operator','caps'=>['preparation.read','preparation.mutate'],'areas'=>['kitchen']]];
+        foreach($users as $u)$remote->execute([$u['id'],password_hash($u['password'],PASSWORD_DEFAULT)]);
+        $models=$core->publicProjectionBuilder()->remoteModelsFor(['operations','preparation']);check(count($models)===2,'fixture_two_models');
+        file_put_contents(dirname($root).'/cp142-models.json',json_encode($models,JSON_THROW_ON_ERROR));
+        file_put_contents(dirname($root).'/cp142-fixture.json',json_encode(['installation'=>$iid,'users'=>$users,'tax_item'=>$item,'hall'=>$fixtures,'prep'=>['old_local'=>$oldLocal,'old_public'=>$oldPublic,'local_ack'=>$localAck,'public_ack'=>$publicAck,'before'=>$before,'after'=>$after,'failed'=>$failed,'normal'=>$normal]],JSON_THROW_ON_ERROR));
+        echo 'GROUP FIXTURE LOCAL READY'.PHP_EOL;
+        QAEOF
+    - name: Prepare public-db.php
+      run: |
+        set -euo pipefail
+        cat > "$RUNNER_TEMP/public-db.php" <<'QAEOF'
+        <?php
+        if(PHP_SAPI!=='cli'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+        $root=realpath($argv[1]);if(!$root||basename($root)!=='public')exit(2);require $root.'/bootstrap.php';$base=dirname($root);$f=json_decode(file_get_contents($base.'/cp142-fixture.json'),true,64,JSON_THROW_ON_ERROR);$localCfg=require $base.'/config.php';$iid=$f['installation'];$secret=$localCfg['public']['shared_secret'];
+        $p=new PDO('mysql:host=127.0.0.1;port=3306;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$p->exec('CREATE DATABASE sokna_cp142_public CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$storage=$base.'/qa142-public-private';mkdir($storage,0700,true);
+        $cfg=['db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_cp142_public','user'=>'root','pass'=>getenv('QA_DB_PASSWORD')],'app'=>['base_path'=>'/public','base_url'=>'http://127.0.0.1:18766/public','default_installation_id'=>$iid,'cookie_secure'=>false,'storage_dir'=>$storage],'relay'=>['secret_encryption_key_base64'=>base64_encode(random_bytes(32)),'installation_secrets'=>[$iid=>$secret],'clock_skew_seconds'=>300],'auth'=>['session_ttl_seconds'=>28800]];
+        file_put_contents($root.'/config.php','<?php return '.var_export($cfg,true).';');touch($root.'/install.lock');$core=sokna_public_bootstrap($cfg);$core->migrations()->migrate();$db=$core->database();$db->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,authority_state) VALUES(?,?,1,1,'active')")->execute([$iid,'QA grouped']);
+        $q=$db->prepare('INSERT INTO auth_projections(installation_id,projection_id,username,display_name,role,password_hash,capabilities_json,preparation_areas_json,active) VALUES(?,?,?,?,?,?,?,?,1)');foreach($f['users'] as $u)$q->execute([$iid,'user:'.$u['id'],$u['name'],$u['name'],$u['role'],password_hash($u['password'],PASSWORD_DEFAULT),json_encode($u['caps']),json_encode($u['areas'])]);
+        // Initial projection will be delivered through the normal signed Local HTTP client, not direct fixture import.
+        echo 'GROUP FIXTURE PUBLIC READY'.PHP_EOL;
+        QAEOF
+    - name: Prepare worker.php
+      run: |
+        set -euo pipefail
+        cat > "$RUNNER_TEMP/worker.php" <<'QAEOF'
+        <?php
+        if(PHP_SAPI!=='cli'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+        $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$base=dirname($root);$core=sokna_local_bootstrap(require $base.'/config.php');$client=$core->publicEdgeSyncClient();$publisher=$core->publicEdgePublisher();
+        if(!$client->configured())throw new RuntimeException('fixture connection unavailable');
+        if(($argv[2]??'')==='init'){
+         $models=$core->publicProjectionBuilder()->remoteModelsFor(['operations','preparation']);$r=$client->postRaw('/api/v1/local/read-models',['models'=>$models],5);if(($r['status']??0)!==200||((int)($r['body']['synced']??0)+(int)($r['body']['unchanged']??0))!==2)throw new RuntimeException('signed sync '.json_encode(['status'=>$r['status']??0,'error'=>$r['body']['error']??'','synced'=>$r['body']['synced']??null]));echo 'PASS signed_projection_initial'.PHP_EOL;
+         $h=$publisher->syncHeartbeat(5);echo 'SIGNED HEARTBEAT '.json_encode(['success'=>$h['success']??null,'status'=>$h['status']??null]).PHP_EOL;exit;
+        }
+        $end=microtime(true)+210;$last=0;while(microtime(true)<$end){try{$r=$core->publicEdgeRelay()->syncRealtimeExchange(8,4,(int)(microtime(true)*1000)+5500);if(($r['processed']??0)>0||($r['acked']??0)>0)echo 'WORKER '.json_encode(['processed'=>$r['processed']??0,'acked'=>$r['acked']??0]).PHP_EOL;if(microtime(true)-$last>2){$publisher->syncProjectionModelsV2(250,4,4,(int)(microtime(true)*1000)+5000,['operations','preparation','guest_operational']);$last=microtime(true);}}catch(Throwable $e){echo 'WORKER ERROR '.get_class($e).' '.($e->errorCode??'').PHP_EOL;}usleep(350000);}
+        QAEOF
+    - name: Prepare browser.cjs
+      run: |
+        set -euo pipefail
+        cat > "$RUNNER_TEMP/browser.cjs" <<'QAEOF'
+        const {chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
+        const fs=require('fs'),path=require('path'),assert=require('assert/strict');
+        const f=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'cp142-fixture.json'))),local='http://127.0.0.1:18765',pub='http://127.0.0.1:18766/public';
+        const shots=path.join(process.env.RUNNER_TEMP,'cp142-screenshots');fs.mkdirSync(shots,{recursive:true});
+        function ck(v,k){assert.ok(v,k);console.log('PASS '+k)}
+        const shot=(p,n)=>p.screenshot({path:path.join(shots,n+'.png'),animations:'disabled'});
+        async function ready(l){await l.waitFor({state:'visible'});await l.page().waitForFunction(e=>!e.disabled,await l.elementHandle(),{timeout:25000});}
+        async function auth(p,url,user,pw){const r=await p.goto(url);ck(r.ok(),'login_http_'+user);const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!==user){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${user}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(pw);await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login_success_'+user)}
+        async function get(p,url){const r=await p.request.get(url);return {r,j:await r.json()}}
+        async function waitJson(p,url,fn,tag,ms=20000){const end=Date.now()+ms;while(Date.now()<end){const {r,j}=await get(p,url);if(r.ok()&&fn(j)){ck(true,tag);return j}await p.waitForTimeout(300)}throw Error(tag)}
+        async function tax(p){await auth(p,local+'/login.php','qa-target','synthetic-qa-admin-not-real');await p.goto(local+'/finance/?tab=settings');const search=p.locator('[data-tax-search]');await search.waitFor();await p.locator('[data-tax-state]').filter({hasText:'تعریف نشده'}).waitFor();ck(true,'tax_default_undefined');await search.fill('QA142');await p.locator('[data-tax-count]').filter({hasText:'۳۳۰ کالا'}).waitFor();ck(true,'tax_search_full_330');await search.fill('QA142-۳۳۰');const opt=p.locator('[data-tax-item] option').filter({hasText:'QA142 item 330'});await opt.waitFor({state:'attached'});await p.locator('[data-tax-item]').selectOption(String(f.tax_item));await p.locator('[data-tax-item-current]').filter({hasText:'نرخ اختصاصی'}).waitFor();ck((await p.locator('[data-tax-item-current]').textContent()).includes('۰'),'tax_zero_current');
+        const hist=p.locator('details').filter({has:p.locator('[data-tax-item-history]')});await hist.locator('summary').click();await p.locator('[data-tax-item-history]').filter({hasText:'آینده'}).waitFor();await shot(p,'tax-desktop-history');await p.locator('[data-tax-history-next]').click();await p.locator('[data-tax-history-count]').filter({hasText:'صفحه ۲'}).waitFor();ck(await p.locator('[data-tax-item-history] .sc-list-item').count()===4,'tax_history_second_page');await hist.locator('summary').click();
+        const save=p.locator('[data-save-tax-policy]');await ready(save);await p.locator('[data-tax-policy]').selectOption('custom_rate');await p.locator('[data-tax-policy-effective]').fill('2022-01-01T00:00');await p.locator('[data-tax-custom]').fill('');let count=0;const listener=req=>{if(req.method()==='POST'&&req.url().includes('/finance/api.php')&&req.postDataJSON()?.action==='tax_policy')count++};p.on('request',listener);await save.click();await p.waitForTimeout(350);ck(count===0,'tax_blank_not_posted');await p.locator('[data-tax-custom]').fill('۰');await ready(save);const response=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/finance/api.php')&&r.request().postDataJSON()?.action==='tax_policy');await save.click();const res=await response;ck(res.ok()&&(await res.json()).success,'tax_actual_zero_commit');p.off('request',listener);const j=await waitJson(p,local+'/finance/api.php?action=tax_item_policy&item_id='+f.tax_item,v=>v.result?.total===25&&Number(v.result.current?.custom_rate_bps)===0&&v.result.current?.effective_from.startsWith('2022-01-01'),'tax_persisted_history_and_current');ck(j.result.history[0].effective_from.startsWith('2099'),'tax_future_retained');await p.setViewportSize({width:390,height:844});await p.locator('[data-tax-item-current]').scrollIntoViewIfNeeded();await shot(p,'tax-mobile-after-save');await search.fill('no-item-cp142');await p.locator('[data-tax-count]').filter({hasText:'۰ کالا'}).waitFor();ck(await save.isDisabled(),'tax_no_selection_guard');const bad=await p.request.post(local+'/finance/api.php',{data:{action:'tax_policy',item_id:f.tax_item,policy:'exempt',effective_from:'2022-01-02'}});ck(bad.status()===419,'tax_csrf_denied');}
+        async function taxRole(p){await auth(p,local+'/login.php','qa-member-8','synthetic-member-only');const {r}=await get(p,local+'/finance/api.php?action=tax_items&q=QA142');ck(r.status()===403,'tax_nonadmin_read_denied');await p.goto(local+'/finance/?tab=settings');ck(await p.locator('[data-save-tax-policy]').count()===0,'tax_nonadmin_controls_hidden');}
+        async function prep(p,host,who,doAck,which){const base=host==='local'?local:pub,login=host==='local'?base+'/login.php':base+'/staff/login?installation='+encodeURIComponent(f.installation),url=host==='local'?base+'/waiter/':base+'/staff/preparation/',api=host==='local'?base+'/waiter/api.php':base+'/api/staff/read?model=preparation';const pw=who==='qa-target'?'synthetic-qa-admin-not-real':'qa142-prep-only';await auth(p,login,who,pw);await p.goto(url);const isKitchen=who==='qa142-kitchen',old=f.prep[which],cancel=f.prep[isKitchen?'failed':'before'];await p.locator(`[data-preparation-cancelled="${cancel}"]`).waitFor();const read=await get(p,api),d=host==='local'?read.j:read.j.payload;ck(read.r.ok()&&Array.isArray(d?.orders)&&Array.isArray(d?.cancellations),host+'_'+who+'_real_feed');ck(d.cancellations.some(x=>Number(x.id)===cancel)&&!d.orders.some(x=>Number(x.id)===cancel),host+'_'+who+'_cancel_separate');if(isKitchen){ck(!d.orders.some(x=>Number(x.id)===old)&&!d.cancellations.some(x=>Number(x.id)===f.prep.before),host+'_kitchen_area_isolation');}else{ck(d.orders.some(x=>Number(x.id)===old&&x.adjustment_only),host+'_'+who+'_historic_pending');await p.locator(`[data-preparation-order="${old}"]`).waitFor();ck(await p.locator(`[data-preparation-order="${old}"] [data-preparation-action^="claim:"]`).count()===0,host+'_'+who+'_historic_no_claim');if(who==='qa142-bar')ck(!d.cancellations.some(x=>Number(x.id)===f.prep.failed),host+'_bar_area_isolation');}
+        await shot(p,host+'-'+who+'-pending');await p.locator('[data-preparation-tab="received"]').click();ck(await p.locator(`[data-preparation-cancelled="${cancel}"]`).isVisible(),host+'_'+who+'_cancel_received_tab');await p.locator('[data-preparation-tab="pending"]').click();if(doAck){const id=f.prep[host==='local'?'local_ack':'public_ack'];const a=p.locator(`[data-preparation-action="ack:${id}"]`);await ready(a);await a.click();await p.locator(`[data-preparation-order="${old}"]`).waitFor({state:'detached',timeout:30000});await waitJson(p,api,j=>{const x=host==='local'?j:j.payload;return x?.orders&&!x.orders.some(o=>Number(o.id)===old)},host+'_actual_ack_readback',30000);ck(await p.locator(`[data-preparation-cancelled="${cancel}"]`).isVisible(),host+'_notice_after_ack');await shot(p,host+'-bar-after-ack');}else if(who==='qa-target')ck(await p.locator(`[data-preparation-order="${old}"] [data-preparation-action^="ack:"]`).count()===0,host+'_admin_monitor_only');}
+        async function remoteDiscount(p,admin){const accountUrl=local+'/finance/api.php?action=account&session_id='+f.hall.partial.session;const before=(await get(admin,accountUrl)).j.account;ck(before.remaining_discount===10000&&before.paid_total===100000,'remote_discount_initial');await auth(p,pub+'/staff/login?installation='+encodeURIComponent(f.installation),'qa-target','synthetic-qa-admin-not-real');await p.goto(pub+'/staff/operator/');const table=p.locator(`[data-table-id="${f.hall.partial.table}"]`).first();await table.waitFor();await table.click();const d=p.locator('[data-account-discount]');await ready(d);await d.click();const modal=p.locator('[data-hall-correction-dialog]');await modal.waitFor();await modal.locator('[data-correction-value]').fill('20');await modal.locator('[data-correction-reason]').fill('QA signed correction');await ready(modal.locator('[data-correction-apply]'));await shot(p,'public-discount-preview');await modal.locator('[data-correction-apply]').click();await p.locator('dialog[data-app-dialog][open] [data-dialog-role="primary"]').click();await modal.waitFor({state:'hidden',timeout:30000});const after=(await waitJson(admin,accountUrl,j=>j.account?.remaining_discount===20000,'remote_discount_commit_in_local',30000)).account;ck(after.paid_total===before.paid_total&&JSON.stringify(after.receipts)===JSON.stringify(before.receipts),'remote_paid_receipts_immutable');await waitJson(p,pub+'/api/staff/read?model=operations',j=>j.payload?.settlement_accounts?.some(x=>Number(x.session_id)===Number(f.hall.partial.session)&&x.account.remaining_discount===20000),'remote_projection_readback',30000);await shot(p,'public-discount-after');}
+        (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const failures=[],passed=[];let admin;
+        async function group(name,width,fn){const ctx=await b.newContext({viewport:{width,height:width===1440?900:844},locale:'fa-IR'});const p=await ctx.newPage();p.setDefaultTimeout(16000);try{await fn(p);passed.push(name);console.log('GROUP PASS '+name)}catch(e){failures.push(name);console.log('GROUP FAIL '+name+' '+e.stack);try{await shot(p,name+'-failure')}catch{}}finally{await ctx.close()}}
+        try{await group('tax-policy-real-http',1440,tax);await group('tax-role-guard',390,taxRole);await group('prep-local-admin',1440,p=>prep(p,'local','qa-target',false,'old_local'));await group('prep-local-bar',390,p=>prep(p,'local','qa142-bar',true,'old_local'));await group('prep-local-kitchen',390,p=>prep(p,'local','qa142-kitchen',false,'old_public'));await group('prep-public-bar-signed',390,p=>prep(p,'public','qa142-bar',true,'old_public'));await group('prep-public-kitchen',390,p=>prep(p,'public','qa142-kitchen',false,'old_public'));
+        const ac=await b.newContext({viewport:{width:1440,height:900}});admin=await ac.newPage();await group('public-discount-signed',390,async p=>{await auth(admin,local+'/login.php','qa-target','synthetic-qa-admin-not-real');await remoteDiscount(p,admin)});await ac.close();console.log('GROUP SUMMARY '+JSON.stringify({passed,failures}));fs.writeFileSync(path.join(shots,'summary.json'),JSON.stringify({passed,failures},null,2));if(failures.length)throw Error(failures.join(','));}finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+        QAEOF
+    - name: Build shared disposable MariaDB fixture
+      run: |
+        set -euo pipefail
+        cd "$RUNNER_TEMP"
+        php local-db.php "$RUNNER_TEMP/local"
+        php public-db.php "$RUNNER_TEMP/public"
+    - name: Install browser driver
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/pw"
+        npm install --prefix "$RUNNER_TEMP/pw" playwright@1.58.2 --no-audit --no-fund
+    - name: Grouped independent real HTTP acceptance
+      run: |
+        set -euo pipefail
+        cd "$RUNNER_TEMP"
+        PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > cp142-local.log 2>&1 &
+        local_pid=$!
+        PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$RUNNER_TEMP/public" "$RUNNER_TEMP/public/index.php" > cp142-public.log 2>&1 &
+        public_pid=$!
+        worker_pid=''
+        trap 'kill "$local_pid" "$public_pid" ${worker_pid:-} 2>/dev/null || true; tail -30 cp142-local.log; tail -30 cp142-public.log; tail -40 cp142-worker.log 2>/dev/null || true' EXIT
+        sleep 2
+        set +e
+        php worker.php "$RUNNER_TEMP/local" init
+        init_rc=$?
+        set -e
+        if [ "$init_rc" -eq 0 ]; then php worker.php "$RUNNER_TEMP/local" > cp142-worker.log 2>&1 & worker_pid=$!; else echo 'SIGNED INIT FAILED; independent Local tests will still run'; fi
+        sleep 2
+        node browser.cjs | tee cp142-browser-results.txt
+    - name: Capture synthetic evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: SOKNA-CP142-GROUPED-QA
+        path: |-
+          ${{ runner.temp }}/cp142-screenshots/
+          ${{ runner.temp }}/cp142-browser-results.txt
+        retention-days: 1
+        if-no-files-found: warn
