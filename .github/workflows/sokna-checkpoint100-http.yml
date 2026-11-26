@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           download() { curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$1/zip" -o "$2"; echo "$3  $2" | sha256sum -c -; }
-          download 15069153300 "$RUNNER_TEMP/base.zip" 57589151165e5d73c0b0339623e3b2db9ea7c54ffbac69246c9ff3532da2f
+          download 15069153300 "$RUNNER_TEMP/base.zip" 57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f
           download 14918257561 "$RUNNER_TEMP/origin.zip" 900d32f05c670dfd9ea7e96a786f478b2a42f3fb99f5513c5c9232cdd3745280
           download 14907451327 "$RUNNER_TEMP/stable.zip" 3536c7dcc88cfa2501aa88662214f1f1b6e8934f22e00b714756de7657bd5754
           python qa/checkpoint76/reconstruct.py "$RUNNER_TEMP/cp76" "$RUNNER_TEMP/base.zip" qa/checkpoint76/transfer.b64
