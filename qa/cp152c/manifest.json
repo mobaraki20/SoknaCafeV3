@@ -1,0 +1,17 @@
+{
+  "files": 883,
+  "changed": {
+    "public/assets/operations-workspace.js": {
+      "before": "a5a7587304c0670604010b3665a47e49de91ffa261df3cc466e969bffa2e267d",
+      "after": "5540058299dde5137c4d6f920d582799d6042c52aa4d157ea2424ffa468e66b1"
+    },
+    "public/resources/shared-staff-ui/operations-workspace.php": {
+      "before": "4294775e7dd1c7f1ef7e091be083dd9959e4dd23d0a17ba15613d523cfdffc1b",
+      "after": "f758b108a7efcb8a946fa890d647c0885048ca7a4cc3b6b4ce4c2e4ddee2fdd2"
+    }
+  },
+  "canonical": {
+    "local": "821ee9bc00798f95c30ecaaf45363e71a10596e5a9c01f16e140cb7176be74ae",
+    "public": "6e5a797ec36439cb32764a4b97b24ef4ac752fa3f586497ac575b8efec94fe11"
+  }
+}
