@@ -40,7 +40,8 @@ if($phase==='stage'){
     ck($r->currentVersion()===$want['version']&&$m->pendingVersions()===['0012_auth_snapshot_watermark'],'TARGET_PENDING_0012');
     $snap=$r->commitActivation('ci-exact',fn($v)=>$health->status()['body']);
     ck($snap['active_version']===$want['version']&&$snap['managed_tree_matches_expected']===true&&$snap['pending_verification']===null&&$snap['db_forward_fence']===null&&!is_file($r->maintenanceLockPath()),'COMMIT_STATE');
-    ck(count($m->verifiedAppliedVersions())===12&&(int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='cp76-fixture'")->fetchColumn()===1,'DB_MARKER');
+    ck(count($m->verifiedAppliedVersions())===12,'DB_LEDGER_12');
+    ck((int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='cp77-fixture'")->fetchColumn()===1,'DB_MARKER');
     foreach($want['protected_pins'] as $n=>$sha)ck(hash_file('sha256',$web.'/'.$n)===$sha,'STABLE_PIN');
     echo "PASS actual 0012 migration in fresh process, exact readback, DB marker and all stable pins preserved\n";
 }else throw new RuntimeException('PHASE');

@@ -2,7 +2,7 @@ name: SOKNA checkpoint77 Public 35iq migration 0012 QA
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
-    paths: ['.github/workflows/sokna-checkpoint77-public-35iq.yml']
+    paths: ['.github/workflows/sokna-checkpoint77-public-35iq.yml', 'qa/checkpoint77/public-35iq-upgrade.php']
 permissions:
   contents: read
   actions: read
