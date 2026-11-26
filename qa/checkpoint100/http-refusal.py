@@ -53,7 +53,12 @@ assert pinmap(contract['stable_before'])==contract['stable_before']
 print('PASS actual Apache authenticated stage and activate; protected bytes unchanged')
 before=read(root/'storage/routine-update-v2/state.json');pins=pinmap(plan['patch']);h=console()
 h=console('commit',{'csrf':token(h),'confirmation':'commit'})
-assert 'legacy_recovery_drain_unavailable' in h
-assert read(root/'storage/routine-update-v2/state.json')==before and pinmap(plan['patch'])==pins
+after=read(root/'storage/routine-update-v2/state.json')
+v=json.loads(after)
+error=re.search(r'<div class="error" role="alert">(.*?)</div>',h,re.S)
+notice=re.search(r'<div class="notice" role="status">(.*?)</div>',h,re.S)
+print('COMMIT_DIAGNOSTIC',json.dumps({'error':re.sub('<[^>]+>',' ',error[1])[:400] if error else None,'notice':re.sub('<[^>]+>',' ',notice[1])[:400] if notice else None,'login_form':'name="emergency_password"' in h,'active':v.get('active_version'),'pending':v.get('pending_verification') is not None,'journal_phase':(v.get('activation_journal') or {}).get('phase'),'state_unchanged':after==before,'protected_unchanged':pinmap(plan['patch'])==pins},ensure_ascii=False))
+assert after==before and pinmap(plan['patch'])==pins,'Unexpected mutation without drain'
+assert 'legacy_recovery_drain_unavailable' in h,'Expected explicit refusal not observed'
 print('PASS real Emergency rejects missing trusted drain with genuine pending state retained')
 (p/'http-refusal-receipt.json').write_text(json.dumps({'status':'PASS_DISPOSABLE_HTTP_REFUSAL_ONLY','bridge_sha':contract['bridge_sha'],'actual_apache':True,'actual_mariadb':True,'stage_activate':True,'missing_drain_refused':True,'field_install_authorized':False}))
