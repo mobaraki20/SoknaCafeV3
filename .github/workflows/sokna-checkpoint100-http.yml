@@ -1,0 +1,63 @@
+name: SOKNA CP100 exact existing Emergency bridge and refusal gate
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint100-http.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-cp100-disposable
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+      - name: Reconstruct exact factory and archived origins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          download() { curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$1/zip" -o "$2"; echo "$3  $2" | sha256sum -c -; }
+          download 15069153300 "$RUNNER_TEMP/base.zip" 57589151165e5d73c0b0339623e3b2db9ea7c54ffbac69246c9ff3532da2f
+          download 14918257561 "$RUNNER_TEMP/origin.zip" 900d32f05c670dfd9ea7e96a786f478b2a42f3fb99f5513c5c9232cdd3745280
+          download 14907451327 "$RUNNER_TEMP/stable.zip" 3536c7dcc88cfa2501aa88662214f1f1b6e8934f22e00b714756de7657bd5754
+          python qa/checkpoint76/reconstruct.py "$RUNNER_TEMP/cp76" "$RUNNER_TEMP/base.zip" qa/checkpoint76/transfer.b64
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-cp100
+          python qa/checkpoint100/reconstruct.py
+      - name: Configure disposable Apache and PHP
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring php8.3-curl
+          sudo a2enmod rewrite headers php8.3
+          sudo chown -R www-data:www-data /var/www/sokna-cp100
+          doc="/var/www/sokna-cp100/webroot"
+          printf 'Listen 127.0.0.1:18080\n<VirtualHost 127.0.0.1:18080>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$doc" "$doc" | sudo tee /etc/apache2/conf-enabled/sokna-cp100.conf >/dev/null
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+      - name: Actual authenticated HTTP bridge and missing-drain refusal
+        env:
+          SOKNA_CI_DB_PASS: sokna-cp100-disposable
+        run: |
+          python qa/checkpoint100/http-refusal.py
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: SOKNA-CP100-HTTP-REFUSAL-QA-NOT-INSTALL
+          path: |
+            ${{ runner.temp }}/cp100/contract.json
+            ${{ runner.temp }}/cp100/http-refusal-receipt.json
+          if-no-files-found: error
+          retention-days: 30
