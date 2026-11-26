@@ -1,0 +1,88 @@
+--- a/local/public/assets/reports-workspace.js
++++ b/local/public/assets/reports-workspace.js
+@@ -153,13 +153,24 @@
+    if([...family.options].some(o=>o.value===oldFamily))family.value=oldFamily;
+    groupRun.disabled=!selectedCategory;
+  }
+- async function loadGroups(){if(!category)return;try{
+-   const j=await request(new URLSearchParams({action:'item_groups'}),{emitMeta:false});groups=j.groups||{categories:[],families:[]};
+-   const old=category.value;category.replaceChildren(groupOption('','انتخاب دسته'));
+-   for(const c of groups.categories||[])category.append(groupOption(c.id,`${c.name} · ${L.integer(c.item_count)} کالا`));
+-   if([...category.options].some(o=>o.value===old))category.value=old;
+-   updateGroups();
+- }catch(e){statusText('فهرست دسته‌ها در دسترس نیست؛ جست‌وجوی محصول تکی همچنان فعال است.',true)}}
++ const groupStatus=$('[data-item-groups-status]'),groupRetry=$('[data-item-groups-retry]');
++ let groupsLoading=false;
++ function groupFeedback(message,retry=false){if(groupStatus){groupStatus.textContent=message;groupStatus.hidden=!message;}if(groupRetry){groupRetry.hidden=!retry;groupRetry.disabled=groupsLoading;}}
++ async function loadGroups(){if(!category||groupsLoading)return;groupsLoading=true;
++   category.disabled=true;if(family)family.disabled=true;if(groupRun)groupRun.disabled=true;
++   groupFeedback('در حال دریافت فهرست دسته‌ها…');
++   try{
++     const j=await request(new URLSearchParams({action:'item_groups'}),{emitMeta:false});
++     if(!j.groups||!Array.isArray(j.groups.categories)||!Array.isArray(j.groups.families))throw new Error('invalid groups');
++     groups=j.groups;const old=category.value;category.replaceChildren(groupOption('','انتخاب دسته'));
++     for(const c of groups.categories)category.append(groupOption(c.id,`${c.name} · ${L.integer(c.item_count)} کالا`));
++     if([...category.options].some(o=>o.value===old))category.value=old;
++     category.disabled=!groups.categories.length;if(family)family.disabled=!groups.categories.length;
++     updateGroups();groupFeedback(groups.categories.length?'':'هنوز دسته‌ای برای گزارش فروش موجود نیست.');
++   }catch(e){groups={categories:[],families:[]};category.replaceChildren(groupOption('','انتخاب دسته'));updateGroups();groupFeedback('فهرست دسته‌ها در دسترس نیست؛ جست‌وجوی محصول تکی همچنان فعال است.',true);}
++   finally{groupsLoading=false;if(groupRetry)groupRetry.disabled=false;}
++ }
++ groupRetry?.addEventListener('click',()=>void loadGroups());
+  category?.addEventListener('change',()=>{invalidateItemSalesScope();updateGroups()});
+  family?.addEventListener('change',()=>{invalidateItemSalesScope();if(groupRun)groupRun.disabled=!Number(category?.value||0)});
+  groupRun?.addEventListener('click',async()=>{const cat=Number(category?.value||0),fam=Number(family?.value||0);if(!cat)return;
+--- a/local/resources/shared-staff-ui/reports-workspace.php
++++ b/local/resources/shared-staff-ui/reports-workspace.php
+@@ -135,6 +135,7 @@
+         <label class="sc-field"><span class="sc-field__label">خانواده کالا (اختیاری)</span><select class="sc-control" data-item-sales-family><option value="">تمام کالاهای دسته</option></select></label>
+         <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-group-run disabled>نمایش فروش دسته / خانواده</button></div>
+       </div>
++      <div class="sc-actions"><small class="sc-muted" data-item-groups-status role="status" aria-live="polite" hidden></small><button type="button" class="sc-button sc-button--secondary" data-item-groups-retry hidden>تلاش دوباره برای دریافت دسته‌ها</button></div>
+       <div class="sc-entity-editor__fields sc-item-sales-keyword" aria-label="گزارش عبارت مشترک بین دسته‌ها">
+         <label class="sc-field"><span class="sc-field__label">جمع محصولات با نام مشترک (مثلاً همه چای‌ها)</span><input type="search" class="sc-control" data-item-sales-keyword placeholder="مثلاً چای" maxlength="60" autocomplete="off"></label>
+         <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-keyword-run disabled>نمایش همه نام‌های مشابه</button></div>
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -129,13 +129,24 @@
+    if([...family.options].some(o=>o.value===oldFamily))family.value=oldFamily;
+    groupRun.disabled=!selectedCategory;
+  }
+- async function loadGroups(){if(!category)return;try{
+-   const j=await request(new URLSearchParams({action:'item_groups'}),{emitMeta:false});groups=j.groups||{categories:[],families:[]};
+-   const old=category.value;category.replaceChildren(groupOption('','انتخاب دسته'));
+-   for(const c of groups.categories||[])category.append(groupOption(c.id,`${c.name} · ${L.integer(c.item_count)} کالا`));
+-   if([...category.options].some(o=>o.value===old))category.value=old;
+-   updateGroups();
+- }catch(e){statusText('فهرست دسته‌ها در دسترس نیست؛ جست‌وجوی محصول تکی همچنان فعال است.',true)}}
++ const groupStatus=$('[data-item-groups-status]'),groupRetry=$('[data-item-groups-retry]');
++ let groupsLoading=false;
++ function groupFeedback(message,retry=false){if(groupStatus){groupStatus.textContent=message;groupStatus.hidden=!message;}if(groupRetry){groupRetry.hidden=!retry;groupRetry.disabled=groupsLoading;}}
++ async function loadGroups(){if(!category||groupsLoading)return;groupsLoading=true;
++   category.disabled=true;if(family)family.disabled=true;if(groupRun)groupRun.disabled=true;
++   groupFeedback('در حال دریافت فهرست دسته‌ها…');
++   try{
++     const j=await request(new URLSearchParams({action:'item_groups'}),{emitMeta:false});
++     if(!j.groups||!Array.isArray(j.groups.categories)||!Array.isArray(j.groups.families))throw new Error('invalid groups');
++     groups=j.groups;const old=category.value;category.replaceChildren(groupOption('','انتخاب دسته'));
++     for(const c of groups.categories)category.append(groupOption(c.id,`${c.name} · ${L.integer(c.item_count)} کالا`));
++     if([...category.options].some(o=>o.value===old))category.value=old;
++     category.disabled=!groups.categories.length;if(family)family.disabled=!groups.categories.length;
++     updateGroups();groupFeedback(groups.categories.length?'':'هنوز دسته‌ای برای گزارش فروش موجود نیست.');
++   }catch(e){groups={categories:[],families:[]};category.replaceChildren(groupOption('','انتخاب دسته'));updateGroups();groupFeedback('فهرست دسته‌ها در دسترس نیست؛ جست‌وجوی محصول تکی همچنان فعال است.',true);}
++   finally{groupsLoading=false;if(groupRetry)groupRetry.disabled=false;}
++ }
++ groupRetry?.addEventListener('click',()=>void loadGroups());
+  category?.addEventListener('change',()=>{invalidateItemSalesScope();updateGroups()});
+  family?.addEventListener('change',()=>{invalidateItemSalesScope();if(groupRun)groupRun.disabled=!Number(category?.value||0)});
+  groupRun?.addEventListener('click',async()=>{const cat=Number(category?.value||0),fam=Number(family?.value||0);if(!cat)return;
+--- a/public/resources/shared-staff-ui/reports-workspace.php
++++ b/public/resources/shared-staff-ui/reports-workspace.php
+@@ -120,6 +120,7 @@
+         <label class="sc-field"><span class="sc-field__label">خانواده کالا (اختیاری)</span><select class="sc-control" data-item-sales-family><option value="">تمام کالاهای دسته</option></select></label>
+         <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-group-run disabled>نمایش فروش دسته / خانواده</button></div>
+       </div>
++      <div class="sc-actions"><small class="sc-muted" data-item-groups-status role="status" aria-live="polite" hidden></small><button type="button" class="sc-button sc-button--secondary" data-item-groups-retry hidden>تلاش دوباره برای دریافت دسته‌ها</button></div>
+       <div class="sc-entity-editor__fields sc-item-sales-keyword" aria-label="گزارش عبارت مشترک بین دسته‌ها">
+         <label class="sc-field"><span class="sc-field__label">جمع محصولات با نام مشترک (مثلاً همه چای‌ها)</span><input type="search" class="sc-control" data-item-sales-keyword placeholder="مثلاً چای" maxlength="60" autocomplete="off"></label>
+         <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-item-sales-keyword-run disabled>نمایش همه نام‌های مشابه</button></div>

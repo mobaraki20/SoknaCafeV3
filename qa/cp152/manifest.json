@@ -1,0 +1,25 @@
+{
+  "files": 883,
+  "changed": {
+    "local/public/assets/reports-workspace.js": {
+      "before": "c7891de6a67de76079ecd94123b47a1fee413689b2b3e3fcbe014692a04f58bb",
+      "after": "b43936fb773a9b8d012fad2c011672cb65e7368f262ce400d964eb80f2ee23e5"
+    },
+    "local/resources/shared-staff-ui/reports-workspace.php": {
+      "before": "a988e8efcbf22682414ec02fe1af50981581a88a368adeea4184ece946518372",
+      "after": "8886ac675cc5ec18b0057a6e0bbc90d39a583b8fc4abad87f2bc8604e0f4dbfa"
+    },
+    "public/assets/reports-workspace.js": {
+      "before": "e87f11969fabc654cd0f20ce7e378f1ca2d48bb018452109cefe66184c75417e",
+      "after": "c69eb77b2d219fd245df74f6e1d4c12f9a551d7deeb5af2aac302726b71b111d"
+    },
+    "public/resources/shared-staff-ui/reports-workspace.php": {
+      "before": "b34ab6f54af857c34ebc7ad7234b79a2c1af553cf33df7d62d4957fd95dbdcff",
+      "after": "dbf147a1be989bb3ecdc05a5ec3eec9377d4c0a3dad605cec288254f40b390db"
+    }
+  },
+  "canonical": {
+    "local": "821ee9bc00798f95c30ecaaf45363e71a10596e5a9c01f16e140cb7176be74ae",
+    "public": "f9e4dc5f59da61d104016587f8a0c3dac1ec34a686873f08d22ba73b2b819b3b"
+  }
+}
