@@ -1,0 +1,55 @@
+name: SOKNA independent DB environment health
+on:
+  push:
+    branches: [qa/cp133-marketing-20261126]
+    paths: [.github/workflows/sokna-db-environment-health.yml]
+permissions: {}
+jobs:
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-test-only
+          MARIADB_DATABASE: sokna_health
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
+    steps:
+      - name: Verify PHP PDO and real MariaDB transactions
+        run: |
+          php -v
+          php -m | grep -i pdo_mysql
+          php <<'PHP'
+          <?php
+          function check(bool $ok, string $name): void {
+              if (!$ok) throw new RuntimeException($name);
+              echo "PASS ".$name.PHP_EOL;
+          }
+          function connection(): PDO {
+              return new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_health;charset=utf8mb4','root','disposable-test-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          }
+          $a=connection(); $b=connection();
+          $version=$a->query('SELECT VERSION()')->fetchColumn();
+          echo "Database version: ".$version.PHP_EOL;
+          check(stripos($version,'MariaDB')!==false,'real MariaDB');
+          $a->exec('CREATE TABLE health_check (id INT PRIMARY KEY, value_text VARCHAR(100)) ENGINE=InnoDB');
+          $a->beginTransaction();
+          $a->prepare('INSERT INTO health_check VALUES (?,?)')->execute([1,'آزمون سکنا']);
+          check((int)$b->query('SELECT COUNT(*) FROM health_check')->fetchColumn()===0,'transaction isolation');
+          $a->commit();
+          check($b->query('SELECT value_text FROM health_check WHERE id=1')->fetchColumn()==='آزمون سکنا','commit and UTF-8');
+          $a->beginTransaction();
+          $a->exec("UPDATE health_check SET value_text='temporary' WHERE id=1");
+          $a->exec("INSERT INTO health_check VALUES (2,'temporary')");
+          $a->rollBack();
+          check((int)$b->query('SELECT COUNT(*) FROM health_check')->fetchColumn()===1,'rollback insert');
+          check($b->query('SELECT value_text FROM health_check WHERE id=1')->fetchColumn()==='آزمون سکنا','rollback update');
+          echo "SOKNA DB ENVIRONMENT PASS".PHP_EOL;
+          PHP
