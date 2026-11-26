@@ -6,8 +6,57 @@ on:
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: cp84-controlled-local-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
+  evidence:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    outputs:
+      outer_sha: ${{ steps.freeze.outputs.outer_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.5'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY
+          run-id: 45718662312
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/home
+      - name: Reconstruct exact 231gg QA bytes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Join-Path $env:RUNNER_TEMP base.zip
+          curl.exe --fail --location --silent --show-error -H "Authorization: Bearer $env:GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/15069153300/zip" -o $base
+          if($LASTEXITCODE -ne 0){throw 'BASE_DOWNLOAD_FAILED'}
+          if((Get-FileHash $base -Algorithm SHA256).Hash.ToLowerInvariant() -ne '57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f'){throw 'BASE_HASH_DRIFT'}
+          python qa/checkpoint76/reconstruct.py "$env:RUNNER_TEMP/cp76" $base qa/checkpoint76/transfer.b64
+          if($LASTEXITCODE -ne 0){throw 'EXACT_REBUILD_FAILED'}
+          python qa/checkpoint76/sequence4.py "$env:RUNNER_TEMP/cp76/out"
+          if($LASTEXITCODE -ne 0){throw 'SEQUENCE_CORRECTION_FAILED'}
+      - name: Verify all prior evidence and freeze candidate hash
+        id: freeze
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $target=Get-Item "$env:RUNNER_TEMP/cp76/out/LOCAL-231GG-UPDATE-QA-DO-NOT-INSTALL.zip"
+          $home=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'|Select-Object -First 1
+          if(!$home){throw 'PINNED_HOME_ARCHIVE_MISSING'}
+          $controlled=Join-Path $env:RUNNER_TEMP 'LOCAL-231GG-CONTROLLED-HOME-CANARY.zip'
+          python qa/factory/build_checkpoint84_controlled_local.py $target.FullName $home.FullName $controlled
+          if($LASTEXITCODE -ne 0){throw 'CONTROLLED_BUILD_FAILED'}
+          $sha=(Get-FileHash $controlled -Algorithm SHA256).Hash.ToLowerInvariant()
+          "outer_sha=$sha" >> $env:GITHUB_OUTPUT
+          Write-Host "EVIDENCE VERIFIED; EXACT OUTER SHA $sha"
   native:
+    needs: evidence
     runs-on: windows-latest
     timeout-minutes: 25
     strategy:
@@ -91,6 +140,7 @@ jobs:
           $controlled=Join-Path $env:RUNNER_TEMP 'LOCAL-231GG-CONTROLLED-HOME-CANARY.zip'
           python qa/factory/build_checkpoint84_controlled_local.py $target.FullName $homeArchive.FullName $controlled
           if($LASTEXITCODE -ne 0){throw 'CONTROLLED_BUILD_FAILED'}
+          if((Get-FileHash $controlled -Algorithm SHA256).Hash.ToLowerInvariant() -cne '${{ needs.evidence.outputs.outer_sha }}'){throw 'OUTER_DRIFT'}
           $env:SOKNA_CURRENT_QA_ZIP=$controlled
           $env:SOKNA_MATRIX_TARGET_ZIP=$controlled
           python qa/factory/prepare_checkpoint84_native.py
