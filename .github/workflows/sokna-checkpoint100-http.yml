@@ -1,4 +1,4 @@
-name: SOKNA CP100 exact existing Emergency bridge and refusal diagnostic
+name: SOKNA CP100 exact HTTP fresh-opcode comparison QA
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
@@ -45,6 +45,8 @@ jobs:
           sudo chown -R www-data:www-data /var/www/sokna-cp100
           doc="/var/www/sokna-cp100/webroot"
           printf 'Listen 127.0.0.1:18080\n<VirtualHost 127.0.0.1:18080>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$doc" "$doc" | sudo tee /etc/apache2/conf-enabled/sokna-cp100.conf >/dev/null
+          # Disposable comparison only: do not change any actual host or product bytes.
+          sudo phpdismod -v 8.3 -s apache2 opcache
           sudo apache2ctl configtest
           sudo service apache2 restart
       - name: Actual authenticated HTTP bridge and missing-drain refusal
