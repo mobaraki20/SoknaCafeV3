@@ -1,0 +1,108 @@
+--- a/local/public/assets/finance-workspace.js
++++ b/local/public/assets/finance-workspace.js
+@@ -53,7 +53,7 @@
+   ?stamp(a)-stamp(b)||amount(b)-amount(a)||Number(a.session_id)-Number(b.session_id)
+   :Number(Number(b.pending_orders)>0)-Number(Number(a.pending_orders)>0)||amount(b)-amount(a)||number(a)-number(b)||Number(a.session_id)-Number(b.session_id));
+ }
+-function renderAccounts(){const box=$('[data-account-list]'),followupBox=$('[data-followup-list]'),followupCount=$('[data-followup-count]'),error=sectionError('open_accounts');box?.replaceChildren();followupBox?.replaceChildren();if(error){box?.append(unavailable(error,'حساب‌های باز فعلاً در دسترس نیستند.'));followupBox?.append(unavailable(error,'حساب‌های نیازمند پیگیری فعلاً در دسترس نیستند.'));if(followupCount)followupCount.textContent='—';return}const all=Array.isArray(snap.open_accounts)?snap.open_accounts:[],rows=financeVisibleAccounts(all.filter(a=>!a.service_detached_at),"accounts"),followups=financeVisibleAccounts(all.filter(a=>a.service_detached_at),"followups");if(followupCount)followupCount.textContent=L.integer(followups.length);if(!rows.length)box?.append(el('div','sc-empty','حساب بازی وجود ندارد.'));else rows.forEach(a=>box?.append(financeAccountRow(a,'accounts')));if(!followups.length)followupBox?.append(el('div','sc-empty','حسابی برای پیگیری باقی نمانده است.'));else followups.forEach(a=>followupBox?.append(financeAccountRow(a,'followups')))}
++function renderAccounts(){const box=$('[data-account-list]'),followupBox=$('[data-followup-list]'),followupCount=$('[data-followup-count]'),error=sectionError('open_accounts');box?.replaceChildren();followupBox?.replaceChildren();if(error){box?.append(unavailable(error,'حساب‌های باز فعلاً در دسترس نیستند.'));followupBox?.append(unavailable(error,'حساب‌های نیازمند پیگیری فعلاً در دسترس نیستند.'));if(followupCount){followupCount.textContent='—';followupCount.classList.remove('sc-badge--warning')}return}const all=Array.isArray(snap.open_accounts)?snap.open_accounts:[],rows=financeVisibleAccounts(all.filter(a=>!a.service_detached_at),"accounts"),followups=financeVisibleAccounts(all.filter(a=>a.service_detached_at),"followups");if(followupCount){followupCount.textContent=L.integer(followups.length);followupCount.classList.toggle('sc-badge--warning',followups.length>0)}if(!rows.length)box?.append(el('div','sc-empty','حساب بازی وجود ندارد.'));else rows.forEach(a=>box?.append(financeAccountRow(a,'accounts')));if(!followups.length)followupBox?.append(el('div','sc-empty','حسابی برای پیگیری باقی نمانده است.'));else followups.forEach(a=>followupBox?.append(financeAccountRow(a,'followups')))}
+ function clearAccount(message='',target=accountTarget){accountReady=false;account=null;tenderContext=null;if(tenderDialog?.open&&!financePosting)tenderDialog.close();for(const selector of ['[data-account-detail]','[data-followup-detail]']){const node=$(selector);if(!node)continue;node.replaceChildren();node.classList.add('sc-hidden');node.removeAttribute('aria-busy');}if(message){const node=$(target==='followups'?'[data-followup-detail]':'[data-account-detail]');node?.classList.remove('sc-hidden');node?.append(el('div','sc-card__body sc-muted',message));}}
+ function accountContext(){return snapshotReady&&accountReady&&account?{id:Number(account.session.id),token:financeAccountLoadToken,target:accountTarget,signature:account.signature}:null}
+ function accountMatches(c){return !!c&&snapshotReady&&accountReady&&Number(account?.session?.id)===c.id&&financeAccountLoadToken===c.token&&accountTarget===c.target&&account.signature===c.signature}
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -6968,3 +6968,27 @@
+  body[data-page="finance"] .sc-finance-invoice-toolbar > :last-child{grid-column:1/-1;justify-self:start}
+  body[data-page="finance"] .sc-finance-invoice-toolbar .sc-field,.sc-finance-invoice-toolbar .sc-control{min-inline-size:0;max-inline-size:100%}
+ }
++
++/* CP159: compact optional saved views; native keyboard-accessible disclosure. */
++body[data-page="reports"] .sc-report-view-disclosure{min-inline-size:0;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface-subtle)}
++body[data-page="reports"] .sc-report-view-disclosure>summary{cursor:pointer;min-block-size:40px;padding:8px 12px;font-size:.78rem;font-weight:750;box-sizing:border-box;list-style:none;display:flex;align-items:center;gap:8px}
++body[data-page="reports"] .sc-report-view-disclosure>summary::after{content:'⌄';margin-inline-start:auto;color:var(--sc-muted)}
++body[data-page="reports"] .sc-report-view-disclosure[open]>summary::after{transform:rotate(180deg)}
++body[data-page="reports"] .sc-report-view-disclosure>summary:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
++body[data-page="reports"] .sc-report-view-disclosure .sc-report-saved-views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:8px;align-items:end;padding:8px 12px 12px;margin:0;min-inline-size:0}
++body[data-page="reports"] .sc-report-saved-views>.sc-muted{grid-column:1/-1}
++@media (min-width:351px) and (max-width:620px){
++ body[data-page="reports"] .sc-report-range>.sc-report-range-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:8px}
++ body[data-page="reports"] .sc-report-view-disclosure .sc-report-saved-views{grid-template-columns:repeat(2,minmax(0,1fr))}
++ body[data-page="reports"] .sc-report-saved-views>.sc-actions{grid-column:1/-1;flex-wrap:wrap}
++ body[data-page="reports"] .sc-report-saved-views .sc-field,body[data-page="reports"] .sc-report-saved-views .sc-control{min-inline-size:0;max-inline-size:100%}
++}
++@media (max-width:350px){body[data-page="reports"] .sc-report-view-disclosure .sc-report-saved-views{grid-template-columns:minmax(0,1fr)}}
++
++/* Invoice list owns the available width until an actual document is selected. */
++body[data-page="finance"] .sc-finance-invoice-layout:not(:has(.sc-finance-invoice-detail:not(.sc-hidden))){grid-template-columns:minmax(0,1fr)}
++body[data-page="finance"] .sc-finance-invoice-layout>*{min-inline-size:0}
++body[data-page="finance"] .sc-finance-account-layout:not(:has(.sc-finance-account-detail:not(.sc-hidden))){grid-template-columns:minmax(0,1fr)}
++body[data-page="finance"] [data-followup-count]{margin-inline-start:6px;vertical-align:middle}
++body[data-page="finance"] .sc-finance-invoice-toolbar>label:nth-child(4){grid-column:auto}
++@media(min-width:340px) and (max-width:600px){body[data-page="finance"] .sc-finance-invoice-toolbar>label:nth-child(4){grid-column:1/-1}body[data-page="finance"] .sc-finance-invoice-toolbar>[data-invoice-reset]{grid-column:1/-1}}
+--- a/local/public/finance/index.php
++++ b/local/public/finance/index.php
+@@ -11,7 +11,7 @@
+     <div class="sc-segmented sc-finance-domain-nav" role="tablist" aria-label="عملیات مالی"><button type="button" class="is-active" role="tab" aria-selected="true" data-tab="accounts">حساب‌های باز و تسویه</button><button type="button" role="tab" aria-selected="false" data-tab="followups">پیگیری تسویه</button><?php if($accommodationEnabled): ?><button type="button" role="tab" aria-selected="false" data-tab="accommodation">انتقال اقامتگاه</button><?php endif; ?></div>
+     <div class="sc-summary-grid sc-finance-context-summary" aria-label="خلاصه عملیات مالی"><article class="sc-card sc-metric"><span>حساب باز</span><strong data-metric="accounts">—</strong><small>قابل بررسی برای تسویه</small></article><article class="sc-card sc-metric"><span>نیازمند پیگیری</span><strong data-metric="followups">—</strong><small>میز آزاد شده، حساب باز مانده</small></article><article class="sc-card sc-metric"><span>مطالبات مشتریان</span><strong data-metric="receivables">—</strong><small>مانده حساب مشتریان</small></article></div>
+     <section class="sc-work-panel" data-panel="accounts"><div class="sc-section-head"><div><h2>حساب‌های باز</h2><p>یک حساب را انتخاب کن؛ حساب‌های دارای سفارش تأییدنشده در ابتدا و سپس بر اساس مبلغ اقلام تأییدشده نمایش داده می‌شوند. این مبلغ به معنی فروش قطعی نیست؛ جزئیات و تسویه کنار فهرست باز می‌شوند.</p></div></div><div class="sc-finance-account-layout"><div class="sc-finance-account-list" data-account-list></div><aside class="sc-card sc-finance-account-detail sc-hidden" data-account-detail aria-live="polite"></aside></div></section>
+-    <section class="sc-work-panel" data-panel="followups" hidden><div class="sc-section-head"><div><h2>حساب‌های نیازمند پیگیری</h2><p>میز این حساب‌ها آزاد شده اما حساب باز مانده است. حساب‌های قدیمی‌تر ابتدا نمایش داده می‌شوند و سوابق تا تسویه نهایی محفوظ‌اند.</p></div><span class="sc-badge sc-badge--warning" data-followup-count>—</span></div><div class="sc-finance-account-layout"><div class="sc-finance-account-list" data-followup-list></div><aside class="sc-card sc-finance-account-detail sc-hidden" data-followup-detail aria-live="polite"></aside></div></section>
++    <section class="sc-work-panel" data-panel="followups" hidden><div class="sc-section-head"><div><h2>حساب‌های نیازمند پیگیری <span class="sc-badge" data-followup-count aria-label="تعداد حساب‌های نیازمند پیگیری">—</span></h2><p>میز این حساب‌ها آزاد شده اما حساب باز مانده است. حساب‌های قدیمی‌تر ابتدا نمایش داده می‌شوند و سوابق تا تسویه نهایی محفوظ‌اند.</p></div></div><div class="sc-finance-account-layout"><div class="sc-finance-account-list" data-followup-list></div><aside class="sc-card sc-finance-account-detail sc-hidden" data-followup-detail aria-live="polite"></aside></div></section>
+     <?php if($accommodationEnabled): ?><section class="sc-work-panel" data-panel="accommodation" hidden>
+     <div class="sc-section-head"><div><h2>انتقال حساب به اقامتگاه</h2><p>تسویه حساب مهمان با رزرو اقامتگاه یک عملیات مالی است؛ تنظیم خود اتصال در مرکز «اتصال‌ها» انجام می‌شود.</p></div><div class="sc-actions"><span class="sc-badge" data-accommodation-badge>—</span><?php if($isAdmin): ?><a class="sc-button sc-button--secondary" href="<?= htmlspecialchars(\Sokna\Local\UI\LocalUrl::path('/integrations/?tab=accommodation'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>">تنظیم اتصال</a><?php endif; ?></div></div>
+     <div class="sc-event-feedback sc-alert sc-alert--danger" data-accommodation-feedback hidden></div>
+--- a/local/resources/shared-staff-ui/reports-workspace.php
++++ b/local/resources/shared-staff-ui/reports-workspace.php
+@@ -29,12 +29,14 @@
+       <div class="sc-actions sc-report-range-actions"><button class="sc-button" type="submit" <?= $reportRangeEnabled?'':'disabled' ?>>نمایش گزارش</button><details class="sc-report-export-disclosure"><summary>دریافت فایل گزارش</summary><div class="sc-report-export-actions" role="group" aria-label="خروجی گزارش"><?php if(($workspaceExportCurrent??'')!==''): ?><a class="sc-button sc-button--secondary" data-export-current href="<?=htmlspecialchars($workspaceExportCurrent,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>">خروجی اکسل گزارش بازه</a><?php endif; ?><?php if($canAudit): ?><?php if(($workspaceExportAnalytical??'')!==''): ?><a class="sc-button sc-button--secondary" data-export-analytical href="<?=htmlspecialchars($workspaceExportAnalytical,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>">خروجی کامل تحلیلی</a><?php endif; ?><?php endif; ?></div></details></div>
+     </form>
+   </section>
++  <details class="sc-report-view-disclosure"><summary>نماهای ذخیره‌شده گزارش</summary>
+   <div class="sc-toolbar sc-report-saved-views" data-report-saved-views aria-label="نماهای ذخیره‌شده گزارش">
+     <label class="sc-field"><span class="sc-field__label">نمای ذخیره‌شده</span><select class="sc-control" data-report-view-list aria-label="انتخاب نمای ذخیره‌شده"><option value="">انتخاب نما…</option></select></label>
+     <label class="sc-field"><span class="sc-field__label">نام نمای جدید</span><input class="sc-control" type="text" maxlength="48" autocomplete="off" data-report-view-name placeholder="مثلاً گزارش فروش هفته"></label>
+     <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-report-view-save>ذخیره نما</button><button type="button" class="sc-button sc-button--secondary" data-report-view-delete disabled>حذف نمای انتخابی</button></div>
+     <small class="sc-muted" data-report-view-status role="status" aria-live="polite">نماها برای حساب کاربری شما در سرور همین سامانه ذخیره می‌شوند.</small>
+   </div>
++  </details>
+   <div class="sc-alert" data-status hidden></div>
+   <p class="sc-visually-hidden" data-report-section-intro aria-live="polite"><span data-report-current-title>خلاصه عملکرد</span><span data-report-current-description>مهم‌ترین شاخص‌های فروش و تخفیف را در یک نگاه ببین.</span></p>
+   <section class="sc-report-section-anchor" id="report-overview" data-report-section="overview" role="tabpanel" aria-labelledby="report-tab-overview" aria-hidden="false">
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6527,3 +6527,19 @@
+ body[data-page="operator"] .sc-hall-account-actions.sui-account-actions>.sui-account-action{flex:1 1 0!important;min-inline-size:0!important;min-width:0!important;max-width:none!important;min-height:48px!important;height:48px!important;padding:4px 4px!important;gap:4px!important;line-height:1.3!important;font-size:11px!important;white-space:normal!important;overflow-wrap:normal!important}
+ body[data-page="operator"] .sc-hall-account-actions.sui-account-actions>.sui-account-action>span{white-space:normal!important;overflow-wrap:normal!important;text-align:center;line-height:1.3!important}
+ @container(max-width:380px){body[data-page="operator"] .sc-hall-account-actions.sui-account-actions>.sui-account-action .sc-ui-icon{display:none!important}}
++
++/* CP159: compact optional saved views; native keyboard-accessible disclosure. */
++body[data-page="reports"] .sc-report-view-disclosure{min-inline-size:0;border:1px solid var(--sc-border);border-radius:10px;background:var(--sc-surface-subtle)}
++body[data-page="reports"] .sc-report-view-disclosure>summary{cursor:pointer;min-block-size:40px;padding:8px 12px;font-size:.78rem;font-weight:750;box-sizing:border-box;list-style:none;display:flex;align-items:center;gap:8px}
++body[data-page="reports"] .sc-report-view-disclosure>summary::after{content:'⌄';margin-inline-start:auto;color:var(--sc-muted)}
++body[data-page="reports"] .sc-report-view-disclosure[open]>summary::after{transform:rotate(180deg)}
++body[data-page="reports"] .sc-report-view-disclosure>summary:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
++body[data-page="reports"] .sc-report-view-disclosure .sc-report-saved-views{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:8px;align-items:end;padding:8px 12px 12px;margin:0;min-inline-size:0}
++body[data-page="reports"] .sc-report-saved-views>.sc-muted{grid-column:1/-1}
++@media (min-width:351px) and (max-width:620px){
++ body[data-page="reports"] .sc-report-range>.sc-report-range-actions{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:8px}
++ body[data-page="reports"] .sc-report-view-disclosure .sc-report-saved-views{grid-template-columns:repeat(2,minmax(0,1fr))}
++ body[data-page="reports"] .sc-report-saved-views>.sc-actions{grid-column:1/-1;flex-wrap:wrap}
++ body[data-page="reports"] .sc-report-saved-views .sc-field,body[data-page="reports"] .sc-report-saved-views .sc-control{min-inline-size:0;max-inline-size:100%}
++}
++@media (max-width:350px){body[data-page="reports"] .sc-report-view-disclosure .sc-report-saved-views{grid-template-columns:minmax(0,1fr)}}
+--- a/public/resources/shared-staff-ui/reports-workspace.php
++++ b/public/resources/shared-staff-ui/reports-workspace.php
+@@ -29,12 +29,14 @@
+       <div class="sc-actions sc-report-range-actions"><button class="sc-button" type="submit" <?= $reportRangeEnabled?'':'disabled' ?>>نمایش گزارش</button><details class="sc-report-export-disclosure"><summary>دریافت فایل گزارش</summary><div class="sc-report-export-actions" role="group" aria-label="خروجی گزارش"><?php if(($workspaceExportCurrent??'')!==''): ?><a class="sc-button sc-button--secondary" data-export-current href="<?=htmlspecialchars($workspaceExportCurrent,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>">خروجی اکسل گزارش بازه</a><?php endif; ?><?php if($canAudit): ?><?php if(($workspaceExportAnalytical??'')!==''): ?><a class="sc-button sc-button--secondary" data-export-analytical href="<?=htmlspecialchars($workspaceExportAnalytical,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8')?>">خروجی کامل تحلیلی</a><?php endif; ?><?php endif; ?></div></details></div>
+     </form>
+   </section>
++  <details class="sc-report-view-disclosure"><summary>نماهای ذخیره‌شده گزارش</summary>
+   <div class="sc-toolbar sc-report-saved-views" data-report-saved-views aria-label="نماهای ذخیره‌شده گزارش">
+     <label class="sc-field"><span class="sc-field__label">نمای ذخیره‌شده</span><select class="sc-control" data-report-view-list aria-label="انتخاب نمای ذخیره‌شده"><option value="">انتخاب نما…</option></select></label>
+     <label class="sc-field"><span class="sc-field__label">نام نمای جدید</span><input class="sc-control" type="text" maxlength="48" autocomplete="off" data-report-view-name placeholder="مثلاً گزارش فروش هفته"></label>
+     <div class="sc-actions"><button type="button" class="sc-button sc-button--secondary" data-report-view-save>ذخیره نما</button><button type="button" class="sc-button sc-button--secondary" data-report-view-delete disabled>حذف نمای انتخابی</button></div>
+     <small class="sc-muted" data-report-view-status role="status" aria-live="polite">نماها برای حساب کاربری شما در سرور همین سامانه ذخیره می‌شوند.</small>
+   </div>
++  </details>
+   <div class="sc-alert" data-status hidden></div>
+   <p class="sc-visually-hidden" data-report-section-intro aria-live="polite"><span data-report-current-title>خلاصه عملکرد</span><span data-report-current-description>مهم‌ترین شاخص‌های فروش و تخفیف را در یک نگاه ببین.</span></p>
+   <section class="sc-report-section-anchor" id="report-overview" data-report-section="overview" role="tabpanel" aria-labelledby="report-tab-overview" aria-hidden="false">

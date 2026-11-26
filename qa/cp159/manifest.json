@@ -1,0 +1,33 @@
+{
+  "changed": {
+    "local/public/assets/finance-workspace.js": {
+      "before": "37a670bd8552521dc0ebd3491892946110fac875b58d73529e15d497bd4b0de6",
+      "after": "a83babe13680fa70f4959643c466e85bc25cbacedcda5f26b3a25d47d7d0f97d"
+    },
+    "local/public/assets/product-ui.css": {
+      "before": "3fc615e5fbccc5a0e2fab9ce219a8e66b704906396f41195a529f72b6097a421",
+      "after": "0cf1c54ad020729dc501692a4ef50b7aa6c00388591e3cbc36bc20610b64e7d3"
+    },
+    "local/public/finance/index.php": {
+      "before": "917f7c0b7215a5cccee3ca28e48c2265f402a6b9f9010dd9e39717d4cebdfb72",
+      "after": "c7b976119e9a5c4e186654a3ebe14a34c8f6a2e4023c8c490ecc6804c4807ef0"
+    },
+    "local/resources/shared-staff-ui/reports-workspace.php": {
+      "before": "8886ac675cc5ec18b0057a6e0bbc90d39a583b8fc4abad87f2bc8604e0f4dbfa",
+      "after": "ccee3d350f0a706d02f1454acd111d26a6d12847948173135d82631592f17978"
+    },
+    "public/assets/product-ui.css": {
+      "before": "9873dab1f499f23f1e969239ec51d67b7d073d548ca64574e87d1c4369541fe1",
+      "after": "81bcc972037aeb9b4bfb063381b0391e370dca1c50dc46ca5445f896e5e82728"
+    },
+    "public/resources/shared-staff-ui/reports-workspace.php": {
+      "before": "dbf147a1be989bb3ecdc05a5ec3eec9377d4c0a3dad605cec288254f40b390db",
+      "after": "f659d9d6817dce0e54dc90f38295e3d120293543619c6cf875d73deda9af2d86"
+    }
+  },
+  "canonical": {
+    "local": "0cfad017e6230ca02d6b76d92a55848bb8288dfa738e15d7cd4e07de8dc24b19",
+    "public": "e0c99f8eb6a911d0caa8bb8f57592a7ddb58090f5bd97b9a3b7bf6e6e430f083"
+  },
+  "files": 883
+}
