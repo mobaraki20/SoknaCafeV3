@@ -1,0 +1,21 @@
+{
+  "changed": {
+    "local/public/assets/staff-app/hall-workspace.js": {
+      "before": "07dc6c6c83b6fe4ab9e73cfc0d47b1ad0899e2d65c8866da659ad4d4692a9bea",
+      "after": "6cd2f3b3e6d532998d5454cc69048bd823b653e7c4eb1d5b4e9ed588aecda7cb"
+    },
+    "local/public/finance/api.php": {
+      "before": "96596499ba5e44aae345b56f023d55be9dc0e3ef72dcf8995d8926aa59f2a730",
+      "after": "370148fa2d29eb6dc16139b3733cab13f65b528e0e90d74a5ce7bbbae8c0d673"
+    },
+    "local/src/Domain/Finance/SettlementService.php": {
+      "before": "f9fdf75e7922762f6fd70521aab306df2e696a9a2ac17df1f02efb33740ac5a7",
+      "after": "9fa67664e5ae7bde2b330fbd643ad16b4e05abbf8a30bd655871d8fc27a43e9b"
+    }
+  },
+  "canonical": {
+    "local": "b7de17f8aee3fcc86337cc5ff8debfbef5e3891756f25d91ca023a947e1650cf",
+    "public": "65e470418d52ab518fbd920d1f414a962f3b909142733ca5b060ce938d1da193"
+  },
+  "files": 883
+}

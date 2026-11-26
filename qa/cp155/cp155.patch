@@ -1,0 +1,174 @@
+--- a/local/public/assets/staff-app/hall-workspace.js
++++ b/local/public/assets/staff-app/hall-workspace.js
+@@ -707,16 +707,24 @@
+  const sid=correctionSessionId(),pending=correctionPending(sid);
+  if(pending===null)throw new Error('خواندن شناسه پیگیری ممکن نیست؛ بررسی مالی لازم است.');
+  if(!pending.length)return;
+- let remaining=0;
++ let remaining=0,abandoned=0;
+  for(const entry of pending){
+-  try{const checked=await reconcileCorrectionRequest(entry.id,entry.request,entry.expected);
+-   if(checked.state==='committed')forgetCorrection(entry);else remaining++;
++  try{
++   let checked=await reconcileCorrectionRequest(entry.id,entry.request,entry.expected);
++   if(checked.state==='unconfirmed'&&correctionSessionId()===sid){
++    const confirmed=await SoknaUI.confirm('تعیین تکلیف اصلاحیه','نتیجه هنوز ثبت‌شده نیست. اگر ادامه این اصلاحیه را نمی‌خواهید، سرور درخواست قبلی را قطعی لغو می‌کند؛ اگر قبلاً ثبت شده باشد همان سند بررسی می‌شود. هیچ مبلغی با این اقدام تغییر نمی‌کند. تعیین تکلیف شود؟');
++    if(confirmed&&correctionSessionId()===sid){
++     const response=await financeMutate({action:'discount_correction_abandon',session_id:sid,request_id:entry.id});
++     checked=verifyCorrectionState(response?.result||{},entry.id,entry.request,entry.expected);
++    }
++   }
++   if(checked.state==='committed'||checked.state==='abandoned'){forgetCorrection(entry);if(checked.state==='abandoned')abandoned++;}else remaining++;
+   }catch{remaining++}
+  }
+  if(correctionSessionId()!==sid)return;
+  if(remaining){setStatus('نتیجه اصلاحیه هنوز تأیید نشده است. ثبت مجدد انجام ندهید؛ دوباره پیگیری کنید.','warning');return;}
+  correctionUnknown=false;closeCorrectionDialog();await loadAccount(selectedTableId);
+- toast('نتیجه اصلاحیه قبلی تأیید شد؛ رسیدهای قبلی بدون تغییر هستند.','success');
++ toast(abandoned?'درخواست ثبت‌نشده تعیین تکلیف شد؛ مانده و رسیدها تغییر نکردند.':'نتیجه اصلاحیه قبلی تأیید شد؛ رسیدهای قبلی بدون تغییر هستند.','success');
+ }
+ 
+ function correctionInput(){
+@@ -782,7 +790,14 @@
+ async function reconcileCorrectionRequest(requestId,request,expected){
+  const q=new URLSearchParams({action:'discount_correction_status',session_id:String(request.session_id),request_id:requestId});
+  const response=await requestJsonCorrectionStatus(q);
+- const payload=response?.result||{},saved=payload?.result||{};
++ return verifyCorrectionState(response?.result||{},requestId,request,expected);
++}
++function verifyCorrectionState(payload,requestId,request,expected){
++ const saved=payload?.result||{};
++ if(payload.state==='abandoned'){
++  if(Number(payload.session_id)!==request.session_id||String(payload.request_id)!==requestId||payload.retry_safe!==false)throw new Error('نتیجه لغو درخواست با شناسه پیگیری مطابقت ندارد.');
++  return {state:'abandoned'};
++ }
+  if(payload.state!=='committed')return {state:'unconfirmed'};
+  if(Number(payload.session_id)!==request.session_id||Number(saved.grant_id)!==request.grant_id||
+    Number(saved.revision_id)<1||!Number.isSafeInteger(Number(saved.revision_id))||
+@@ -817,7 +832,7 @@
+  }catch(e){
+   // Only an explicit application-level rejection that guarantees no commit may release the fence.
+   const rejected=e?.definitive_response===true&&[403,409,422].includes(e.http_status)&&[
+-   'discount_correction_forbidden','discount_correction_reason_required','discount_preview_required','discount_account_changed',
++   'discount_correction_abandoned','discount_correction_forbidden','discount_correction_reason_required','discount_preview_required','discount_account_changed',
+    'discount_cohort_changed','remaining_discount_missing','discount_legacy_correction_review','paid_after_discount_grant','nothing_remaining','discount_readback_mismatch'
+   ].includes(e.code);
+   if(rejected){forgetCorrection(pendingRecord);correctionUnknown=false;if(correctionSessionId()===r.session_id){closeCorrectionDialog();await loadAccount(selectedTableId);}throw e;}
+@@ -939,7 +954,7 @@
+ function renderDiscountAction(ready,lockedHint,financial){
+  const pending=correctionPending(correctionSessionId());
+  if(pending===null)return `<button class="sc-button sc-button--secondary sui-account-action" type="button" data-account-discount disabled title="خواندن شناسه پیگیری ممکن نیست؛ بررسی مالی لازم است.">${uiIcon('tag')}<span>بررسی اصلاحیه</span></button>`;
+- if(pending.length)return `<button class="sc-button sc-button--secondary sui-account-action has-discount" type="button" data-account-discount data-account-discount-followup ${ready?'':'disabled'} title="فقط استعلام نتیجه؛ بدون ارسال مجدد">${uiIcon('tag')}<span>پیگیری اصلاحیه</span></button>`;
++ if(pending.length)return `<button class="sc-button sc-button--secondary sui-account-action has-discount" type="button" data-account-discount data-account-discount-followup ${ready?'':'disabled'} title="استعلام و تعیین تکلیف درخواست قبلی؛ بدون ارسال مجدد">${uiIcon('tag')}<span>پیگیری اصلاحیه</span></button>`;
+  const grant=financeAccount?.session?.remaining_discount_grant,canCorrect=Boolean(grant&&canAdmin&&canCashier&&ready);
+  const hasGrant=Boolean(grant),disabled=!ready||(hasGrant&&!canCorrect),type=String(financeAccount?.session?.discount_type||''),value=Number(financeAccount?.session?.discount_value||0);
+  const label=hasGrant?(canCorrect?'اصلاح تخفیف':'تخفیف ثبت‌شده'):(financial.discount>0?(type==='percent'&&value>0?`تخفیف ${L.integer(value)}٪`:'تخفیف‌دار'):'تخفیف');
+--- a/local/public/finance/api.php
++++ b/local/public/finance/api.php
+@@ -51,6 +51,7 @@
+     // Administrative correction of an already recorded unpaid-only grant.
+     // Paid receipts are immutable; the service verifies the original payment watermark.
+     if($action==='discount_correction_preview')WebAction::json(['success'=>true,'result'=>$core->settlements()->previewRemainingDiscountCorrection((int)($data['session_id']??0),isset($data['discount_type'])&&$data['discount_type']!==''?(string)$data['discount_type']:null,(int)($data['discount_value']??0),$user)]);
++    if($action==='discount_correction_abandon')WebAction::json(['success'=>true,'result'=>$core->settlements()->abandonRemainingDiscountCorrection((int)($data['session_id']??0),(string)($data['request_id']??''),$user)]);
+     if($action==='discount_correction')WebAction::json(['success'=>true,'result'=>$core->settlements()->adjustRemainingDiscount((int)($data['session_id']??0),isset($data['discount_type'])&&$data['discount_type']!==''?(string)$data['discount_type']:null,(int)($data['discount_value']??0),(string)($data['expected_signature']??''),(string)($data['reason']??''),(string)($data['request_id']??''),$user)]);
+     if($action==='settle')WebAction::json(['success'=>true,'result'=>$core->settlements()->settle($data,$user)]);
+     if($action==='settlement_recovery_required')WebAction::json(['success'=>true,'result'=>$core->settlements()->markRecoveryRequired($data,$user)]);
+--- a/local/src/Domain/Finance/SettlementService.php
++++ b/local/src/Domain/Finance/SettlementService.php
+@@ -383,9 +383,18 @@
+             throw new SettlementException('discount_correction_forbidden','استعلام اصلاحیه فقط برای مدیر مجاز است.',403);
+         if($sessionId<1)throw new SettlementException('invalid_session','حساب میز معتبر نیست.',422);
+         $requestId=self::requestId($requestId);
+-        $query=$this->pdo->prepare('SELECT r.id,r.grant_id,r.revision_no,r.discount_type,r.discount_value,r.discount_amount,r.remaining_total_after,g.session_id FROM remaining_account_discount_revisions r JOIN remaining_account_discount_grants g ON g.id=r.grant_id WHERE r.request_id=? LIMIT 1');
++        return $this->remainingDiscountCorrectionState($sessionId,$requestId,false);
++    }
++
++    private function remainingDiscountCorrectionState(int $sessionId,string $requestId,bool $lock): array
++    {
++        $query=$this->pdo->prepare('SELECT r.id,r.grant_id,r.revision_no,r.discount_type,r.discount_value,r.discount_amount,r.remaining_total_after,g.session_id FROM remaining_account_discount_revisions r JOIN remaining_account_discount_grants g ON g.id=r.grant_id WHERE r.request_id=? LIMIT 1'.($lock?' FOR UPDATE':''));
+         $query->execute([$requestId]);$row=$query->fetch(PDO::FETCH_ASSOC);
+-        if(!is_array($row))return ['state'=>'unconfirmed','session_id'=>$sessionId,'retry_safe'=>false];
++        if(!is_array($row)){
++            if($this->isDiscountCorrectionAbandoned($sessionId,$requestId,$lock))
++                return ['state'=>'abandoned','session_id'=>$sessionId,'request_id'=>$requestId,'retry_safe'=>false];
++            return ['state'=>'unconfirmed','session_id'=>$sessionId,'retry_safe'=>false];
++        }
+         if((int)$row['session_id']!==$sessionId)
+             throw new SettlementStateConflict('correction_request_conflict','شناسه درخواست متعلق به این حساب نیست.',409);
+         return ['state'=>'committed','session_id'=>$sessionId,'retry_safe'=>false,'result'=>[
+@@ -393,6 +402,46 @@
+             'revision_no'=>(int)$row['revision_no'],'discount_type'=>$row['discount_type']===null?null:(string)$row['discount_type'],
+             'discount_value'=>(int)$row['discount_value'],'discount_amount'=>(int)$row['discount_amount'],
+             'remaining_total_at_correction'=>(int)$row['remaining_total_after']]];
++    }
++
++    /** Permanent, account-scoped terminal decision in the existing recovery audit ledger.
++     * No financial revision or payment is written. Never infer abandonment from elapsed time.
++     * Both the terminal decision and every correction take the same session lock first.
++     */
++    public function abandonRemainingDiscountCorrection(int $sessionId,string $requestId,array $user): array
++    {
++        if($sessionId<1||!preg_match('/^remaining-discount-correction-[a-zA-Z0-9-]{8,66}$/D',$requestId))
++            throw new SettlementException('invalid_request_id','شناسه پیگیری اصلاحیه معتبر نیست.',422);
++        if($this->pdo->inTransaction())throw new \LogicException('Abandonment requires its own transaction.');
++        $this->pdo->beginTransaction();
++        try{
++            $lock=$this->pdo->prepare('SELECT active,role FROM users WHERE id=? FOR UPDATE');
++            $lock->execute([(int)($user['id']??0)]);$locked=$lock->fetch(PDO::FETCH_ASSOC);
++            if(!is_array($locked)||!(bool)$locked['active']||(string)$locked['role']!=='admin')
++                throw new SettlementException('discount_correction_forbidden','تعیین تکلیف اصلاحیه فقط برای مدیر مجاز است.',403);
++            $actor=$this->assertCashier($user);
++            $this->sessionTx($sessionId,true);
++            $state=$this->remainingDiscountCorrectionState($sessionId,$requestId,true);
++            if($state['state']==='unconfirmed'){
++                $this->audit('settlement.remaining_discount_abandoned','discount_correction_request',$requestId,(int)$actor['id'],['session_id'=>$sessionId,'request_id'=>$requestId]);
++                if(!$this->isDiscountCorrectionAbandoned($sessionId,$requestId,true))throw new \RuntimeException('correction_abandonment_not_persisted');
++                $state=['state'=>'abandoned','session_id'=>$sessionId,'request_id'=>$requestId,'retry_safe'=>false];
++            }
++            $this->pdo->commit();return $state;
++        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
++    }
++
++    private function isDiscountCorrectionAbandoned(int $sessionId,string $requestId,bool $lock): bool
++    {
++        $q=$this->pdo->prepare("SELECT details_json FROM audit_log WHERE entity_type='discount_correction_request' AND entity_id=? AND action='settlement.remaining_discount_abandoned' ORDER BY id".($lock?' FOR UPDATE':''));
++        $q->execute([$requestId]);$found=false;
++        foreach($q->fetchAll(PDO::FETCH_COLUMN) as $json){
++            $details=json_decode((string)$json,true);
++            if(!is_array($details)||(int)($details['session_id']??0)!==$sessionId||strcasecmp((string)($details['request_id']??''),$requestId)!==0)
++                throw new SettlementStateConflict('correction_request_conflict','شناسه پیگیری متعلق به این حساب نیست یا نیاز به بررسی دارد.',409);
++            $found=true;
++        }
++        return $found;
+     }
+ 
+     public function adjustRemainingDiscount(int $sessionId,?string $type,int $value,string $expectedSignature,string $reason,string $requestId,array $user): array
+@@ -411,7 +460,9 @@
+             $actor=$this->assertCashier($user);
+             if((string)($actor['role']??'')!=='admin')
+                 throw new SettlementException('discount_correction_forbidden','اصلاح تخفیف ثبت‌شده فقط برای مدیر مجاز است.',403);
+-            $prior=$this->pdo->prepare('SELECT id,grant_id,discount_type,discount_value,discount_amount,remaining_total_after,reason FROM remaining_account_discount_revisions WHERE request_id=? LIMIT 1');
++            // Current read under the same account lock as abandonment; an old delayed request cannot cross the terminal decision.
++            $this->sessionTx($sessionId,true);
++            $prior=$this->pdo->prepare('SELECT id,grant_id,discount_type,discount_value,discount_amount,remaining_total_after,reason FROM remaining_account_discount_revisions WHERE request_id=? LIMIT 1 FOR UPDATE');
+             $prior->execute([$requestId]);$replay=$prior->fetch(PDO::FETCH_ASSOC);
+             if(is_array($replay)){
+                 $g=$this->pdo->prepare('SELECT session_id FROM remaining_account_discount_grants WHERE id=?');
+@@ -426,6 +477,8 @@
+                     'grant_id'=>(int)$replay['grant_id'],'discount_amount'=>(int)$replay['discount_amount'],
+                     'remaining_total_at_correction'=>(int)$replay['remaining_total_after']];
+             }
++            if($this->isDiscountCorrectionAbandoned($sessionId,$requestId,true))
++                throw new SettlementStateConflict('discount_correction_abandoned','این درخواست اصلاحیه تعیین تکلیف و لغو شده است؛ ثبت آن مجاز نیست.',409);
+             if(!preg_match('/^[0-9a-f]{64}$/D',$expectedSignature))
+                 throw new SettlementStateConflict('discount_preview_required','برای اصلاح تخفیف پیش‌نمایش معتبر لازم است.',409);
+             $current=$this->accountTx($sessionId);
+@@ -2206,7 +2259,7 @@
+             ->execute(['settlement.remaining_discount_changed','session',(string)$sessionId,'operations,reports']);
+     }
+ 
+-    private function audit(string $action,string $entityType,int $entityId,int $actorId,array $details): void
++    private function audit(string $action,string $entityType,int|string $entityId,int $actorId,array $details): void
+     {
+         $display=$this->pdo->prepare('SELECT display_name FROM users WHERE id=? LIMIT 1');
+         $display->execute([$actorId]);$name=$display->fetchColumn();
