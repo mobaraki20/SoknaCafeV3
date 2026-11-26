@@ -1,4 +1,4 @@
-name: CP119 fresh setup recovery and drift rejection (QA only)
+name: CP120 full schema finance HTTP and role gate (QA only)
 on:
   push:
     branches: [qa/cp118-phase01-db-20261126]
@@ -71,49 +71,33 @@ jobs:
           assert H(patch)=='13fafdf33a77cf67f393e890611337be614db0da9f385207ec4e363398cbb2ad'
           pathlib.Path('cp118.patch').write_bytes(patch)
           pathlib.Path('test-db.php').write_bytes(zlib.decompress(base64.b64decode(
-              'eNq1WPtz2sYW/j1/xcbDeKVege2kTRtTOYOx0tCxjQs4vR3MbBdpAdVCUrTCCTfJ/36/s3oAjuO29zGZcdA+z+M73zlnf3yVLtIn'
-              'gfIjmSlL51no5yJfp0q7R3b7STizrt5ciWHnqvfUdbkfhfzTp7nKVXxn8V864uxUXHWGw1/7gzNu0wq9jvOFykO/6adHRy+afthM'
-              '4mjNbfUhzK1nOLKRJUnuZkpGqcwXVkNm87vx0cRu465iznVnMtLq06ep1CqWS1WMm/OjxJfR1mmZercKM8XMihY/mOI/aCHTFvTi'
-              '9bxIYn+zSGf+wVDlq/TgNEvea5WZj6HK7kJflRtXWrFhchvLm3O68qabZOrm40U4z2QeJrF2+lNsvJPTMArz9ecvN5wlSxnGNwPl'
-              'J3cqW998PF3pMFZan0r/tr7Nqea9D75K6WTnQgWhHMYy1Ysk7ybwzQOnG4lvHhC//WS2in06iPlJHCs//0Uav8Zz1gimLuf28dVZ'
-              'n30kcwdTsinf338axkJmmVzTmDPmmq4S5MKXQnJn53vKJ06erZRt5wvcz2L1ng1WcR4uVa2ExeMkZ790mPYXaim53W6kLi3E1RZf'
-              'rvW76HiR6Nw9evZ96xD/jtppkuXu8+eHL9rBlJzu8hZkafG2v5CZVrm7ymc/LKffQhpyI3e+BkNnjEuOjzuj0UB4g8FF/8xzT8xQ'
-              '+SW8f3a9q1Gvf+lsrby4Pu+MPHE18K46A2/onhgQTkjy5on6oHxrb+iNGKkp/pXEirmM/+Pw+fHzQ75ntzO4IItZI21/3jhAl06E'
-              'B8jkjdQ+Nkb+2AjCudK5dseT9gzAkj4CAde8WwEJdM+51x2xUef03BOXnQuPvR70L1gYY+3SwE8Udm2ZJUP26xtv4JXrh9033kXH'
-              'PevgszP0LJt1Ls/KudFvV57LabgY4AwW8wbs9Lety/bs5slM5f6iE0WWMdBrb9R9I7r98+uLS5tJzRq5/bFB2HM3UvNS6m8KYX/n'
-              'LaBOZCqNpK8s/jv89jv+YGsLH1+5A07sd2FyFfsAfuAac4mlTK1ZDBaw3ZM/NLQvpjHg/DzsX4rRm0H/V4EfcHB/8MmM9S7fds57'
-              'Z+J69PoHMbw+HY56o+uRZztGbrutATeruscZ9gcjMRwNepc/4fbSO+NGPnEXUi8srhfy2XcvuBMu04hu3ruJ95xqt223P1f+L7du'
-              'owCe8m+tRnLrVGFI8LaP75IwMGH4FHOPxtLrTu+cIRzMvrbyFwnjhPdqrEXibF+ZqT8Q+NaDjMMa01qQWf0rlVrXH6RVJV+eAa7T'
-              '5kkGtYBUL/azdZqrYJR4yzRfj0DfCoacOeYIu/2YHqtYfUghmApYeRyI4bMvgQPrCx5kDWUbklIIvyxLMqJC0FUh3WPX1JfAPLS4'
-              'xdkcbISv7aNw8+cnDeJwlbkbqjTuz1y91gKKiVwtU4EBy6a8QSxoEtvLJm9Nw/jZQn2wMhkHyVJM17nS1guAYXlLG+gY5/D7w8OC'
-              'LNvVXSWZ8O7AA9+wKk7ZDsWy7pvOoNMdITaJdErqYwhBIqnqW6zikBQUfsiLC5AHDM0+kBgsyLOVTJ3iP2grc3nqkrSUPpH5jMd1'
-              'LvMVwtsc2TwJYwxE0aV6b4057SCbcPek2O3wYIqPMSdKxw9eszqCnnidxoja8Uki0OduRnE4EhwdWHI7JzDh82scP3G4DJZIWtW2'
-              'd7KZGyjyaoZOeJ9kgbmsrkqwzkw3kZ+aVIRgvS9nSlRyIWeNOoOfvBEmcjmNYNwECMPUs0kN1hGhjyYNSIuANJZiMxlGK9QjvEXo'
-              'QVWlNRAM8JTww+gFIlLOlVUM7vAZFgQqxxH61avxxC7iuoB6QyHACyqxSu8gTa98H6fxyatXJlvZ+/ubyQW0yxd8MubLumoRMk2j'
-              'UAW049BGpfXyOezl5ysZiWmBGWEUEbpAjXj5XGy2G5RlyldhmruF7wGarAzd5gxRvWhqpYLm3ZHRjLI3iRxqMQsjwl6x2XYKewkf'
-              'PkCoijQL7/BD0GZRLjK3+bO5WxV5uwjGzQjbWTgvKjaEeqbcAlamShR1LWjRKYD61DWLmifTHWKkmE/rOdKKCk8anaqZOXSTx7EQ'
-              '4ySlKdPcL4u142PtSyQrYx271N9gyNrss08OyQLQdUmfUF+h1DUaHxyg0FtlIOpZ+AFJRR0zDaWZ+gA/sdoXB7SbaVgG4FFttoE4'
-              '1dtgE3MEubT1d5hH/ifMA+rfYtB7xWNJMZ2KYiSvCZKGMTJfIRk0jSH4NmM2CiW6QAA5cOt7zIFjQnZNRZMCjp2dRWAlrDGRPXHv'
-              'ibWzsKQ3Y1jaEga0AVxRrOFtAq9IV4joJAYj5dp6DIsO/5HaKlYWBbx1JzOBrGRKjvraQksUuGSipaHtTXsBoEmn6lcqSB7sRGJj'
-              '2TwpBlBeHR5+9xJYileiwjZFEboetCdFxXj3beGp5gnAllK3t9e7HHqDEetdjvqMiFRb9JfUcir2FFT/OEGoUcatDUk6WRIpB1gM'
-              '75TNUGRde0PrlUP/CublzpFNNSSBbQXZxluG3D3XepyYK7oXZ97rzvX5CKRBHUVxEhXmYeBaYZzbRitQbd6LIX/eC6zHNM3UMgHT'
-              'kKpEPwHcGYI8je4iDO6pvlkhEEKaGrRCArGkImLbAEdO0Z5uUs+uHRr3D/+7+k9K6jFYuXmg2RwqgBhpSd+cqZlcRWAkA9chNqnM'
-              'YOrPt3YBqHmSrXuAz3k4zSSK+wqJoCmjvD4IiguaZUAc3B0d+OXGJqgh1gX/285f2Yq24CEyKNVtntBfC+bbBf09csVMmd3eFo7S'
-              'll2luNJls1UUia2WVFad3TY+kJhylMHaKn+IW7V2qt93MlptvA5kt8pKtrWU2S1qEXSnxUBQYR4gaDdkUZY9VJDXbtl5USjpEZjf'
-              'RA/OISKqizVzSkvfTme8bcrv7fcXSgNNGkwXGbgDK6BtkW7rIt4y51Wl+/+Q5PxdenvSAMNSUQ6vuNRNlJ9fEaQqczabxryo7kBq'
-              'Mljv1jsPrLoNY1PicE4A4AjccAZcCFOgmBoD4hdgoBy8c3aRgi8TtlyZ+g9NxlwS2VX5mIUaSoMtAobqgMHcLE10aJbQk1aboZjB'
-              'RLaK8QuVUcAC3J+XXRnkREb+SmWRVe9dRQXkVD9avJVTXCxUBFZpl/0dOrktuzmV9mAQoag545Up710Dm5QCoB5PqnJLFKdqY5Pa'
-              'KvwLoXZkqSX8PzqZQgoDQs5yMHTtTOM6dLwLGc9VUPoNnHZLPSwMn8zgQp3TzxwXsGmSL1BFhZoC2VRGDJ0bC03OoIZzDiPhk8VJ'
-              '3CyimRkEUAWVTqvqiaqi0aBzOUSR1Otfst6wj8qIfp17b71zNvCuvI55TcHPzpnhGWyeqnkYj9ArammUBXsVndZS5YukoPSBmkWF'
-              'KS7MIDm4tMkV6WOSvpkh494lt8pAYNeCJDCfOM92xwvSq1KYrp7w2g0YZaf/vdeYVSu2tR96wyHpG8ZxEkyp2L4V72WIZhl9eLLK'
-              '3SNsq561xnvXV2dUOVa0asrKHTp1eSZ9fPHyHWuLd13TnLVMCbfn/Fc0Lan8qG6y9ybmHStEC6vfRXbxzLGtqRl+9DWDTmTvszBX'
-              'jDJ3nhsQlh3i1Vl/9yWjhDuVK5snjV48S8ZHVS929Ozwu7IrMDad0l8teAtB8ooXOOXHfJUiMyAZ0APG51kYo3CF7IQxVGYRpRZg'
-              '6zP6NPevvNs8EJHZuM5hu0yLiQ2Dbncu6C6C7XjdUGt5kKg61eoWI+/uc+eO74pHxBozDwDjy9RbP1x2k2i1RIQR99/PxnUtUGwS'
-              'taZEYIskCtx5lEytL5tbU4nQguY3/F7lQaPGgfv7X+8HadH4cGLIt+4DHZ5k4Zx8uG3TjN4AYiNTcc+fdZk48/ElHXtTl5SXmH7S'
-              'aG149YEm19hpQK+8O3NyE9wPUk/xQEwfdv1eUR81LmaAlRgYIcGt4v57E1viFq8wvFWe+beT39MvHh/29x9IiEYK+CMGWDFTZ0Xk'
-              'CHrFRt0k6gROZjOvPnvdK/Ake319TsTf7b/1Br8xqtvp4ebJvwHsVGY6'
+              'eNq1V21z2zYS/p5fwWQ4A3JKOZTs2rVV2sPY6sQdn+VI6vVmZA0GIiELNQnSBKhIV/e/dxd8keTEvrsPN04oYgEsFvs8zwL8+SJf'
+              '5u9iHiWs4I7ShYg01Zucq6Dr9t+JhXP3+Y6Ow7vr90FAokSQ5+cHrrlcOeRLSK8+0btwPP59OLoiLo5QG6mXXIuoE+Xd7nEnEp1M'
+              'Jhvi8rXQTg9c2kWW6aDgLMmZXjo2Kx5W0+7M7cNa703n8/OcKS5Zyh3TNo6TLGLJjpuCP5Wi4JYZcUA+zuEHwmf5AWyI9Otumslo'
+              'O0YV0ccx12X+8VORfVW8MI0xL1Yi4tW8d3YeSP7VursaOiTdqKfkbJkpHXR7Jwc+/HX7eVbo4PDQP+5HS1YoroNSL35K50fEI7gO'
+              '8V7LjzcFr2dn4WQyooPR6B/Dq0Fwbkx1iw7+dTm4m1wPb2eYqLxzztc8csjlaBBOBtZVOAk/heOBpbJHySgkuOfTJ2Zdfg5H4eVk'
+              'MLLGg4lVR2NdDm9ucFbdpqUUURZzGgmCzmNRBGqjKARLNU9zCgbHxSSh845x3iEHcyF7S752CibjLKXzjebKOXbdfvqIE9CN55/4'
+              'vqeLkqNfhSk1Kbwfo6f7GwTu3mT6/jtpd8DDDtRe9dO3VVC56pwLqTRLklv+1ZmSmGmGoZLgHNeGeNECqY/nYJoSBAteSIsXdCFi'
+              'aEPQoImrYXM/i9BRQmjYUaFIcqYUNF9Dc+YRFqdC0mbaE+sYA2k60MHXrIjNYq0ummEdmekOygDGR2zBaRPXl9D65fo2vL0cQI9m'
+              '8wQwy0qJW+jNKk2+d2w1JaqMIg4xzi4uFixR3H1+NvYlONVLMpuSVDwUTItMKsryPBE8xsE+Cur00NVLgMNCqEbgXqR8sI54jsMd'
+              'YnJvLZhIYA7iGi0egkZz+5ABBlEmF+KhUpAdZQUPquQa0dJWmg56AWzzwAzqnCN2qHUHVliAhUVLwBgyFDG1FJBWDxsxlyZyiynL'
+              'Lt0/URh5wXOsWB+ub8eD0cS6vp0MLURCOfjE8Lwm/3QJ3rxYqDxhG5Nmr8gS7rFIixV3rX+GN78Nxs6Fh38kyznkLIO1u+4Ht5Jg'
+              'qbkztct9j84+qLjsDqYNUejV4Jfwt5sJMLusipxdBlDPdjbpvrkhGrGczUUitODV5qiIvda48aBSAkfinX2Q2jNlkWGO+mYvjpDa'
+              'LJswpa8lONXXseNCgH9t685eKIaiho3KMSmsmCnLdM4LDysL5BPpSHX2yGUbDdLZDCXe6empwbNutq8dM4NAhH1bB6+E1n8lroWQ'
+              'TEYCaAa4iSxWjhYawIWaUWgKBOOQoNi87MVUjYYoev6R3/G78G+ncditwqlGvRGTgh2jvoLprA8MdmwR+H1b/HwKjx9+eIOrVfqa'
+              '6U5ezhMRVbmrUwsowyZ0qbx5qYTE1JrttC3AeKHpI9+8NCVszpOtESDPFguqJMvVEgS7S3hSiWA3Dz0DDTy+hPDwj858n+yzB5Gr'
+              'I4cjwhaerWdYsuvNTGevJgzYlbJHHixKGZlCA+MsW5mtFkI+wFHNn9p3IVcZHBFtO+ZwEhOoPjyCAn1h5kJdkWrBi0CWSdKOrBIH'
+              'F5YszRMo4HEzvOArM9IFITl27tUIvwEUVELgU8qlprAuiF859UYRoZf0Q1sddqONptnkn/6hMunhXmAuJqGREqiqHeSpcq4zOPe8'
+              '6lkzAcKHEscB6G1UsCIWZvBnKLPteBQyRlFmaZrFZiXaZAtH/h9ZBbz68y+CP1v1d+GSgP+rfssM+h84Z0hSo+W1zDCU8Gq4PUTX'
+              'MwxqCACFtkoZlOSL7esZWQAHiNeyB+hbwIlXSOtV5mIBYiIODIGdLdn9malk2NfxfVNFvoQduFTAK4gCCfdySnd/Sm87pYdTvj+6'
+              'Cf7FjEO8+9SKMBLY7tLkA4tUq5GqSFXHbA+vSznURhAM8Xz8m3mHe8ZuZTwyRrhYoYzQBhH9iLb6etCMO0Yb4BLv2E5ezvVn1Tku'
+              '4jVc4VZvCO/7zP2P6uNrjed/QkGqFdELDiiuKjfmoHowYtnXG1xl0hcmluLh+d/JuT5pqRIPIOqywNvHJslYffmoCco0XrV1dZ8D'
+              'iatcRCIrFVQWlQPW3KtuTLivRPyb0xqKF+IC+aCwzDYMEyyMntTyqqXXquzipZAaYiEGs1ZTyDHInSno8bqmnGqbQLfw8rJpQp2F'
+              'mHPOtENAtsdH7p5pXpkODg7sFZ4MDXjVkm+dDpDHb+RyUglgjw+ogpOtCvB1r39H2zAfr5dAVZqXmHsJF3qtnG9vseabZyHWiN8B'
+              'wko8fFIukTZw7jUh4ddH844fCgLv+KY8mDCwAT8z79fx8JZOPo+Gv1N4ga+84Qg+nXi0zKwPeEG0+BrOXwuLkVXduOEzy2qvlfXl'
+              'hlt1TOpefui/+xvIV0NT'
           )))
-          assert H(pathlib.Path('test-db.php').read_bytes())=='a301a39d3580ae76dad36675efa6e3237d4d27d1d94e87cd3436665ea0622cdb'
+          assert H(pathlib.Path('test-db.php').read_bytes())=='cd74580a2a5028c5bcef2ae2c0acfc0f8c53192f6494eaf65db24f8df9d774d3'
           PY
           patch --batch --forward -p1 < cp118.patch
           python3 - <<'PY'
@@ -122,10 +106,49 @@ jobs:
           r=pathlib.Path('local');files=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());assert len(files)==624
           actual=H(''.join(n+'\0'+H((r/n).read_bytes())+'\n' for n in files).encode());print('exact CP119 Local canonical SHA256',actual);assert actual=='2941dc21f50a1f5d4b34938a3f65bdafdac2b6d98d04653722dbeb990e5dc605'
           PY
-      - name: Run full seeded recovery and negative tests (disposable only)
+      - name: Exercise actual finance endpoints with PHP HTTP and real MariaDB
         run: |
           set -euo pipefail
-          php -v
-          php -r 'if(!in_array("mysql",PDO::getAvailableDrivers(),true)||!extension_loaded("sodium"))exit(1);'
           cd "$RUNNER_TEMP"
           php test-db.php "$RUNNER_TEMP/local"
+          php -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > "$RUNNER_TEMP/cp120-http.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true; tail -80 "$RUNNER_TEMP/cp120-http.log"' EXIT
+          for i in $(seq 1 20); do if curl --silent --output /dev/null http://127.0.0.1:18765/login.php; then break; fi; sleep 1; done
+          python - "$RUNNER_TEMP/local" <<'PYTEST'
+          import json,sys,urllib.request,urllib.parse,urllib.error,http.cookiejar,pathlib
+          root=pathlib.Path(sys.argv[1]); fx=json.loads((root.parent/'cp120-fixture.json').read_text()); s=fx['sessions']; base='http://127.0.0.1:18765';api='/finance/api.php'
+          def client():return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+          def req(c,path,data=None):
+           try:
+            with c.open(base+path,data=data,timeout=30) as r:return r.status,r.read()
+           except urllib.error.HTTPError as e:return e.code,e.read()
+          def query(c,action,**kw):
+           status,raw=req(c,api+'?'+urllib.parse.urlencode({'action':action,**kw}));
+           try:return status,json.loads(raw)
+           except Exception:raise RuntimeError(f'non-JSON {status}: {raw[:500]!r}')
+          def ck(v,name):
+           if not v:raise AssertionError(name)
+           print('PASS',name,flush=True)
+          def login(name,passw):
+           c=client();status,raw=req(c,'/login.php',urllib.parse.urlencode({'username':name,'password':passw}).encode());return c
+          anon=client();ck(query(anon,'settlement_request_status',session_id=s[0],request_id='qa-paid-0001')[0]==401,'real_http_unauthenticated')
+          a=login('qa-admin','synthetic-qa-admin-not-real');c=login('qa-cashier','synthetic-qa-user-not-real');d=login('qa-denied','synthetic-qa-user-not-real')
+          for who in [a,c]:
+           for action in ['settlement_request_status','accommodation_transfer_status']:
+            args={'session_id':s[8]};
+            if action.startswith('settlement'):args['request_id']='qa-unknown-0008'
+            st,body=query(who,action,**args);ck(st==200 and body['result']['state']=='unconfirmed',action+'_unconfirmed_'+('admin' if who is a else 'cashier'))
+          for action in ['invoices','invoice_lookup','settlement_request_status','accommodation_transfer_status']:
+           ck(query(d,action,session_id=s[0],request_id='qa-paid-0001')[0]==403,'denied_'+action)
+          st,b=query(c,'settlement_request_status',session_id=s[0],request_id='qa-paid-0001');ck(st==200 and b['result']['state']=='committed' and b['result']['result']['settlement_id']==fx['paid'],'committed_exact_id')
+          ck(query(c,'settlement_request_status',session_id=s[1],request_id='qa-paid-0001')[0]==409,'cross_session_conflict')
+          st,b=query(c,'settlement_request_status',session_id=s[1],request_id='qa-paid-0002');ck(st==200 and b['result']['state']=='requires_review','reversal_not_committed')
+          for i,state in [(2,'prepared'),(3,'remote_result_unknown'),(4,'posted_local_pending'),(5,'failed'),(6,'requires_review'),(7,'committed')]:
+           st,b=query(c,'accommodation_transfer_status',session_id=s[i]);ck(st==200 and b['result']['state']==state,'accommodation_'+state)
+          ck(query(c,'settlement_request_status',session_id=0,request_id='qa-paid-0001')[0]==422,'invalid_session')
+          ck(query(c,'settlement_request_status',session_id=s[0],request_id='bad')[0]==422,'invalid_request_id')
+          st,b=query(c,'invoice_lookup',invoice='QA-12001');ck(st==200 and b['id']==fx['paid'],'invoice_lookup_real_http')
+          st,b=query(c,'invoices',q='QA-12001');ck(st==200 and b.get('success') is True,'invoices_real_http')
+          print('CP120 FINANCE HTTP PASS',flush=True)
+          PYTEST
