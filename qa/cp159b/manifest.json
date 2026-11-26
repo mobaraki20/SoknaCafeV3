@@ -1,0 +1,21 @@
+{
+  "changed": {
+    "local/public/assets/product-ui.css": {
+      "before": "0cf1c54ad020729dc501692a4ef50b7aa6c00388591e3cbc36bc20610b64e7d3",
+      "after": "a39b50c769204bc32cc1076b42a94a3fcf1c1700580ac2c58c9359ed43f14b06"
+    },
+    "local/public/assets/reports-workspace.js": {
+      "before": "f6789439d5c232e3e779eeb303a3b90d1002990538350d5178956ae768d3ac5e",
+      "after": "9ab266650393f193577c3438045f9664e39c5994d89ac258f84b93bf573edd9a"
+    },
+    "public/assets/reports-workspace.js": {
+      "before": "3f9343297cb9ce147df09d656d9c27fb83ce90ea14295067e8d5134cbb482faa",
+      "after": "4b08e38ab2d440b9ba3a478afdfc6b27cf3c833da88ae09f616dae50c5985e4d"
+    }
+  },
+  "canonical": {
+    "local": "6fd0ae7a1060237d30e74b2558a822c0da07d66a36be3dea33321cf31a873fe6",
+    "public": "22ff0f8ab1b62fecb1688cdf0d4287c148384a4cefafecca2b9b1b53bf00cf4c"
+  },
+  "files": 883
+}

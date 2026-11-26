@@ -1,0 +1,31 @@
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -6992,3 +6992,6 @@
+ body[data-page="finance"] [data-followup-count]{margin-inline-start:6px;vertical-align:middle}
+ body[data-page="finance"] .sc-finance-invoice-toolbar>label:nth-child(4){grid-column:auto}
+ @media(min-width:340px) and (max-width:600px){body[data-page="finance"] .sc-finance-invoice-toolbar>label:nth-child(4){grid-column:1/-1}body[data-page="finance"] .sc-finance-invoice-toolbar>[data-invoice-reset]{grid-column:1/-1}}
++
++/* CP159B: summary cards use the finance panel width, not the legacy 44rem cap. */
++body[data-page="finance"] .sc-finance-context-summary{max-inline-size:none;inline-size:100%}
+--- a/local/public/assets/reports-workspace.js
++++ b/local/public/assets/reports-workspace.js
+@@ -665,7 +665,7 @@
+  if(!panel||!list||!nameField||!save||!remove)return;
+  let cfg=window.__SOKNA_UI_PREFERENCES__;
+  if(!cfg){try{cfg=JSON.parse(document.getElementById('sokna-ui-preferences-config')?.textContent||'{}')}catch{cfg={}}}
+- if(!cfg?.endpoint){panel.hidden=true;return}
++ if(!cfg?.endpoint){(panel.closest('.sc-report-view-disclosure')||panel).hidden=true;return}
+  const dateIsValid=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;
+  const sections=new Set($$('[data-report-section]').map(x=>x.dataset.reportSection));
+  let views=[],busy=false;
+--- a/public/assets/reports-workspace.js
++++ b/public/assets/reports-workspace.js
+@@ -563,7 +563,7 @@
+  if(!panel||!list||!nameField||!save||!remove)return;
+  let cfg=window.__SOKNA_UI_PREFERENCES__;
+  if(!cfg){try{cfg=JSON.parse(document.getElementById('sokna-ui-preferences-config')?.textContent||'{}')}catch{cfg={}}}
+- if(!cfg?.endpoint){panel.hidden=true;return}
++ if(!cfg?.endpoint){(panel.closest('.sc-report-view-disclosure')||panel).hidden=true;return}
+  const dateIsValid=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T00:00:00Z'))&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;
+  const sections=new Set($$('[data-report-section]').map(x=>x.dataset.reportSection));
+  let views=[],busy=false;
