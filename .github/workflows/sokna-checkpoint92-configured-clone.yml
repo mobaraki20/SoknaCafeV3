@@ -124,7 +124,7 @@ jobs:
           (out/'factory-evidence-decision.json').write_bytes(J(r))
           print('EXACT_AGGREGATE',H(f.read_bytes()),'origin',v,base['managed_tree_sha256'],'target',tree(d))
           PY
-      - name: Actual independent DB restore, signed preparation, clone-only activation and companion
+      - name: Actual independent DB restore, signed preparation, clone-only activation and companion (isolated import fix)
         env:
           ROOT_DB_PASS: sokna-ci-disposable-upgrade76
           CP92_READ_PASS: disposable-cp92-read
