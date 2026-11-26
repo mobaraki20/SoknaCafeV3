@@ -1,4 +1,4 @@
-name: CP118 targeted real MariaDB gate (QA only)
+name: CP118 full actual-schema recovery admission (QA only)
 on:
   push:
     branches: [qa/cp118-phase01-db-20261126]
@@ -71,35 +71,32 @@ jobs:
           assert H(patch)=='f41de385a3337acd8bccb51a9a7c4ab8585eeba2122c930ec855e76b8c7af2b6'
           pathlib.Path('cp118.patch').write_bytes(patch)
           pathlib.Path('test-db.php').write_bytes(zlib.decompress(base64.b64decode(
-              'eNqlWP9y2zYS/t9PgXo0AXlDKZJyda7WURlZYlpdZcuVmOQytoYFSchiTRIMANpWPXmn671OXuYWIClTthRncuPMKASB/fHt7rcL'
-              '/vNNtsoOOP2UR5yiBuFXNxedRQu/9BmTQnKStWAD7h3kgqI5u07J5YQFJL4cMk4v76e+oPyG+FEcybU1T0kmVkz+nBMefu49PjJi'
-              'CYnSyxkN2A3l68v7k1xEKRXihATXeTYHSVFAreq9cxfQTEYs3SvpbZSSNKDV7wfGr0VGAlpK6h00OBV5LIV9segt8zRQ0pCkQhqN'
-              'lCTUaixT8/4qZj6JUbW3J/n6PloaP8BLwzTlirNblNJbtLHHwESA21rYkkQxDbHZq45faMkLG58P5nPc+xwQGawMV0khfgwQU/P+'
-              'yd63g/HkGOHWFZVeEIN0A7a1sFpq0GYflk8BJnJFDbP3+fPBxpWApSkNwJvQtzE27zmVOU+1teejqYGTtfgUH6+YkHan+7rVhr9O'
-              'L2Nc2q9etY96oa/026Ak9Fu4F6wIF1TauVz+I/H/ji3MIQmwBeppemPg3wbe6MRTfn2YzkbYtC5AyfHxwHVnnjObnU5Hjt3XS+WT'
-              '5/x76Jy74+mZVdt5+m4ycB3vfOacD2bO3O4vSSzoAjw7aKhsotyu/DJ7NFgxhE8Jj8joRONRbGn2P+WQIwaeOxNn6KL3zmwOegwT'
-              'm83+kgLmQxbnCUSwdXiZHvaWkK4EAnGBhcojL8g6nSOPgI/1Zx8vEBEI4IAgVYroHQ2Mw+HMAavRaOAOTgZzB/0Om35Hw18Gs8HQ'
-              'dWZo7rioBO4QsiGza7FRz6UcXMoBKRMHiWBFE+Il0RUnKqDCAI1CRfb9YKZkG52jtonOZ+PTwewj+tX5aCLn7OfxmWOP05SNTnBN'
-              '9OH4bO7MXDQ+c6dPJYPEyTtnjgzcbrc73jK6g1Sh2DzcaxzjIRhjRCE6GYNKt26GhWLi0/jBzHbb/Ippj7zOfRHwyP8/pUO6kA3K'
-              'j8IKuv3d73z1juyCrPB3g1MHUmOdyhWVUQC5bnThGZgpDQvMdoqoebaR8xrOkSSLS6zDiNtiLTxV6pImmQcLkKT4pTavGfpN3PKj'
-              'tLuidwYnacgSz18DZRk/mmYvuVa7lQyQJHhgq0rfyaJGg1jq5RZB65OgSrCcB2BPzcOmxiwEoviKSH+/SAmdg8ptkRrqJfCjXW7y'
-              'tbiWuPaXGJIDeM6ubWdpvG6qxWzFiaDQczRTY5oGfJ1JGnrFeQ8qOfZCH1uKoO2+oZBo9gNYltSpNhtas6W1mFD10Z8UL968aZv9'
-              'ttkrBEepyCA/PIiCXHshrEEfUcXyIBkAafbLfftEF64rq8K1UqHpzLRtW/KcmtCE/G9NlZ8snOSgUeQA+E2RMIWpgLuXEH5NuefH'
-              'LLgWoE5I4DQPUsTL4EGRFayyWzC+bA+GCX1T+2BB6OpG36seVzhXytk45zJHweFqp7Y87ZXdRftXNbYnzVo3uHKn6l2Uc8aHLKQA'
-              'SAVVykrQ8YsXCp1tKi9q/+1seroF0odfnJmDotD+6QnFK9FbwEGTVAxQsc8IBAP7PBYJ6Xnw8iWCkeI6Sq+QCqAeDo4RAQtXlFf9'
-              'VbdaArwjEeQCdH74kQx2Ie0FKiKDblcAFoKDqAQVC5RxJksJkUArGoetKq111pVBvSKZp+K6J3jQjbRBX6E0/b5yWDWjuTNXHRFM'
-              'TVnoa+neLYmAdaKEshwmAlzHSB1xZ4OzObQzdWw8n0KbVv+bOO+dCYJu7QwK/gYuH5VnfXoVpS7wlCCl1Xp8MhRPzOgyLlwfFiMN'
-              '+GKa5TQjVyys5qhawqnQRukNuy5dL0pIZ2vdwWcrqdO2sC4UWtD1rtSFkWRn1hoQXNPY5O44XTIYiRV1QJ51uu0fIbuWwBRxDFYB'
-              'BpzFsSJKPZuZFWtV9UnvABlVl6LGW88XaIPb31ufDX5RaQ/xAipMPbNbL2B5KvECnHj14oV28mntDafvzlzjb2ZRK0VH3FVu3e8p'
-              '3Nc7C7dsjr3PdarcHhgApb2jQhiJLCZrT02yz40jO4lYC693/a3RaLdBMCXLmCY0VbQfAEz7rFO5DK3TS/MEsNiyz6o1nM2LV7Au'
-              '1T1B++OJ8kK1fRDAlUzClaVQqCDQsa2eJbnzSLK1Ut8uJJG52FJZ8weoMNw2h6aQBV5AMoWKt/d06BGpxmPHHZ86ll9OEF4ITVkv'
-              'W5yq4RaaVE3bA2pn7yYTC0qFcU9F5OHNV+K4NyilzVCicF0sButdSivf5DqjdY++NXWepkE9j34bNDvtDtwwYPgBHsQPmWVBGC31'
-              'p35xwFQBQGmrHXkcY72URLJY6ra7R81Op9k9Qp32cVv921rFloauU4yoWmlXXWs2FVhX3C0Vq19cBITEz+vt7NTbAaWH34DN02jU'
-              'YcqYKMfrgIhVUXVAr3oO3XOxrybRre8Nxt7ZdFlIwaa5YedyqaJk4MYEhm7IYeBTqSCrBkDY2OwLSniwmm88EnCN/ITtPv7y15f/'
-              'fPlLhbg2PML6JuKF62pJuQlR0dWjnreizlmi1urgYskeLS1g1szIVaVmAZOnKmu8aU3VsPjYuYc4P+vVg32bQ9+ttuK+mDGY2ivl'
-              'he7y3Th8yzjMCZTDkE/VF4amhvS/WDcZCJe+//8hWOrBDpgijerbifWv+fRMfURw3Y/wo4iiuOnTu0gamg8Nwjl0hiKkDwfBjgZX'
-              'lvAf7PIzjWm+gRQHdf8DvXlMKQ=='
+              'eNq9V21T20gS/s6vUCjXjrQlO5DsZXN2ZErYYvEV2I4sNpsyrmEsj7A2esvMiOCF/PfrHknYhJDKl7uiCks9/d5P97TeHRXrYm/F'
+              'w4QJbkol4lBRtSm4dA6t3l4cmdPTKZ2509ELxyFhEpP7+2uueHZjkvcuHR7TqTubfZj4Q2Ihh9xkas1VHLbD4vDwTTuM23mWbIjF'
+              'b2NlvgKVLZHnyhGcJQVTa7PFxPXN/HBh9cBWdeY4EUskv79fMskzlvKKrvUneciSHW2Cfy5jwQ3N0SEvl/ADUbCiA3GR3l4puTHL'
+              'P2Xs8gwlLwe54Jd35/G1YCrOM2lPlpKLG7aMk1htvj4VGOYpi7NLn4f5DReby7vjUsYZl/KYhZ/KYgbCccjt5ty7DXmBmkFVVGYh'
+              'PhphnmU8VO+ZTnB2bbRWS4cQqzsdTow7jHu1xODIL7+8iDPKhGAbpNlzItEVirl8S6MySSgj9lPikixsJUpuWWot8i9Gxr8Yfpmp'
+              'OOUPDpkky5Xx3jVkuOYpI1ZPcFWKTDODIyZJN/Jz0l3nUjmHr37vHMDfYa/IhXJevz5401stsRYO6YBnHdIL10xIrpxSRW/T5W/g'
+              'FpaA2M+hw56DkW7XDQKfer5/Phl6Tl+T6jfq/TXwpsFoMrZ3OM8vztzAo1Pfm7q+N3P6GhsAl6/b/MqMFXKdY4Ixo63C6uoc3rXC'
+              'HLIgnfmi11rF11xWzxGAgIWAvaLd/1xC1cz9mXfmDQIjcI/PPDp2zz3jxJ+cG3EGvKmGCq3y1tEsM+PDqed7Nf9scOqdu87QhVd3'
+              '5pmW4Y6H9Vnwceo5BMkVgRiQDc83jj/uGNu32v2Iq3DtJompgz/xgsEpHUzOLs7HlsGk0VLWHYD8i3S2XpPa618rZ69IB/BFBS8S'
+              'FnKTXEFNruAfiHbg5RkbUKDJwOrVqZq31MLRj6a2Bgc8C/MVXzk6pTRlhRllcGg5/b8lpKU6BoL9n9lkTINTf/KBwgNUdeLfa9po'
+              '/Kd7NhrSi+DkLZ1dHM+CUXAReJZdm5CAMbOxY88mfkBngT8a/2E9lE37tWZybRK5Zq/+9YbYcVokaHn/Mtu3G2kLgFHjel6HZDc6'
+              'FoCZFnY7F862JbUN4ciNpABdqnhaUCCYkLOXutH0JHvbxkZrk84yzl6t+a0pWLbKU7rcKC7NN2A2/YRSqMs++P3goOpHHHdclkmN'
+              'wUL/l9XM0KS9Botzgp0NjayLLcsoim+h4jgonrQ7tGDF0KvDaff5LQ/N/YHvQbMYDRCNK5C/Mganru8OAgDdzAuMul8NwBZ2VvNO'
+              'yyzGDNIw3oeUFPPaxGInVaANs8UUczBOSNDWkyZ8OAT6dQkJb6d8FUNUO+mI4oTTolQUlMKYUNIEqZ0RD6JwEsXXenzb5B1eT0Zd'
+              'UNK5YYLyWxxJmK+iIE5/TtAkVgxetPlFPQthRsGQa6UODrjtxDd3YrObawPl8LZ5mT7woSyYSGKAfitt96sTjniBjEtk0fSa58+a'
+              'ZuqLrO6g+gxvrn+/vr+vqY14Rf7hyC4zCBeSz1cGC1XJEuPBQUNrQy8bPG1Lhsq+e089Ch65Hl1/Vfksm3xmDdwbJPYaHM9JBE/r'
+              'ehpuobhwCM56Aj0GFjhfDermW3KE+MLZGdLgBCL9YejszuQ5gRtYSKh9nN0AQnKxoTE0JVI0qqhGFWUSLh8khiziFKqXcHzLxaqS'
+              'hlOV8BQ0wEAMgayJ5VKGIl4iy6KeqruDb8dxfD86yiALPR6uc4OcYNjb9Ou1xkD+qhAS4PloHlZUq4PjCcYAIr/pmjq9HflpGRHo'
+              'NYhld3NCzW0kFmsBmASOlGPLPdQZRsWi3Q8hYYp7WSg2BQDE1CZsrU1j0NRisELE/3ACsRxY7w5/CDb0yVhquBgRA2Ur8qjuOHrq'
+              'svPGKq34yUP591pxJhGyoHLX5SW6XB894/P3TcGVxllKoWniCHoJLJk7JiC8b8+PjvSKYB1VHnXJiTs6I08AXPfzCrAjcPCDltXm'
+              'ifbHh8+pxoo735OLpSwh+XOCHOR7gKoYjVq2+w2K5qSyDKPtR16hVruyAZz4u2iAB0B48TMhWXdKwML0TcHARejALciC3EsLtQm0'
+              'imer90x+tSpEysXY+2sKi4s3hG1gMPD02AgZ7Cbmkz3aaHFcfH5aN1YEs9jicCkKkYsBZKP39SuHIKsQhfN/iRJuNKyefn0elf/r'
+              'sPfmttFikeLimQn8YELwv/VF02ilBTzgdiEpg27ETa2K6md9cuqRACGPJwF1p9Oz0UCvwF2zvhWAp3LucVZgbdIt8ni/rOxWWyZ8'
+              'DgTBR/gZjYMa6fqTsLphq00Vygaat4K4td7C1rrziXULX1jasP2ti833lHV02D0Af/4LrksyaQ=='
           )))
+          assert H(pathlib.Path('test-db.php').read_bytes())=='1e4a021fadee274442d275c3293f86e5f0136fd21f3d97df86a81825c5d1bfae'
           PY
           patch --batch --forward -p1 < cp118.patch
           python3 - <<'PY'
@@ -108,7 +105,7 @@ jobs:
           r=pathlib.Path('local');files=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());assert len(files)==624
           actual=H(''.join(n+'\0'+H((r/n).read_bytes())+'\n' for n in files).encode());print('exact CP117 Local canonical SHA256',actual);assert actual=='ce8c589e3fc49abeddc963a4d737b6dae627b3cc696e2d56a28f6f6df55455a1'
           PY
-      - name: Run real database component cases (synthetic schemas only)
+      - name: Run full actual-schema recovery admission (disposable migration seed only)
         run: |
           set -euo pipefail
           php -v
