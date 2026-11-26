@@ -1,0 +1,68 @@
+name: SOKNA checkpoint77 Public 35iq migration 0012 QA
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-checkpoint77-public-35iq.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        mariadb: ['10.6','11.4']
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-ci-disposable-upgrade76
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+      - name: Exact factory reconstruction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/15069153300/zip" -o "$RUNNER_TEMP/base.zip"
+          echo '57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f  '"$RUNNER_TEMP/base.zip" | sha256sum -c -
+          python qa/checkpoint76/reconstruct.py "$RUNNER_TEMP/cp76" "$RUNNER_TEMP/base.zip" qa/checkpoint76/transfer.b64
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE
+          run-id: 45389831526
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/c2
+      - name: Actual Public 35iq to 35iu migration with disposable DB
+        env:
+          SOKNA_CI_DB_PASS: sokna-ci-disposable-upgrade76
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring
+          mkdir -p "$RUNNER_TEMP/receipt"
+          iq=$(find "$RUNNER_TEMP/c2" -name 'SOKNA-PUBLIC-35IQ-UNIVERSAL-UPDATE.zip' -type f -print -quit)
+          test -f "$iq"
+          python qa/checkpoint77/prepare_public_35iq.py "$RUNNER_TEMP/base.zip" "$iq" "$RUNNER_TEMP/cp76/out" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/fixture"
+          mysql --protocol=TCP -h127.0.0.1 -uroot -p"$SOKNA_CI_DB_PASS" -e 'CREATE DATABASE sokna_ci_upgrade77 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+          pkg="$RUNNER_TEMP/fixture/PUBLIC-35IQ-TO-35IU-FIXTURE-QA-ONLY.zip"
+          php8.3 qa/checkpoint77/public-35iq-upgrade.php stage "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/fixture/new-web" "$pkg" | tee "$RUNNER_TEMP/receipt/upgrade.log"
+          php8.3 qa/checkpoint77/public-35iq-upgrade.php commit "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/fixture/new-web" "$pkg" | tee -a "$RUNNER_TEMP/receipt/upgrade.log"
+          test "$(grep -c '^PASS ' "$RUNNER_TEMP/receipt/upgrade.log")" = 3
+          cp "$RUNNER_TEMP/fixture/factory-evidence-decision.json" "$RUNNER_TEMP/receipt/"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CHECKPOINT77-PUBLIC-35IQ-MIGRATION-MARIADB-${{ matrix.mariadb }}-QA
+          path: ${{ runner.temp }}/receipt/
+          if-no-files-found: warn
+          retention-days: 30
