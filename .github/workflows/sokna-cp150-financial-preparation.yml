@@ -1,0 +1,68 @@
+name: SOKNA CP150 financial and preparation acceptance
+on:
+  push:
+    branches: [qa/cp133-marketing-20261126]
+    paths: [.github/workflows/sokna-cp150-financial-preparation.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout reviewable QA source data
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Verify and apply direct source delta
+        run: |
+          mkdir -p "$RUNNER_TEMP/cp148-qa"
+          python3 qa/cp148/prepare-source.py "$RUNNER_TEMP/cp148-qa" "$RUNNER_TEMP/cp148-input" | tee "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Apply exact CP150 candidate delta
+        run: python3 qa/cp150/apply-cp150.py "$RUNNER_TEMP/cp148-qa" | tee -a "$RUNNER_TEMP/cp148-qa/source-results.txt"
+      - name: Prepare browser driver
+        continue-on-error: true
+        run: npm install --prefix "$RUNNER_TEMP/cp148-qa/pw" playwright --no-audit --no-fund
+      - name: Execute independent remaining MariaDB HTTP and browser groups
+        run: bash qa/cp150/run-qa.sh "$RUNNER_TEMP/cp148-qa"
+      - name: Preserve synthetic QA evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CP150-FINANCIAL-PREPARATION-QA
+          path: |
+            ${{ runner.temp }}/cp148-qa/source-results.txt
+            ${{ runner.temp }}/cp148-qa/cp150-*-results.txt
+            ${{ runner.temp }}/cp148-qa/cp150-*-summary.json
+            ${{ runner.temp }}/cp148-qa/QA-summary.txt
+            ${{ runner.temp }}/cp148-qa/cp150-screenshots/*.png
+          retention-days: 7
+          if-no-files-found: warn
