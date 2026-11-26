@@ -1,4 +1,4 @@
-name: SOKNA checkpoint77 clean Web EXE integrated native QA
+name: SOKNA checkpoint77 clean Web EXE integrated native QA diagnostic retry
 on:
   push:
     branches: [qa/checkpoint55-exact-windows-20261126]
