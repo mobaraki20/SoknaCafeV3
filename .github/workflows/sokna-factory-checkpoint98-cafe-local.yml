@@ -1,0 +1,125 @@
+name: SOKNA CP98 controlled Cafe Local exact C2 operator admission
+on:
+  push:
+    branches: [qa/checkpoint55-exact-windows-20261126]
+    paths: ['.github/workflows/sokna-factory-checkpoint98-cafe-local.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - {origin: C2, fault: none, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.5'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY
+          run-id: 45718662312
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/home
+      - name: Reconstruct exact 231gg QA bytes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Join-Path $env:RUNNER_TEMP base.zip
+          curl.exe --fail --location --silent --show-error -H "Authorization: Bearer $env:GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/15069153300/zip" -o $base
+          if($LASTEXITCODE -ne 0){throw 'BASE_DOWNLOAD_FAILED'}
+          if((Get-FileHash $base -Algorithm SHA256).Hash.ToLowerInvariant() -ne '57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f'){throw 'BASE_HASH_DRIFT'}
+          python qa/checkpoint76/reconstruct.py "$env:RUNNER_TEMP/cp76" $base qa/checkpoint76/transfer.b64
+          if($LASTEXITCODE -ne 0){throw 'EXACT_REBUILD_FAILED'}
+          python qa/checkpoint76/sequence4.py "$env:RUNNER_TEMP/cp76/out"
+          if($LASTEXITCODE -ne 0){throw 'SEQUENCE_CORRECTION_FAILED'}
+      - name: Verify prior evidence and exercise new exact outer via actual native panel
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'|Select-Object -First 1
+          $target=Get-Item "$env:RUNNER_TEMP/cp76/out/LOCAL-231GG-UPDATE-QA-DO-NOT-INSTALL.zip"
+          if(!$base -or !$target){throw 'PINNED_ARCHIVES_MISSING'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $homeArchive=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'|Select-Object -First 1
+          if(!$homeArchive){throw 'PINNED_HOME_ARCHIVE_MISSING'}
+          $controlled=Join-Path $env:RUNNER_TEMP 'LOCAL-231GG-CONTROLLED-HOME-CANARY.zip'
+          python qa/factory/build_checkpoint84_controlled_local.py $target.FullName $homeArchive.FullName $controlled
+          if($LASTEXITCODE -ne 0){throw 'CONTROLLED_BUILD_FAILED'}
+          if((Get-FileHash $controlled -Algorithm SHA256).Hash.ToLowerInvariant() -cne '298a6784ce4a00e0d0519c8a65c06307b8b86ee12550379ed56795ae2740ceb4'){throw 'OUTER_DRIFT'}
+          $previous=$controlled
+          $controlled=Join-Path $env:RUNNER_TEMP 'SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip'
+          python qa/factory/build_checkpoint98_cafe_local.py $previous $controlled
+          if($LASTEXITCODE -ne 0){throw 'CAFE_BUILD_FAILED'}
+          $env:SOKNA_CURRENT_QA_ZIP=$controlled
+          $env:SOKNA_MATRIX_TARGET_ZIP=$controlled
+          @'
+          from pathlib import Path
+          p=Path('qa/factory/prepare_checkpoint84_native.py')
+          s=p.read_text(encoding='utf-8').replace('LOCAL-231GG-CONTROLLED-HOME-CANARY.zip','SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip').replace('CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING','CONTROLLED_CAFE_OPERATOR_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_CANARY_ONLY_NOT_CAFE_PRODUCTION_APPROVAL','CONTROLLED_CAFE_OPERATOR_ONLY_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_EXACT_OUTER_QA_ONLY','CONTROLLED_CAFE_EXACT_OUTER_QA_ONLY')
+          p.with_name('prepare_checkpoint98_native.py').write_text(s,encoding='utf-8')
+          '@ | Set-Content "$env:RUNNER_TEMP/prepare-cafe.py" -Encoding utf8NoBOM
+          python "$env:RUNNER_TEMP/prepare-cafe.py"
+          python qa/factory/prepare_checkpoint98_native.py
+          if($LASTEXITCODE -ne 0){throw 'BRIDGE_PREPARATION_FAILED'}
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'BRIDGE_TEST_FAILED'}
+          }finally{Pop-Location}
+      - name: Verify exact receipt before delivery
+        if: success()
+        shell: pwsh
+        run: |
+          Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw
+          Get-FileHash "$env:RUNNER_TEMP/matrix-receipt.json" -Algorithm SHA256
+          $receipt=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
+          $actual=(Get-FileHash "$env:RUNNER_TEMP/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($receipt.status -ne 'PASS' -or $receipt.candidate_sha256 -cne $actual -or $receipt.phase -ne 'COMMITTED' -or $receipt.origin -ne 'C2' -or $receipt.migrations -ne 93 -or !$receipt.independent_restore -or !$receipt.panel_activation_tested -or $receipt.actual_field_host){throw 'DELIVERY_GATE'}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: |
+            ${{ runner.temp }}/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip
+            ${{ runner.temp }}/matrix-receipt.json
+          if-no-files-found: error
+          retention-days: 30
