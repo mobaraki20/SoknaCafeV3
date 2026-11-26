@@ -1,4 +1,4 @@
-name: Sokna CP125 grouped module and search QA
+name: Sokna CP125 browser recheck real account chooser
 permissions:
   contents: read
   actions: read
@@ -346,7 +346,7 @@ jobs:
 
         (async()=>{const browser=await chromium.launch({channel:''chrome'',headless:true});try{const ctx=await browser.newContext({viewport:{width:1440,height:900},locale:''fa-IR''});const page=await ctx.newPage();page.setDefaultTimeout(10000);page.on(''pageerror'',e=>console.log(''PAGE_ERROR ''+e.message));const shot=async n=>{await page.screenshot({path:path.join(shots,n+''.png''),fullPage:true})};
 
-        await page.goto(base+''/login.php'');const account=page.locator(''[data-login-account][data-username="qa-target"]'');if(await account.isVisible())await account.click();else ck(await account.evaluate(e=>e.classList.contains(''is-selected'')),''selected_qa_account'');await page.locator(''input[name=password]'').fill(''synthetic-qa-admin-not-real'');await Promise.all([page.waitForNavigation(),page.locator(''form[data-login-form] button[type=submit]'').click()]);
+        await page.goto(base+''/login.php'');const account=page.locator(''[data-login-account][data-username="qa-target"]'');await page.locator(''.sc-login-flow-change'').waitFor();if(!(await account.evaluate(e=>e.classList.contains(''is-selected'')))){await page.locator(''.sc-login-flow-change'').click();await account.click();}ck(await page.locator(''[data-login-selection]'').inputValue()===''qa-target'',''selected_qa_account'');await page.locator(''input[name=password]'').fill(''synthetic-qa-admin-not-real'');await Promise.all([page.waitForNavigation(),page.locator(''form[data-login-form] button[type=submit]'').click()]);
 
         await group(''module-ui'',async()=>{await page.goto(base+''/admin/?tab=modules'');const card=page.locator(''[data-modules] article'').filter({has:page.getByRole(''heading'',{name:''اقامتگاه'',exact:true})});await card.waitFor();ck(await card.getByRole(''button'',{name:''فعال‌کردن'',exact:true}).isVisible(),''MOD_off_visible_in_admin'');await shot(''01-module-off'');await page.goto(base+''/finance/?tab=accommodation'');ck(await page.locator(''[data-tab=accommodation]'').count()===0,''MOD_off_finance_hidden'');await shot(''02-finance-off'');await page.goto(base+''/integrations/?tab=accommodation'');ck(await page.locator(''[data-accommodation-form]'').count()===0,''MOD_off_connection_hidden'');await shot(''03-integrations-off'');await page.goto(base+''/printing/'');ck(!(await page.locator(''label'').filter({hasText:''اقامتگاه''}).count()),''MOD_off_print_preference_hidden'');await page.goto(base+''/admin/?tab=modules'');const c=page.locator(''[data-modules] article'').filter({has:page.getByRole(''heading'',{name:''اقامتگاه'',exact:true})});await c.getByRole(''button'',{name:''فعال‌کردن'',exact:true}).click();await c.getByRole(''button'',{name:''غیرفعال‌کردن'',exact:true}).waitFor();await shot(''04-module-on'');await page.goto(base+''/finance/'');ck(await page.locator(''[data-tab=accommodation]'').count()===1,''MOD_on_finance_visible'');await page.goto(base+''/integrations/?tab=accommodation'');ck(await page.locator(''[data-accommodation-form]'').count()===1,''MOD_on_connection_visible'');await shot(''05-integrations-on'');});
 
@@ -363,7 +363,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: SOKNA-CP125-UI-QA
+        name: SOKNA-CP125-UI-RECHECK-QA
         path: ${{ runner.temp }}/cp125-screenshots/*.png
         retention-days: 1
         if-no-files-found: warn
