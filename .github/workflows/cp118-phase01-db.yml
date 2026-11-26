@@ -1,4 +1,4 @@
-name: CP120 actual browser recovery QA (QA only)
+name: CP121 real recovery interruption and legacy (synthetic only)
 on:
   push:
     branches: [qa/cp118-phase01-db-20261126]
@@ -125,53 +125,38 @@ jobs:
           r=pathlib.Path('local');files=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());assert len(files)==624
           actual=H(''.join(n+'\0'+H((r/n).read_bytes())+'\n' for n in files).encode());print('exact CP120 Local canonical SHA256',actual);assert actual=='1075453088fab5ce6320eee4b3c89fc5b445a46e65d5125ea96aa06b837bc286'
           PY
-      - name: Set up installed Chrome browser driver
-        run: |
-          set -euo pipefail
-          google-chrome --version
-          npm install --prefix "$RUNNER_TEMP/pw" --no-audit --no-fund playwright@1.57.0
-      - name: Actual browser and PHP HTTP recovery on independent synthetic schemas
+      - name: Exercise historical format and actual process termination
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP"
           php test-db.php "$RUNNER_TEMP/local"
-          php -d upload_max_filesize=64M -d post_max_size=65M -S 127.0.0.1:18765 -t "$RUNNER_TEMP/local/public" > "$RUNNER_TEMP/cp120-http.log" 2>&1 &
-          server=$!
-          trap 'kill "$server" 2>/dev/null || true; tail -80 "$RUNNER_TEMP/cp120-http.log"' EXIT
-          for i in $(seq 1 20); do if curl --silent --output /dev/null http://127.0.0.1:18765/login.php; then break; fi; sleep 1; done
-          cat > "$RUNNER_TEMP/recovery-browser.cjs" <<'NODETEST'
-          const {chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
-          const fs=require('fs'),path=require('path'),assert=require('assert/strict');
-          const base='http://127.0.0.1:18765'; const root=process.argv[2];const fixture=JSON.parse(fs.readFileSync(path.join(root,'..','cp120-recovery-fixture.json'))); const shots=path.join(process.env.RUNNER_TEMP,'cp120-screenshots');fs.mkdirSync(shots,{recursive:true});
-          const pass='synthetic-only-passphrase';
-          function ck(v,name){assert.ok(v,name);console.log('PASS '+name)}
-          (async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
-           const ctx=await browser.newContext({viewport:{width:1440,height:900},locale:'fa-IR'}); const page=await ctx.newPage();page.on('pageerror',e=>console.log('BROWSER ERROR',e.message));
-           await page.goto(base+'/login.php');await page.locator('.sc-login-flow-current-row').waitFor({state:'visible'});if(await page.locator('[data-login-selection]').inputValue()!=='qa-target'){await page.locator('.sc-login-flow-change').click();await page.locator('[data-login-account][data-username="qa-target"]').click();}ck(await page.locator('[data-login-selection]').inputValue()==='qa-target','actual_selected_login_account');await page.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([page.waitForNavigation(),page.locator('form[data-login-form] button[type=submit]').click()]);
-           await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[data-system-workspace]').getAttribute('aria-busy')!=='true');
-           await page.setViewportSize({width:390,height:844});await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});await page.waitForFunction(()=>document.querySelector('[data-system-workspace]').getAttribute('aria-busy')!=='true'&&document.querySelector('[data-product-nav]').getAttribute('aria-hidden')==='true');await page.screenshot({path:path.join(shots,'00-recovery-mobile-fresh.png'),fullPage:true,animations:'disabled'});
-           ck(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&!document.body.classList.contains('sc-nav-open')),'mobile_no_horizontal_overflow_and_drawer_closed');
-           const np=await (await ctx.request.get(base+'/notifications/api.php')).json();ck(np.success&&Number(np.snapshot.preferences.in_app_enabled)===1&&Number(np.snapshot.preferences.push_enabled)===0&&Number(np.snapshot.preferences.push_management_enabled)===0,'notification_read_defaults_unchanged');const up=await (await ctx.request.get(base+'/ui-preferences/api.php')).json();ck(up.success&&Object.keys(up.preferences).length===0,'automatic_mobile_navigation_did_not_save_preferences');
-           ck(await page.locator('[data-backup-inspect]').isDisabled(),'inspect_disabled_before_upload');ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_before_upload');await page.screenshot({path:path.join(shots,'01-recovery-mobile-initial.png'),fullPage:true});
-           const csrf=await page.locator('[data-system-workspace]').getAttribute('data-csrf');const denied=await ctx.request.post(base+'/system/api.php',{data:{action:'backup_inspect',id:'invalid-id',passphrase:pass}});ck(denied.status()===419,'real_http_csrf_rejected');
-           const inp=page.locator('#sc-recovery-backup-file');await inp.setInputFiles(fixture.backup);await page.locator('[data-recovery-upload] button[type=submit]').click();await page.waitForFunction(()=>document.querySelector('[data-restore-id]').value!=='');
-           ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_after_upload');await page.locator('[data-restore-pass]').fill('synthetic-wrong-password');await page.locator('[data-backup-inspect]').click();await page.waitForFunction(()=>document.querySelector('[data-backup-manifest]').classList.contains('sc-alert--danger'));ck(await page.locator('[data-backup-restore]').isDisabled(),'wrong_password_cannot_restore');await page.screenshot({path:path.join(shots,'02-recovery-wrong-password.png'),fullPage:true});
-           await page.locator('[data-restore-pass]').fill(pass);const [resp]=await Promise.all([page.waitForResponse(r=>r.url().includes('/system/api.php')&&r.request().method()==='POST'),page.locator('[data-backup-inspect]').click()]);const result=await resp.json();console.log('INSPECT_RESULT',JSON.stringify({http:resp.status(),success:result.success,ready:result.manifest?.target_ready,kind:result.manifest?.target_kind,issue:result.manifest?.target_issue}));await page.waitForFunction(()=>!document.querySelector('[data-backup-inspect]').disabled);await page.screenshot({path:path.join(shots,'03-recovery-mobile-verified.png'),fullPage:true});
-           await page.screenshot({path:path.join(shots,'04-recovery-inspected-mobile.png'),fullPage:true,animations:'disabled'});
-           ck(result.success&&result.manifest?.stream_verified&&result.manifest?.target_ready,'fresh_destination_ready_after_real_login_and_page_load');ck(await page.locator('[data-backup-restore]').isEnabled(),'restore_enabled_after_verified_inspection');
-           await page.locator('[data-backup-restore]').click();await page.locator('dialog[open]').waitFor();await page.screenshot({path:path.join(shots,'05-recovery-confirm-mobile.png'),fullPage:true});await page.locator('dialog[open] [data-dialog-role=cancel]').click();await page.waitForFunction(()=>!document.querySelector('[data-backup-restore]').disabled);ck(await page.locator('[data-backup-restore]').isEnabled(),'cancel_preserves_verified_selection');await page.locator('[data-backup-restore]').click();await page.locator('dialog[open]').waitFor();const [rest]=await Promise.all([page.waitForResponse(r=>r.url().includes('/system/api.php')&&r.request().method()==='POST',{timeout:90000}),page.locator('dialog[open] [data-dialog-role=primary]').click()]);const rr=await rest.json();console.log('RESTORE_RESULT',JSON.stringify({http:rest.status(),success:rr.success,restored:rr.restore?.restored,table_count:rr.restore?.table_count,code:rr.code}));ck(rr.success&&rr.restore?.restored&&rr.restore?.table_count===104,'real_browser_restore_full_schema');await page.locator('[data-backup-manifest] a').waitFor();await page.screenshot({path:path.join(shots,'06-recovery-complete-mobile.png'),fullPage:true});ck(await page.locator('[data-backup-restore]').isDisabled(),'restore_disabled_after_success');
-           await page.locator('[data-backup-manifest] a').click();await page.setViewportSize({width:1440,height:900});await page.locator('.sc-login-flow-current-row').waitFor({state:'visible'});if(await page.locator('[data-login-selection]').inputValue()!=='qa-source'){await page.locator('.sc-login-flow-change').click();await page.locator('[data-login-account][data-username="qa-source"]').click();}await page.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([page.waitForNavigation(),page.locator('form[data-login-form] button[type=submit]').click()]);await page.goto(base+'/system/?tab=recovery');await page.locator('[data-panel=recovery]').waitFor({state:'visible'});
-           const summary=page.locator('[data-shell-nav-group][data-nav-group-key="operations"] [data-shell-nav-group-toggle]');const [prefResponse]=await Promise.all([page.waitForResponse(r=>r.url().includes('/ui-preferences/api.php')&&r.request().method()==='POST'),summary.click()]);const prefSaved=await prefResponse.json();ck(prefSaved.success&&Array.isArray(prefSaved.preferences.nav_groups),'explicit_nav_group_click_persists');
-           const prefToken=await page.locator('[data-system-workspace]').getAttribute('data-csrf');const note=await ctx.request.post(base+'/notifications/api.php',{data:{csrf_token:prefToken,action:'preferences',in_app_enabled:false}});const noteBody=await note.json();ck(noteBody.success&&Number(noteBody.result.in_app_enabled)===0,'explicit_notification_change_persists');
-           console.log('CP120 BROWSER RECOVERY PASS');
-           }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
-          NODETEST
-          node "$RUNNER_TEMP/recovery-browser.cjs" "$RUNNER_TEMP/local"
-      - name: Capture only synthetic UI evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: SOKNA-CP120-FULL-RECOVERY-MOBILE-QA
-          path: ${{ runner.temp }}/cp120-screenshots/*.png
-          retention-days: 1
-          if-no-files-found: warn
+          cat > cp121-extra.php <<'PHPTEST'
+          <?php
+          declare(strict_types=1);
+          // Synthetic-only fixture, executed on GitHub standard hosted runner.
+          if(PHP_SAPI!=='cli'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $root=realpath($argv[1]); if($root===false||basename($root)!=='local')exit(2);
+          require $root.'/bootstrap.php';
+          use Sokna\Local\Core\Observability;
+          use Sokna\Local\Domain\Recovery\{BusinessBackupService,RecoveryException,MediaSnapshotCodec};
+          function ck($x,$name){if(!$x)throw new RuntimeException('FAIL '.$name);echo 'PASS '.$name."\n";}
+          function dbQa($db):PDO{if(!in_array($db,['sokna_cp119_b','sokna_cp121_legacy'],true))throw new RuntimeException('not synthetic db');return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$db.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_EMULATE_PREPARES=>false]);}
+          function rowsQa(PDO $p):array{$d=[];foreach($p->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME")->fetchAll(PDO::FETCH_COLUMN) as $t){$r=array_map(fn($x)=>hash('sha256',json_encode($x,JSON_THROW_ON_ERROR|JSON_INVALID_UTF8_SUBSTITUTE)),$p->query('SELECT * FROM `'.str_replace('`','``',$t).'`')->fetchAll(PDO::FETCH_ASSOC));sort($r,SORT_STRING);$d[$t]=hash('sha256',implode("\n",$r));}return $d;}
+          function expectCode(callable $f,array $codes):string {try{$f();}catch(RecoveryException $e){if(!in_array($e->errorCode,$codes,true))throw $e;return $e->errorCode;}throw new RuntimeException('unexpected success');}
+          $cfg=require dirname($root).'/config.php';$fx=json_decode(file_get_contents(dirname($root).'/cp120-recovery-fixture.json'),true,64,JSON_THROW_ON_ERROR);$pass='synthetic-only-passphrase';$file=$fx['backup'];$data=$fx['target_data'];$id=$cfg['installation']['id'];$p=dbQa('sokna_cp119_b');$b=new BusinessBackupService($p,new Observability($data),$id);
+          if(($argv[2]??'')==='child'){try{$b->restoreEncryptedToEmptyTarget($file,$pass);echo 'UNEXPECTED SUCCESS';exit(3);}catch(Throwable $e){echo get_class($e).' '.$e->getMessage();exit(4);}}
+          $before=rowsQa($p);$media=MediaSnapshotCodec::scan($data);$receipt=$data.'/recovery-fresh-seed-v1.json';ck(is_file($receipt)&&count($media)>0,'fresh_seed_receipt_and_images');
+          // Historical v1 fixture derived only from synthetic full backup; no media bytes.
+          $dec=new ReflectionMethod(BusinessBackupService::class,'decryptFile');$enc=new ReflectionMethod(BusinessBackupService::class,'encryptFile');$tmp=dirname($file).'/legacy-source.gz';$dec->invoke($b,$file,$tmp,$pass);$old=dirname($file).'/legacy-media.gz';$in=gzopen($tmp,'rb');$out=gzopen($old,'wb9');$first=true;while(($line=gzgets($in))!==false){$e=json_decode($line,true,64,JSON_THROW_ON_ERROR);if($first){$e['value']['schema_version']=1;unset($e['value']['media_files'],$e['value']['media_format']);$line=json_encode($e,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";$first=false;}gzwrite($out,$line);if($e['kind']==='footer')break;}gzclose($in);gzclose($out);$legacy=dirname($file).'/legacy-media.skbf';$enc->invoke($b,$old,$legacy,$pass);unlink($tmp);unlink($old);
+          ck(expectCode(fn()=>$b->inspectEncrypted($legacy,$pass),['legacy_backup_missing_media'])==='legacy_backup_missing_media','legacy_media_inspect_rejected');$legacyCode=expectCode(fn()=>$b->restoreEncryptedToEmptyTarget($legacy,$pass),['legacy_backup_missing_media','schema_incompatible']);echo 'LEGACY_RESTORE_CODE '.$legacyCode."\n";ck(rowsQa($p)===$before&&MediaSnapshotCodec::scan($data)===$media&&is_file($receipt),'legacy_rejection_preserves_full_target');
+          // Independent minimal historical database-only contract. Not a complete old installer.
+          $p->exec('CREATE DATABASE sokna_cp121_legacy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$lp=dbQa('sokna_cp121_legacy');$lp->exec('CREATE TABLE schema_migrations(version VARCHAR(100) PRIMARY KEY) ENGINE=InnoDB');$lp->exec("INSERT INTO schema_migrations VALUES('qa-v1')");$lp->exec('CREATE TABLE settings(setting_key VARCHAR(100) PRIMARY KEY,setting_value TEXT) ENGINE=InnoDB');$ld=dirname($file).'/legacy-dest';mkdir($ld,0700,true);$lb=new BusinessBackupService($lp,new Observability($ld),'qa-legacy-dest');$raw=dirname($file).'/legacy-simple.gz';$z=gzopen($raw,'wb9');$line=fn($a)=>json_encode($a,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)."\n";$row=$line(['kind'=>'row','table'=>'settings','value'=>['setting_key'=>'qa.marker','setting_value'=>'synthetic']]);foreach([['kind'=>'manifest','value'=>['format'=>'sokna-business-backup-v1','schema_version'=>1,'schema_versions'=>['qa-v1'],'tables'=>['settings'],'source_installation_id'=>'qa-legacy']],['kind'=>'table','name'=>'settings','columns'=>['setting_key','setting_value']]] as $e)gzwrite($z,$line($e));gzwrite($z,$row);gzwrite($z,$line(['kind'=>'footer','table_counts'=>['settings'=>1],'table_hashes'=>['settings'=>hash('sha256',$row)]]));gzclose($z);$simple=dirname($file).'/legacy-simple.skbf';$enc->invoke($lb,$raw,$simple,$pass);unlink($raw);$ins=$lb->inspectEncrypted($simple,$pass);ck($ins['stream_verified']&&$ins['target_ready'],'legacy_database_only_empty_component_ready');$rest=$lb->restoreEncryptedToEmptyTarget($simple,$pass);ck($rest['restored']&&$rest['media_warning']==='legacy_database_only_no_private_media'&&$lp->query("SELECT setting_value FROM settings WHERE setting_key='qa.marker'")->fetchColumn()==='synthetic','legacy_database_only_component_restore');
+          // Fail-stop real PHP child in InnoDB transaction, after seed images are moved.
+          $p->exec("CREATE TRIGGER qa_cp121_pause BEFORE INSERT ON settings FOR EACH ROW DO SLEEP(20)");
+          $proc=proc_open([PHP_BINARY,__FILE__,$root,'child'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($proc))throw new RuntimeException('no child');fclose($pipes[0]);$seen=false;$hold=[];$deadline=microtime(true)+45;
+          try{while(microtime(true)<$deadline){clearstatcache();$hold=glob($data.'/recovery-seed-hold-*',GLOB_ONLYDIR);$st=proc_get_status($proc);if(!$st['running'])throw new RuntimeException('child exited before fault boundary: '.stream_get_contents($pipes[1]).stream_get_contents($pipes[2]));if(count($hold)===1&&!is_dir($data.'/guest-media')&&!is_file($receipt)){$seen=true;break;}usleep(50000);}ck($seen,'real_child_reached_media_hold_before_commit');proc_terminate($proc,9);}finally{if(proc_get_status($proc)['running'])proc_terminate($proc,9);fclose($pipes[1]);fclose($pipes[2]);proc_close($proc);}
+          // Wait for InnoDB disconnect/rollback, never write data to verify it.
+          $p->exec('SET SESSION innodb_lock_wait_timeout=35');$p->beginTransaction();$p->query('SELECT * FROM settings FOR UPDATE')->fetchAll(PDO::FETCH_ASSOC);$p->rollBack();ck(rowsQa($p)===$before,'process_kill_database_rows_preserved');ck(count($hold)===1&&MediaSnapshotCodec::scan($hold[0])===$media,'process_kill_seed_media_preserved_in_hold');ck(!is_file($receipt),'process_kill_receipt_not_reusable');ck(expectCode(fn()=>$b->restoreEncryptedToEmptyTarget($file,$pass),['target_not_empty','restore_media_not_empty'])==='target_not_empty','process_kill_retry_fails_closed');echo 'INTERRUPTED_STATE '.json_encode(['active_media_present'=>is_dir($data.'/guest-media'),'held_media_count'=>count($media),'private_restore_temp_count'=>count(glob($data.'/recovery-tmp/business-restore-*'))])."\n";
+          echo "CP121 CRASH AND LEGACY COMPONENT PASS\n";
+          PHPTEST
+          php cp121-extra.php "$RUNNER_TEMP/local"
