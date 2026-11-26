@@ -34,6 +34,8 @@ jobs:
           if((Get-FileHash $base -Algorithm SHA256).Hash.ToLowerInvariant() -ne '57589151165e5d73c0b0339623e3ee3b2db9ea7c54ffbac69246c9ff3532da2f'){throw 'BASE_HASH_DRIFT'}
           python qa/checkpoint76/reconstruct.py "$env:RUNNER_TEMP/cp76" $base qa/checkpoint76/transfer.b64
           if($LASTEXITCODE -ne 0){throw 'EXACT_REBUILD_FAILED'}
+          python qa/checkpoint76/sequence4.py "$env:RUNNER_TEMP/cp76/out"
+          if($LASTEXITCODE -ne 0){throw 'SEQUENCE_CORRECTION_FAILED'}
       - name: Actual native verifier on all eight declared archive baselines
         shell: pwsh
         run: |
@@ -43,7 +45,7 @@ jobs:
           if($LASTEXITCODE -ne 0){throw 'ACTUAL_PACKAGE_GATE_QA_FAILED'}
       - uses: actions/upload-artifact@v4
         with:
-          name: SOKNA-CHECKPOINT76-NATIVE-ADMISSION-RECEIPT-QA-ONLY
+          name: SOKNA-CHECKPOINT76-NATIVE-SEQ4-ADMISSION-RECEIPT-QA-ONLY
           path: ${{ runner.temp }}/admission-proof.json
           if-no-files-found: error
           retention-days: 30
