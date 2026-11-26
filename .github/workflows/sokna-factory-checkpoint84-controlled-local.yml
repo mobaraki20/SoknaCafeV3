@@ -47,10 +47,10 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           $target=Get-Item "$env:RUNNER_TEMP/cp76/out/LOCAL-231GG-UPDATE-QA-DO-NOT-INSTALL.zip"
-          $home=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'|Select-Object -First 1
-          if(!$home){throw 'PINNED_HOME_ARCHIVE_MISSING'}
+          $historicalHomeArchive=Get-ChildItem "$env:RUNNER_TEMP/home" -Recurse -File -Filter 'SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip'|Select-Object -First 1
+          if(!$historicalHomeArchive){throw 'PINNED_HOME_ARCHIVE_MISSING'}
           $controlled=Join-Path $env:RUNNER_TEMP 'LOCAL-231GG-CONTROLLED-HOME-CANARY.zip'
-          python qa/factory/build_checkpoint84_controlled_local.py $target.FullName $home.FullName $controlled
+          python qa/factory/build_checkpoint84_controlled_local.py $target.FullName $historicalHomeArchive.FullName $controlled
           if($LASTEXITCODE -ne 0){throw 'CONTROLLED_BUILD_FAILED'}
           $sha=(Get-FileHash $controlled -Algorithm SHA256).Hash.ToLowerInvariant()
           "outer_sha=$sha" >> $env:GITHUB_OUTPUT
