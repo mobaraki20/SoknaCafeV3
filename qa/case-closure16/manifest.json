@@ -1,0 +1,18 @@
+{
+  "source_sha256": "dea984bc03eb92df99aeb6fbc02f239e1235983d994fe892d2a9ebcb3f25f738",
+  "previous_sha256": "dd52ec0813efe7c76a66fb996383ceaac8c61e63ef00cbe36dbb97aa00c3e7dc",
+  "changed": [
+    "local/public/assets/connections-workspace.js",
+    "local/public/integrations/api.php",
+    "local/src/Domain/Integrations/AccommodationTransport.php"
+  ],
+  "trees": {
+    "local": "da4e257fbae4aedf4f9b0e93c5acda3bebc167e1838ca2e95c035e80163081b8",
+    "public": "37db20053a4bec5244f9ec0cbe4e10b68d0a17c8afb7e6b174fad4e54b83fe26"
+  },
+  "files": {
+    "local/public/assets/connections-workspace.js": "7d036bf661cb156314e97947f5c082edd1ccf6fb3a9bd912917bb4e44dd1c5e5",
+    "local/public/integrations/api.php": "8fe5056d2672cca3b1ae5cd528af1184ed6ae925d3f08a1c755e79756f9521f9",
+    "local/src/Domain/Integrations/AccommodationTransport.php": "d3abc9c63a87c1248c156a76b15ffff7e8784d79fc42eb2f59c2c5157357f5ff"
+  }
+}
