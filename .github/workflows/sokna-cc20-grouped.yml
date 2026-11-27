@@ -1,4 +1,4 @@
-name: SOKNA CASE-CLOSURE-25 grouped guest QR media and management (QA ONLY)
+name: SOKNA CASE-CLOSURE-26 corrected guest schedule and publication (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -571,7 +571,262 @@ jobs:
               assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
               print('PASS EXACT CASE-CLOSURE-24',host,n,actual)
           PYCODE
-      - name: Grouped remaining guest QR media and management acceptance
+      - name: Apply exact CASE-CLOSURE-26 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          cat > "$W/cc26.patch" <<'SOKNA_QA_CC26_PATCH'
+          --- a/local/src/Domain/Orders/OrderCatalogService.php
+          +++ b/local/src/Domain/Orders/OrderCatalogService.php
+          @@ -253,15 +253,11 @@
+                   $ids=array_values(array_unique(array_map('intval',$ids)));
+                   $ph=implode(',',array_fill(0,count($ids),'?'));
+                   $itemSchedule=self::itemScheduleSql('i');
+          -        $menuSchedule=self::menuScheduleSql('mcat');
+                   $activeMenuMembership="EXISTS(SELECT 1 FROM menu_items mi_cat
+                       JOIN menus mcat ON mcat.id=mi_cat.menu_id
+                       JOIN menu_categories mc_cat ON mc_cat.menu_id=mcat.id AND mc_cat.category_id=i.category_id
+                       WHERE mi_cat.item_id=i.id AND mcat.status='active')";
+          -        $scheduledMenuMembership="EXISTS(SELECT 1 FROM menu_items mi_cat
+          -            JOIN menus mcat ON mcat.id=mi_cat.menu_id
+          -            JOIN menu_categories mc_cat ON mc_cat.menu_id=mcat.id AND mc_cat.category_id=i.category_id
+          -            WHERE mi_cat.item_id=i.id AND mcat.status='active' AND ($menuSchedule))";
+          +        $scheduledMenuMembership=self::scheduledMenuMembershipSql();
+                   $stmt=$this->pdo->prepare("SELECT i.id,i.category_id,i.name,i.price,i.preparation_station,i.sellable_kind,i.available,i.active,i.lifecycle_status,i.guest_visible,i.staff_visible,i.staff_only,i.takeaway_allowed,
+                       COALESCE(c.name,'') category_name,vm.family_id variant_family_id,vf.family_key variant_family_key,vf.name variant_family_name,vm.label variant_label,COALESCE(c.active,0) category_active,COALESCE(c.lifecycle_status,'inactive') category_lifecycle_status,COALESCE(c.guest_visible,0) category_guest_visible,COALESCE(c.staff_visible,0) category_staff_visible,COALESCE(c.audience,'guest_staff') category_audience,
+                       ($itemSchedule) schedule_active,($activeMenuMembership) menu_active,($scheduledMenuMembership) menu_schedule_active
+          @@ -312,6 +308,27 @@
+                   return in_array($station,['kitchen','hot_bar','cold_bar','none'],true)?$station:'cold_bar';
+               }
+           
+          +    /** Root guest sellables only: use the very same schedule predicates as order validation.
+          +     * Physical availability and staff eligibility remain independent. */
+          +    public function guestScheduleClosedItemIds(): array
+          +    {
+          +        $itemSchedule=self::itemScheduleSql('i');
+          +        $membership=self::scheduledMenuMembershipSql();
+          +        $rows=$this->pdo->query("SELECT i.id FROM items i JOIN categories c ON c.id=i.category_id
+          +            WHERE i.lifecycle_status='active' AND i.guest_visible=1 AND i.sellable_kind='menu_item'
+          +              AND c.lifecycle_status='active' AND c.guest_visible=1 AND NOT (($itemSchedule) AND ($membership)) ORDER BY i.id")->fetchAll(PDO::FETCH_COLUMN);
+          +        return array_map('intval',$rows);
+          +    }
+          +
+          +    private static function scheduledMenuMembershipSql(): string
+          +    {
+          +        $menuSchedule=self::menuScheduleSql('mcat');
+          +        return "EXISTS(SELECT 1 FROM menu_items mi_cat
+          +            JOIN menus mcat ON mcat.id=mi_cat.menu_id
+          +            JOIN menu_categories mc_cat ON mc_cat.menu_id=mcat.id AND mc_cat.category_id=i.category_id
+          +            WHERE mi_cat.item_id=i.id AND mcat.status='active' AND ($menuSchedule))";
+          +    }
+          +
+               private static function itemScheduleSql(string $a): string
+               {
+                   $a=preg_replace('/[^A-Za-z0-9_]/','',$a)?:'i';
+          --- a/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
+          +++ b/local/src/Domain/PublicEdge/PublicProjectionBuilder.php
+          @@ -216,7 +216,7 @@
+               {
+                   $items=[];foreach($this->pdo->query("SELECT id,available FROM items WHERE lifecycle_status='active' AND guest_visible=1 AND sellable_kind='menu_item'")->fetchAll(PDO::FETCH_ASSOC) as $r)$items[(string)$r['id']]=['available'=>(bool)$r['available']];
+                   $tables=[];$q=$this->pdo->query("SELECT t.id,s.public_token,s.started_at,s.status FROM cafe_tables t LEFT JOIN table_sessions s ON s.table_id=t.id AND s.status='active' AND s.live_table_guard IS NOT NULL WHERE t.active=1 ORDER BY t.id");foreach($q->fetchAll(PDO::FETCH_ASSOC) as $r)$tables[(string)$r['id']]=['session'=>!empty($r['public_token'])?['token'=>(string)$r['public_token'],'started_at'=>gmdate('c',strtotime((string)$r['started_at'])),'status'=>(string)$r['status']]:null];
+          -        $state=['items'=>$items,'order_acceptance'=>['cafe'=>$this->settingBool('orders_accepting.cafe',true),'kitchen'=>$this->settingBool('orders_accepting.kitchen',true),'bar'=>$this->settingBool('orders_accepting.bar',true)],'waiter_enabled_table'=>$this->settingBool('waiter_call_enabled',true),'waiter_enabled_public'=>$this->settingBool('public_waiter_call_enabled',false),'tables'=>$tables];return ['version'=>self::hash($state),'generated_at'=>gmdate('c')]+$state;
+          +        $state=['items'=>$items,'guest_schedule_closed_ids'=>($this->orderCatalog??new OrderCatalogService($this->pdo))->guestScheduleClosedItemIds(),'order_acceptance'=>['cafe'=>$this->settingBool('orders_accepting.cafe',true),'kitchen'=>$this->settingBool('orders_accepting.kitchen',true),'bar'=>$this->settingBool('orders_accepting.bar',true)],'waiter_enabled_table'=>$this->settingBool('waiter_call_enabled',true),'waiter_enabled_public'=>$this->settingBool('public_waiter_call_enabled',false),'tables'=>$tables];return ['version'=>self::hash($state),'generated_at'=>gmdate('c')]+$state;
+               }
+               /** @return list<string> */
+               public function remoteModelKeys(): array
+          --- a/local/src/Domain/Orders/GuestOrderService.php
+          +++ b/local/src/Domain/Orders/GuestOrderService.php
+          @@ -111,7 +111,7 @@
+                           'success'=>true,'table'=>['id'=>(int)$table['id'],'name'=>(string)$table['name'],'code'=>(string)$table['code']],
+                           'session'=>$session?['token'=>(string)$session['public_token'],'started_at'=>(string)$session['started_at'],'status'=>(string)$session['status']]:null,
+                           'pending_session'=>$pending?['token'=>(string)$pending['public_token'],'started_at'=>(string)$pending['started_at'],'status'=>(string)$pending['status']]:null,
+          -                'can_order'=>$acceptance['cafe'],'order_acceptance'=>$acceptance,'order_acceptance_messages'=>[
+          +                'can_order'=>$acceptance['cafe'],'guest_schedule_closed_ids'=>$this->catalog->guestScheduleClosedItemIds(),'order_acceptance'=>$acceptance,'order_acceptance_messages'=>[
+                               'cafe'=>$this->acceptanceMessage('cafe'),'kitchen'=>$this->acceptanceMessage('kitchen'),'bar'=>$this->acceptanceMessage('bar')],
+                           'station_states'=>[],'station_state_hash'=>substr(hash('sha256',json_encode($acceptance)),0,16),
+                           'waiter_enabled'=>$this->settingBool('waiter_call_enabled',true),'active_call'=>$active,'late_join'=>$late,'requires_operator_confirmation'=>$session===null,
+          --- a/public/src/Guest/GuestPageRenderer.php
+          +++ b/public/src/Guest/GuestPageRenderer.php
+          @@ -168,6 +168,7 @@
+                   $catalogRows = array_values(array_filter((array)($catalog['items'] ?? []),'is_array'));
+                   $catalogById=[];foreach($catalogRows as $row){$id=(int)($row['id']??0);if($id>0)$catalogById[$id]=$row;}
+                   $availabilityItems=is_array($availability['items']??null)?$availability['items']:[];
+          +        $scheduleClosed=array_fill_keys(array_map('intval',is_array($availability['guest_schedule_closed_ids']??null)?$availability['guest_schedule_closed_ids']:[]),true);
+                   foreach ($catalogRows as $item) {
+                       $id=(int)($item['id']??0);if($id<1)continue;$source=(string)($item['image_path']??'');$station=(string)($item['preparation_station']??'other');
+                       $live=is_array($availabilityItems[(string)$id]??null)?$availabilityItems[(string)$id]:[];$catalogAvailable=!empty($item['available']);$projectionPresent=array_key_exists('available',$live);$projectedAvailable=$projectionPresent?(bool)$live['available']:$catalogAvailable;$available=$modelFresh?$projectedAvailable:$catalogAvailable;
+          @@ -180,11 +181,12 @@
+                           if($choiceConfigured&&!$choiceOrderAvailable)$bundleOrderAvailable=false;
+                       }
+                       $effectivePrice=max(0,(int)($item['price']??0)+$fixedDelta);$available=$available&&$bundleAvailable;
+          -            $orderAvailable=$available&&(!$modelFresh||($cafeOpen&&($bundle!==null?$bundleOrderAvailable:$scopeOpen)));$blockedScope=$modelFresh?(!$cafeOpen?'cafe':(!$scopeOpen&&$bundle===null?$scope:($bundle!==null&&!$bundleOrderAvailable?$componentBlockedScope:''))):'';
+          +            $scheduleOpen=!isset($scheduleClosed[$id]);
+          +            $orderAvailable=$scheduleOpen&&$available&&(!$modelFresh||($cafeOpen&&($bundle!==null?$bundleOrderAvailable:$scopeOpen)));$blockedScope=$modelFresh?(!$cafeOpen?'cafe':(!$scopeOpen&&$bundle===null?$scope:($bundle!==null&&!$bundleOrderAvailable?$componentBlockedScope:''))):'';
+                       $clientItems[(string)$id]=[
+                           'id'=>$id,'name'=>(string)($item['name']??''),'description'=>(string)($item['description']??''),'category'=>(string)($item['category_name']??''),
+          -                'price'=>$effectivePrice,'base_price'=>max(0,(int)($item['price']??0)),'catalog_available'=>$catalogAvailable,'projected_available'=>$projectedAvailable,'availability_projection_present'=>$projectionPresent,'available'=>$available,'order_available'=>$orderAvailable,'blocked_scope'=>$blockedScope,
+          -                'unavailable_message'=>$blockedScope!==''?(string)($acceptanceMessages[$blockedScope]??'این بخش فعلاً سفارش تازه نمی‌پذیرد.'):(!$available?'این ترکیب یا یکی از اجزای آن فعلاً قابل سفارش نیست.':''),
+          +                'price'=>$effectivePrice,'base_price'=>max(0,(int)($item['price']??0)),'catalog_available'=>$catalogAvailable,'projected_available'=>$projectedAvailable,'availability_projection_present'=>$projectionPresent,'available'=>$available,'order_available'=>$orderAvailable,'schedule_open'=>$scheduleOpen,'blocked_scope'=>$blockedScope,
+          +                'unavailable_message'=>($available&&!$scheduleOpen)?'این آیتم در زمان سرو فعلی قابل سفارش نیست.':($blockedScope!==''?(string)($acceptanceMessages[$blockedScope]??'این بخش فعلاً سفارش تازه نمی‌پذیرد.'):(!$available?'این ترکیب یا یکی از اجزای آن فعلاً قابل سفارش نیست.':'')),
+                           'takeaway_allowed'=>!array_key_exists('takeaway_allowed',$item)||(bool)$item['takeaway_allowed'],'preparation_station'=>$station,
+                           'suggested_item_id'=>isset($item['suggested_item_id'])&&$item['suggested_item_id']!==null?(int)$item['suggested_item_id']:null,'suggested_item_ids'=>array_values(array_map('intval',(array)($item['suggested_item_ids']??[]))),
+                           'variant_family_id'=>(int)($item['variant_family_id']??0),'variant_family_name'=>(string)($item['variant_family_name']??''),'variant_family_description'=>(string)($item['variant_family_description']??''),'variant_label'=>(string)($item['variant_label']??''),'variant_members'=>array_values((array)($item['variant_members']??[])),
+          --- a/local/src/Domain/GuestLan/GuestLanPageRenderer.php
+          +++ b/local/src/Domain/GuestLan/GuestLanPageRenderer.php
+          @@ -153,6 +153,7 @@
+                   $catalogRows = array_values(array_filter((array)($catalog['items'] ?? []),'is_array'));
+                   $catalogById=[];foreach($catalogRows as $row){$id=(int)($row['id']??0);if($id>0)$catalogById[$id]=$row;}
+                   $availabilityItems=is_array($availability['items']??null)?$availability['items']:[];
+          +        $scheduleClosed=array_fill_keys(array_map('intval',is_array($availability['guest_schedule_closed_ids']??null)?$availability['guest_schedule_closed_ids']:[]),true);
+                   foreach ($catalogRows as $item) {
+                       $id=(int)($item['id']??0);if($id<1)continue;$source=(string)($item['image_path']??'');$station=(string)($item['preparation_station']??'other');
+                       $live=is_array($availabilityItems[(string)$id]??null)?$availabilityItems[(string)$id]:[];$available=array_key_exists('available',$live)?(bool)$live['available']:!empty($item['available']);
+          @@ -165,11 +166,12 @@
+                           if($choiceConfigured&&!$choiceOrderAvailable)$bundleOrderAvailable=false;
+                       }
+                       $effectivePrice=max(0,(int)($item['price']??0)+$fixedDelta);$available=$available&&$bundleAvailable;
+          -            $orderAvailable=$available&&$cafeOpen&&($bundle!==null?$bundleOrderAvailable:$scopeOpen);$blockedScope=!$cafeOpen?'cafe':(!$scopeOpen&&$bundle===null?$scope:($bundle!==null&&!$bundleOrderAvailable?$componentBlockedScope:''));
+          +            $scheduleOpen=!isset($scheduleClosed[$id]);
+          +            $orderAvailable=$scheduleOpen&&$available&&$cafeOpen&&($bundle!==null?$bundleOrderAvailable:$scopeOpen);$blockedScope=!$cafeOpen?'cafe':(!$scopeOpen&&$bundle===null?$scope:($bundle!==null&&!$bundleOrderAvailable?$componentBlockedScope:''));
+                       $clientItems[(string)$id]=[
+                           'id'=>$id,'name'=>(string)($item['name']??''),'description'=>(string)($item['description']??''),'category'=>(string)($item['category_name']??''),
+          -                'price'=>$effectivePrice,'base_price'=>max(0,(int)($item['price']??0)),'available'=>$available,'order_available'=>$orderAvailable,'blocked_scope'=>$blockedScope,
+          -                'unavailable_message'=>$blockedScope!==''?(string)($acceptanceMessages[$blockedScope]??'این بخش فعلاً سفارش تازه نمی‌پذیرد.'):(!$available?'این ترکیب یا یکی از اجزای آن فعلاً قابل سفارش نیست.':''),
+          +                'price'=>$effectivePrice,'base_price'=>max(0,(int)($item['price']??0)),'available'=>$available,'order_available'=>$orderAvailable,'schedule_open'=>$scheduleOpen,'blocked_scope'=>$blockedScope,
+          +                'unavailable_message'=>($available&&!$scheduleOpen)?'این آیتم در زمان سرو فعلی قابل سفارش نیست.':($blockedScope!==''?(string)($acceptanceMessages[$blockedScope]??'این بخش فعلاً سفارش تازه نمی‌پذیرد.'):(!$available?'این ترکیب یا یکی از اجزای آن فعلاً قابل سفارش نیست.':'')),
+                           'takeaway_allowed'=>!array_key_exists('takeaway_allowed',$item)||(bool)$item['takeaway_allowed'],'preparation_station'=>$station,
+                           'suggested_item_id'=>isset($item['suggested_item_id'])&&$item['suggested_item_id']!==null?(int)$item['suggested_item_id']:null,'suggested_item_ids'=>array_values(array_map('intval',(array)($item['suggested_item_ids']??[]))),
+                           'variant_family_id'=>(int)($item['variant_family_id']??0),'variant_family_name'=>(string)($item['variant_family_name']??''),'variant_family_description'=>(string)($item['variant_family_description']??''),'variant_label'=>(string)($item['variant_label']??''),'variant_members'=>array_values((array)($item['variant_members']??[])),
+          --- a/public/src/Guest/GuestCompatibilityService.php
+          +++ b/public/src/Guest/GuestCompatibilityService.php
+          @@ -216,6 +216,7 @@
+                           'session'=>$active===null?null:['token'=>(string)($active['token']??''),'started_at'=>(string)($active['started_at']??''),'status'=>(string)($active['status']??'active')],
+                           'pending_session'=>$pending===null?null:['token'=>(string)($pending['token']??''),'started_at'=>(string)($pending['started_at']??''),'status'=>(string)($pending['status']??'pending')],
+                           'can_order'=>$orderReady&&(!$acceptanceHardGate||$cafeAccepting),'order_policy_ready'=>$orderIntakeEnabled&&(!$acceptanceHardGate||$cafeAccepting),'order_intake_enabled'=>$orderIntakeEnabled,'mutation_ready'=>$live,'command_ready'=>$live,'order_ready'=>$orderReady,'model_stale'=>$modelStale,'order_acceptance_fresh'=>!$modelStale,'order_acceptance'=>$acceptance,'order_acceptance_messages'=>$messages,
+          +                'guest_schedule_closed_ids'=>$this->freshScheduleIds($bundle,$state),
+                           'station_states'=>is_array($bundle['availability']['station_states']??null)?$bundle['availability']['station_states']:[],
+                           'station_state_hash'=>(string)($bundle['availability']['station_state_hash']??''),
+                           'waiter_policy_enabled'=>$modelStale||!empty($payload['waiter_enabled_table']),
+          @@ -254,11 +255,18 @@
+                       $body['model_stale']=($body['stale']??true)===true;
+                       $body['order_acceptance_fresh']=!$body['model_stale'];
+                       $body['order_policy_ready']=$body['order_intake_enabled']&&($body['model_stale']||!empty($acceptance['cafe']));
+          +            $body['guest_schedule_closed_ids']=$this->freshScheduleIds($bundle,$state);
+                       $result['body']=$body;
+                   }
+                   return $result;
+               }
+           
+          +    private function freshScheduleIds(array $bundle,array $state): ?array
+          +    {
+          +        $ids=$bundle['availability']['guest_schedule_closed_ids']??null;
+          +        return ($state['availability_fresh']??false)===true&&is_array($ids)?array_values(array_map('intval',$ids)):null;
+          +    }
+          +
+               public function waiterCall(string $installationId, array $data): array
+               {
+                   $context = $this->bundleAndTable($installationId, $data, true);
+          @@ -446,6 +454,7 @@
+                       'session'=>$session?['token'=>(string)($session['token']??''),'started_at'=>(string)($session['started_at']??''),'status'=>(string)($session['status']??'active')]:null,
+                       'pending_session'=>$pending?['token'=>(string)($pending['token']??''),'started_at'=>(string)($pending['started_at']??''),'status'=>(string)($pending['status']??'pending')]:null,
+                       'can_order'=>$orderReady&&($modelStale||$cafeAccepting),'order_policy_ready'=>$orderIntakeEnabled&&($modelStale||$cafeAccepting),'order_intake_enabled'=>$orderIntakeEnabled,'mutation_ready'=>$commandReady,'command_ready'=>$commandReady,'order_ready'=>$orderReady,'model_stale'=>$modelStale,'order_acceptance_fresh'=>!$modelStale,'order_acceptance'=>$acceptance,'order_acceptance_messages'=>$messages,
+          +            'guest_schedule_closed_ids'=>$this->freshScheduleIds($bundle,$state),
+                       'station_states'=>is_array($availability['station_states']??null)?$availability['station_states']:[],'station_state_hash'=>(string)($availability['station_state_hash']??''),
+                       'waiter_policy_enabled'=>$modelStale||!empty($availability['waiter_enabled_table']),'waiter_enabled'=>$commandReady&&($modelStale||!empty($availability['waiter_enabled_table'])),'active_call'=>$activeCall,
+                       'late_join'=>false,'requires_operator_confirmation'=>!empty($bundle['snapshot']['features']['table_sessions_enabled'])&&$session===null,'degraded'=>true,
+          --- a/public/assets/scds/guest.js
+          +++ b/public/assets/scds/guest.js
+          @@ -607,6 +607,12 @@
+               const scope = itemScope({preparation_station:station});
+               return acceptance?.cafe !== false && acceptance?.[scope] !== false;
+             };
+          +  const applyGuestSchedule = (ids) => {
+          +    // Missing fields from older or stale projections must not clear a known restriction.
+          +    if (!Array.isArray(ids)) return;
+          +    const closed = new Set(ids.map(Number));
+          +    itemMap.forEach((item,id) => { item.schedule_open = !closed.has(id); });
+          +  };
+             const computeItemAvailability = (item, acceptance = currentAcceptance) => {
+               let physical = projectedPhysicalAvailable(item);
+               let orderAvailable = physical && scopeAccepting(item?.preparation_station, acceptance);
+          @@ -640,9 +646,10 @@
+                 blockedScope = acceptance?.cafe === false ? 'cafe' : (acceptance?.[scope] === false ? scope : '');
+               }
+               item.available = physical;
+          -    item.order_available = orderAvailable;
+          +    item.order_available = orderAvailable && item.schedule_open !== false;
+               item.blocked_scope = blockedScope;
+               if (!physical) item.unavailable_message = item?.is_bundle ? 'این ترکیب یا یکی از اجزای آن فعلاً قابل سفارش نیست.' : 'این آیتم فعلاً ناموجود است.';
+          +    else if (item.schedule_open === false) item.unavailable_message = 'این آیتم در زمان سرو فعلی قابل سفارش نیست.';
+               else if (blockedScope) item.unavailable_message = blockedScope === 'kitchen' ? 'آشپزخانه فعلاً سفارش تازه نمی‌پذیرد.' : blockedScope === 'bar' ? 'بار فعلاً سفارش تازه نمی‌پذیرد.' : 'سفارش‌گیری فعلاً متوقف است.';
+               else item.unavailable_message = '';
+             };
+          @@ -1301,6 +1308,7 @@
+               if(!tableToken||!endpoints.context)return null;
+               try{
+                 const body=apiOk(await postJson(endpoints.context,{table_token:tableToken,device_token:deviceToken},9000),'وضعیت میز تازه نشد.');
+          +      applyGuestSchedule(body.guest_schedule_closed_ids);
+                 mutationReady=body.mutation_ready===true;modelFresh=body.model_stale!==true;root.dataset.mutationReady=mutationReady?'1':'0';root.dataset.modelFresh=modelFresh?'1':'0';
+                 setConnectivityState(body.degraded===true?'stale':'fresh',body.last_sync_at||lastSyncAt,{mutationReady,modelFresh});
+                 const previousSession=String(sessionToken||''),nextToken=body.session?.token||body.pending_session?.token||'';if(nextToken){sessionToken=String(nextToken);root.dataset.sessionToken=sessionToken;}if(previousSession&&sessionToken&&previousSession!==sessionToken&&(cart.size||String(customerNote?.value||'').trim())){clearGuestDraft();guestDraftRestoreDone=true;editingOrder=null;cart.clear();if(customerNote)customerNote.value='';renderCart();toast('نشست میز تغییر کرده؛ پیش‌نویس قبلی برای جلوگیری از ثبت روی حساب جدید کنار گذاشته شد.',true);}
+          @@ -1686,6 +1694,7 @@
+                   try{
+                     const body=apiOk(await postJson(endpoints.changes,{cursor:projectionCursor,wait_ms:9000},12000,controller?{signal:controller.signal}:{}),'');
+                     if(generation!==projectionWatchGeneration||projectionWatchStopped||document.hidden)break;
+          +          applyGuestSchedule(body.guest_schedule_closed_ids);
+                     const nextState=body.stale===true?'stale':'fresh',nextMutation=body.mutation_ready===true,nextOrderPolicy=body.order_policy_ready===true,recovering=nextMutation&&(!mutationReady||nextState==='fresh'&&connectivityState!=='fresh');
+                     if(Object.prototype.hasOwnProperty.call(body,'order_intake_enabled')){orderIntakeEnabled=body.order_intake_enabled===true;root.dataset.orderIntakeEnabled=orderIntakeEnabled?'1':'0';}
+                     if(Object.prototype.hasOwnProperty.call(body,'order_policy_ready')){orderingEnabled=nextOrderPolicy;root.dataset.orderingEnabled=orderingEnabled?'1':'0';}
+          --- a/local/public/assets/scds/guest.js
+          +++ b/local/public/assets/scds/guest.js
+          @@ -529,6 +529,12 @@
+           
+           
+             const itemScope = (item) => item?.preparation_station === 'kitchen' ? 'kitchen' : (['hot_bar', 'cold_bar'].includes(String(item?.preparation_station || '')) ? 'bar' : 'cafe');
+          +  const applyGuestSchedule = (ids) => {
+          +    // Missing fields from older or stale projections must not clear a known restriction.
+          +    if (!Array.isArray(ids)) return;
+          +    const closed = new Set(ids.map(Number));
+          +    itemMap.forEach((item,id) => { item.schedule_open = !closed.has(id); });
+          +  };
+             const setItemAvailability = (acceptance = {}) => {
+               const cafeOpen = acceptance.cafe !== false;
+               itemMap.forEach((item, id) => {
+          @@ -549,9 +555,11 @@
+                   } else if (!accepted) fixedOrderOpen = false;
+                   if (physical && !accepted && !componentBlockedScope) componentBlockedScope = !cafeOpen ? 'cafe' : cScope;
+                 }
+          -      item.order_available = Boolean(item.available) && cafeOpen && (item.is_bundle ? fixedOrderOpen && (!hasChoice || choiceOrderOpen) : scopeOpen);
+          +      item.order_available = item.schedule_open !== false && Boolean(item.available) && cafeOpen && (item.is_bundle ? fixedOrderOpen && (!hasChoice || choiceOrderOpen) : scopeOpen);
+                 item.blocked_scope = !cafeOpen ? 'cafe' : (!item.order_available && item.available && item.is_bundle ? componentBlockedScope : (!scopeOpen && !item.is_bundle ? scope : ''));
+          -      if (item.blocked_scope) {
+          +      if (item.available && item.schedule_open === false) {
+          +        item.unavailable_message = 'این آیتم در زمان سرو فعلی قابل سفارش نیست.';
+          +      } else if (item.blocked_scope) {
+                   item.unavailable_message = item.blocked_scope === 'kitchen' ? 'آشپزخانه فعلاً سفارش تازه نمی‌پذیرد.' : item.blocked_scope === 'bar' ? 'بار فعلاً سفارش تازه نمی‌پذیرد.' : 'سفارش‌گیری فعلاً متوقف است.';
+                 } else item.unavailable_message = '';
+                 qa(`[data-item-id="${CSS.escape(String(id))}"]`).forEach((card) => {
+          @@ -1065,6 +1073,7 @@
+               if(!tableToken||!endpoints.context)return null;
+               try{
+                 const body=apiOk(await postJson(endpoints.context,{table_token:tableToken,device_token:deviceToken},9000),'وضعیت میز تازه نشد.');
+          +      applyGuestSchedule(body.guest_schedule_closed_ids);
+                 setConnectivityState(body.degraded===true?'stale':'fresh',body.last_sync_at||lastSyncAt);
+                 const previousSession=String(sessionToken||''),nextToken=body.session?.token||body.pending_session?.token||'';if(nextToken){sessionToken=String(nextToken);root.dataset.sessionToken=sessionToken;}if(previousSession&&sessionToken&&previousSession!==sessionToken&&(cart.size||String(customerNote?.value||'').trim())){clearGuestDraft();guestDraftRestoreDone=true;editingOrder=null;cart.clear();if(customerNote)customerNote.value='';renderCart();toast('نشست میز تغییر کرده؛ پیش‌نویس قبلی برای جلوگیری از ثبت روی حساب جدید کنار گذاشته شد.',true);}
+                 orderingEnabled=body.can_order===true&&unsafeAllowed();root.dataset.orderingEnabled=orderingEnabled?'1':'0';setItemAvailability(body.order_acceptance||{});if(sessionToken)restoreGuestDraft();
+          SOKNA_QA_CC26_PATCH
+          (cd "$W"; git apply --check cc26.patch; git apply cc26.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc26-source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]); H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local': 'dbf86cac0e8cf12086fce198979424397cb75ca14a51271313d753dc5d55e297', 'public': '21815114deed0c12042750de55e1e8c3add5d3468081b5e1031a0ca0cd38d09c'}
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-26',host,n,actual)
+          PYCODE
+      - name: Real corrected guest and publication acceptance
         shell: bash
         run: |
           set -euo pipefail
@@ -579,7 +834,7 @@ jobs:
           export QA_WORK="$W" TMPDIR="$W"
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          cat > "$W/gate25.php" <<'SOKNA_QA_25_gate25_php'
+          cat > "$W/gate26.php" <<'SOKNA_QA_CC26_gate26_php'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
@@ -589,42 +844,47 @@ jobs:
           $mode=$argv[2]??'seed';$fpath=$W.'/cc25-fixture.json';
           if($mode==='relay'){for($end=time()+240;time()<$end;){try{$r=$c->publicEdgeRelay()->syncRealtimeExchange(8,3);if(($r['processed']??0)>0||($r['acked']??0)>0)echo 'RELAY '.json_encode($r)."\n";}catch(Throwable $e){echo 'RELAY_ERROR '.$e->getMessage()."\n";}usleep(250000);}exit;}
           if($mode==='publish'||$mode==='rotate'||$mode==='restore'){$f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);if($mode!=='publish'){$r=$c->adminControls()->rotateQr($f['table'],$admin,$mode==='restore',$mode==='restore'?$f['rotated']:$f['token']);if($mode==='rotate')$f['rotated']=$r['access_token'];else ck($r['access_token']===$f['token'],'original QR restored');file_put_contents($fpath,json_encode($f));}$r=$c->publicEdgePublisher()->syncGuestPublication(10);$s=$r['state'];ck(($s['critical_ready']??false)===true,'signed critical ACK '.$mode);ck($s['expected_revision_id']===$s['ack_revision_id'],'revision exact '.$mode);echo 'SYNC_STATE '.json_encode(['status'=>$s['status'],'media_ready'=>$s['media_ready'],'channels'=>$r['channels']])."\n";exit;}
+          if(in_array($mode,['flip-open','flip-closed'],true)){$f=json_decode(file_get_contents($fpath),true);$sql=$mode==='flip-open'?'UPDATE items SET schedule_days=DAYOFWEEK(NOW()) WHERE id=?':'UPDATE items SET schedule_days=IF(DAYOFWEEK(NOW())=7,1,DAYOFWEEK(NOW())+1) WHERE id=?';$p->prepare($sql)->execute([$f['closed']]);$a=$c->publicProjectionBuilder()->availability();ck(in_array($f['closed'],$a['guest_schedule_closed_ids'],true)===($mode==='flip-closed'),'canonical schedule '.$mode);$r=$c->publicEdgePublisher()->syncGuestPublication(10);ck(($r['state']['critical_ready']??false)===true,'schedule projection ACK');exit;}
           if($mode==='media'){group('CAT-L313 media retry and content hash',function()use($c,$W,$fpath){$f=json_decode(file_get_contents($fpath),true);$pub=$c->publicEdgePublisher();for($i=0;$i<8;$i++){$r=$pub->syncGuestPublication(10);$s=$r['state'];echo 'MEDIA_STATE '.json_encode(['status'=>$s['status'],'media_ready'=>$s['media_ready'],'channel'=>$r['channels']['guest_media']??null])."\n";if(($s['media_ready']??false)===true)break;}ck(($s['critical_ready']??false)===true,'critical remains ready during media retry');ck(($s['media_ready']??false)===true&&$s['status']==='synced','complete actual media ACK');});exit($fail?1:0);}
           if($mode==='verify'){group('CAT-L314 persisted order',function()use($p){ck((int)scalar($p,"SELECT COUNT(*) FROM orders WHERE client_token='qa25-closed-submit-123456'")===0,'closed schedule never persisted');ck((int)scalar($p,"SELECT COUNT(*) FROM orders WHERE client_token='qa25-open-submit-123456' AND order_source='guest' AND status='pending_approval'")===1,'open guest order persisted once pending review');});exit($fail?1:0);}
           $svc=$c->catalogAdmin();$f=[];
           group('CAT-L314 ADM-L453 CAT-L313 fixtures',function()use($svc,$p,$admin,$c,&$f,$W){$mid=(int)$svc->saveMenu(['name'=>'QA25 schedule menu','status'=>'active'],$admin)['id'];$cat=(int)$svc->saveCategory(['name'=>'QA25 category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];$f=['menu'=>(string)scalar($p,'SELECT menu_key FROM menus WHERE id=?',[$mid]),'category'=>$cat,'menu_id'=>$mid];foreach(['open','closed'] as $name){$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES(?,?,?,10000,1,1,'active',1,1,'hot_bar')")->execute(['qa25-'.$name,$cat,'QA25 '.$name]);$it=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$it]);if($name==='closed')$p->prepare('UPDATE items SET schedule_days=IF(DAYOFWEEK(NOW())=7,1,DAYOFWEEK(NOW())+1) WHERE id=?')->execute([$it]);$f[$name]=$it;}$table=$p->query('SELECT id,access_token FROM cafe_tables WHERE active=1 ORDER BY id DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC);$f['table']=(int)$table['id'];$f['token']=$table['access_token'];$f['installation']=(string)(json_decode(file_get_contents($W.'/cp144-fixture.json'),true)['installation']);$p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('orders_accepting.cafe','1'),('orders_accepting.bar','1'),('orders_accepting.kitchen','1') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");ck($f['token']!=='','real QR fixture');$im=imagecreatetruecolor(480,360);imagefill($im,0,0,imagecolorallocate($im,30,80,140));$tmp=$W.'/qa25-image.png';imagepng($im,$tmp);imagedestroy($im);$g=$c->guestContent();$upload=$g->importUpload($tmp,'qa25-image.png','QA25 real image',$admin);$g->assignMediaToItem($f['open'],$upload['media_key'],$admin);$f['media_key']=$upload['media_key'];ck(true,'real image imported and assigned');});
-          group('HELP-L568 other real SQL providers',function()use($p,$admin,$bar,$c){$p->prepare("INSERT INTO inventory_items(item_code,name,base_unit,active) VALUES('qa25-normal','QA25 كيك‌ ۱۲۳','count',1)")->execute();$inv=(int)$p->lastInsertId();$p->prepare("INSERT INTO subscribers(name,mobile,mobile_normalized,active) VALUES('QA25 كيك‌ ۱۲۳','00000000123','00000000123',1)")->execute();$sub=(int)$p->lastInsertId();$p->prepare("UPDATE users SET display_name='QA25 كيك‌ ۱۲۳' WHERE id=?")->execute([$bar['id']]);foreach(['qa25 کیک 123','qa25 كيك ١٢٣','QA25 کیک ۱۲۳'] as $q){$r=$c->globalSearch()->search($q,$admin,20);$ids=array_column($r['results'],'id');ck(!$r['partial']&&in_array('inventory:item:'.$inv,$ids,true)&&in_array('subscriber:'.$sub,$ids,true)&&in_array('user:'.$bar['id'],$ids,true),'real inventory subscriber user normalization '.$q);}$r=$c->globalSearch()->search('qa25 کیک ۱۲۳',$bar,20);ck(!in_array('subscriber:'.$sub,array_column($r['results'],'id'),true)&&!in_array('user:'.$bar['id'],array_column($r['results'],'id'),true),'restricted search no subscriber or user disclosure');});
-          group('ADM-L442 notification real delivery',function()use($p,$c,$admin,$bar){$p->exec("INSERT INTO notification_preferences(user_id,in_app_enabled,push_enabled,push_operations_enabled,push_management_enabled) SELECT id,1,0,0,0 FROM users WHERE active=1 ON DUPLICATE KEY UPDATE in_app_enabled=1,push_enabled=0");$d=['title'=>'QA25 synthetic notice','body'=>'QA25 synthetic message','role'=>'operator','target_url'=>'/operator/','request_id'=>md5('qa25-notify')];$svc=$c->notifications();$expected=(int)scalar($p,"SELECT COUNT(*) FROM users WHERE active=1 AND role='operator'");$r=$svc->compose($d,$admin);ck($r['recipients']===$expected&&$r['queued']===$expected,'exact active recipient and queued count');ck($svc->compose($d,$admin)===$r,'exact notification retry receipt');reject(fn()=>$svc->compose(array_replace($d,['title'=>'changed']),$admin),'idempotency_conflict');reject(fn()=>$svc->compose(array_replace($d,['request_id'=>md5('qa25-forbidden')]),$bar),'forbidden');$svc->processPending(200);$actual=(int)scalar($p,"SELECT COUNT(*) FROM notification_inbox i JOIN notification_outbox o ON o.id=i.outbox_id WHERE o.event_key=? AND o.state='delivered'",[$r['event_key']]);ck($actual===$expected,'exact real in-app delivery');ck((int)scalar($p,"SELECT COUNT(*) FROM notification_outbox WHERE event_key=?",[$r['event_key']])===$expected,'no duplicate outbox');});
           file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));exit($fail?1:0);
-          SOKNA_QA_25_gate25_php
-          cat > "$W/gate25.cjs" <<'SOKNA_QA_25_gate25_cjs'
-          const fs=require('fs'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',local='http://127.0.0.1:18765';let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};const f=()=>JSON.parse(fs.readFileSync(W+'/cc25-fixture.json'));const pageURL=(t)=>base+'/menu?installation='+encodeURIComponent(f().installation)+'&table='+encodeURIComponent(t)+'&menu='+encodeURIComponent(f().menu);async function post(path,data){let r=await fetch(base+'/api/guest/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:f().installation,...data})});return {http:r.status,...await r.json()}};async function group(name,fn){try{await fn();console.log('GROUP PASS '+name)}catch(e){fail++;console.log('GROUP FAIL '+name+' '+e.stack)}};const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:390,height:844},locale:'fa-IR'});p.setDefaultTimeout(12000);try{const mode=process.argv[2]||'initial';let x=f();if(mode==='rotated'||mode==='restored'){await group('ADM-L453 actual Public QR '+mode,async()=>{const live=mode==='rotated'?x.rotated:x.token,old=mode==='rotated'?x.token:x.rotated;ck((await p.goto(pageURL(old))).status()===404,'obsolete QR rejected '+mode);ck((await p.goto(pageURL(live))).status()===200,'new valid QR accepted '+mode);await p.screenshot({path:W+'/cc25-qr-'+mode+'.png'});});}else{await group('CAT-L314 actual Public quote and submit',async()=>{ck((await p.goto(pageURL(x.token))).status()===200,'valid actual QR route');let d={table_token:x.token,device_token:'qa25-device-1234567890',quote_mode:'create',items:[{id:x.closed,quantity:1,expected_price:10000}]};let q=await post('order/quote',d);console.log('CLOSED_QUOTE '+JSON.stringify(q));ck(q.success===false&&q.code==='item_unavailable','closed day quote rejected by Local');const submit=async(label,id)=>{let a={...d,device_token:'qa25-device-'+label+'-123456',client_token:'qa25-'+label+'-submit-123456',items:[{id,quantity:1,expected_price:10000}]};const r=await post('order',a);console.log('SUBMIT_INITIAL '+label+' '+JSON.stringify(r));if(r.http!==202)return r;for(let i=0;i<50;i++){let z=await post('orders',{...a,action:'submission_status',request_id:r.request_id});if(z.terminal||z.business_terminal){console.log('SUBMIT_FINAL '+label+' '+JSON.stringify(z));return z}await sleep(250)}throw Error('receipt timeout '+label)};let z=await submit('closed',x.closed);ck(z.code==='item_unavailable'||z.error_code==='item_unavailable'||z.result?.code==='item_unavailable','closed submit rejected');q=await post('order/quote',{...d,items:[{id:x.open,quantity:1,expected_price:10000}]});console.log('OPEN_QUOTE '+JSON.stringify(q));ck(q.success===true&&q.financial_preview?.total===10000,'open day quote correct');z=await submit('open',x.open);ck((z.state==='committed'||z.success===true&&z.status==='pending_approval')&&z.result?.success!==false,'open guest accepted');});await group('CAT-L314 actual Public availability presentation',async()=>{await p.goto(pageURL(x.token));const raw=JSON.parse(await p.locator('[data-sg-items-json]').textContent());const a=raw.find(i=>i.id===x.open),c=raw.find(i=>i.id===x.closed);console.log('PRESENTATION '+JSON.stringify({open:a?.order_available,closed:c?.order_available}));ck(a?.order_available===true,'open item available');ck(c?.order_available===false,'closed day item not orderable in UI');});await group('GUEST-20261126-IMG-01 actual Public image',async()=>{await p.goto(pageURL(x.token));const raw=JSON.parse(await p.locator('[data-sg-items-json]').textContent());const a=raw.find(i=>i.id===x.open);ck(!!a?.image,'published media URL');const r=await p.request.get(a.image);ck(r.ok()&&r.headers()['content-type'].startsWith('image/'),'actual published image HTTP');await p.locator(`[data-sg-item][data-item-id="${x.open}"]`).scrollIntoViewIfNeeded();await p.screenshot({path:W+'/cc25-image.png'});});}}finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
-          SOKNA_QA_25_gate25_cjs
+          SOKNA_QA_CC26_gate26_php
+          cat > "$W/gate26.cjs" <<'SOKNA_QA_CC26_gate26_cjs'
+          const fs=require('fs'),crypto=require('crypto'),{execFileSync}=require('child_process'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',local='http://127.0.0.1:18765';let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};const f=()=>JSON.parse(fs.readFileSync(W+'/cc25-fixture.json'));const pageURL=(t)=>base+'/menu?installation='+encodeURIComponent(f().installation)+'&table='+encodeURIComponent(t)+'&menu='+encodeURIComponent(f().menu);async function post(path,data){let r=await fetch(base+'/api/guest/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:f().installation,...data})});return {http:r.status,...await r.json()}};async function group(name,fn){try{await fn();console.log('GROUP PASS '+name)}catch(e){fail++;console.log('GROUP FAIL '+name+' '+e.stack)}};const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          async function auth(p,base,user){await p.goto(base+(base===local?'/login.php':'/staff/login'));const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key=base===local?user:'user:'+JSON.parse(fs.readFileSync(W+'/cp144-fixture.json')).users.find(u=>u.name===user).id;if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${key}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user+' '+base);}
+          const run=(mode)=>console.log(execFileSync('php',[W+'/gate26.php',W+'/local',mode],{encoding:'utf8',timeout:40000}));
+          async function wait(fn,n,ms=30000){let end=Date.now()+ms;while(Date.now()<end){if(await fn()){ck(true,n);return;}await sleep(200)}throw Error(n)}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:390,height:844},locale:'fa-IR'});p.setDefaultTimeout(12000);const x=f();try{
+          await group('CAT-L314 real Public UI and live schedule transitions',async()=>{
+           ck((await p.goto(pageURL(x.token))).status()===200,'valid menu page');const raw=JSON.parse(await p.locator('[data-sg-items-json]').textContent());const a=raw.find(i=>i.id===x.open),c=raw.find(i=>i.id===x.closed);ck(a?.available&&a?.schedule_open&&a?.order_available,'open item remains available');ck(c?.available&&c?.schedule_open===false&&c?.order_available===false,'closed day physically available but not orderable');const ob=p.locator(`[data-sg-qty-inc="${x.open}"]`).first(),cb=p.locator(`[data-sg-qty-inc="${x.closed}"]`).first();await wait(async()=>!(await ob.isDisabled())&&await cb.isDisabled(),'real buttons reflect schedule');ck((await p.locator(`[data-sg-item-state="${x.closed}"]`).first().textContent()).includes('زمان سرو'),'clear schedule message');await p.screenshot({path:W+'/cc26-closed.png'});
+           run('flip-open');await wait(async()=>!(await cb.isDisabled()),'same page now opens item after signed projection',35000);run('flip-closed');await wait(async()=>await cb.isDisabled(),'same page closes item after signed projection',35000);await p.screenshot({path:W+'/cc26-reclosed.png'});
+          });
+          await group('GUEST-20261126-IMG-01 actual Public image',async()=>{await p.goto(pageURL(x.token));const raw=JSON.parse(await p.locator('[data-sg-items-json]').textContent());const a=raw.find(i=>i.id===x.open);ck(!!a?.image,'published URL');const u=new URL(a.image,p.url());const r=await p.request.get(u.href);ck(r.ok()&&r.headers()['content-type'].startsWith('image/'),'actual image HTTP');const bytes=await r.body();ck(crypto.createHash('sha256').update(bytes).digest('hex')===u.pathname.match(/([a-f0-9]{64})\./)?.[1],'HTTP image bytes match content hash');const im=p.locator(`[data-sg-item][data-item-id="${x.open}"] img.sg-item-media`);await im.scrollIntoViewIfNeeded();await wait(()=>im.evaluate(e=>e.complete&&e.naturalWidth>0),'actual image decoded in mobile browser');await p.screenshot({path:W+'/cc26-image.png'});});
+          await group('CAT-L313 actual catalog save immediate ACK and recovery',async()=>{const admin=await b.newPage({viewport:{width:1280,height:900},locale:'fa-IR'});try{await auth(admin,local,'qa-target');await admin.goto(local+'/catalog/');const csrf=await admin.locator('[data-catalog-workspace]').getAttribute('data-csrf');ck(!!csrf,'actual catalog CSRF');const save=async(name)=>{let r=await admin.request.post(local+'/catalog/api.php',{data:{action:'menu_save',id:x.menu_id,name,status:'active',csrf_token:csrf}});let d=await r.json();ck(r.ok()&&d.success&&d.result?.id===x.menu_id,'real Local catalog save '+name);console.log('SAVE_RECEIPT '+JSON.stringify(d.public_sync));return d.public_sync;};let state=await save('QA26 ONLINE');ck(state?.status==='synced'&&state.critical_ready===true&&state.media_ready===true&&state.ack_revision_id===state.expected_revision_id,'immediate full matching ACK');await p.goto(pageURL(x.token));ck((await p.locator('body').innerText()).includes('QA۲۶ ONLINE')||(await p.locator('body').innerText()).includes('QA26 ONLINE'),'new menu name reached actual Public');
+           const cfg=W+'/config.php',before=fs.readFileSync(cfg,'utf8');let altered=before.replace(/http:\/\/127\.0\.0\.1:18766\/public/g,'http://127.0.0.1:18769/public');ck(altered!==before,'synthetic offline fixture configured');try{fs.writeFileSync(cfg,altered);state=await save('QA26 OFFLINE');ck(state?.status!=='synced'&&state?.critical_ready!==true,'outage does not claim success');const r=await admin.request.get(local+'/catalog/api.php?action=snapshot');ck(JSON.stringify(await r.json()).includes('QA26 OFFLINE'),'local saved value retained while Public unavailable');}finally{fs.writeFileSync(cfg,before);}run('publish');run('media');await p.goto(pageURL(x.token));ck((await p.locator('body').innerText()).includes('QA۲۶ OFFLINE')||(await p.locator('body').innerText()).includes('QA26 OFFLINE'),'same committed value visible after retry');}finally{await admin.close();}});
+          }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
+          SOKNA_QA_CC26_gate26_cjs
           fail=0
-          php "$W/gate25.php" "$W/local" | tee "$W/cc25-db-results.txt" || fail=1
+          php "$W/gate26.php" "$W/local" | tee "$W/cc26-fixture-results.txt" || fail=1
           php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-fixture-results.txt"
           npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
           PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-server.log" 2>&1 & pp=$!
           rp=''; trap 'kill "$lp" "$pp" $rp 2>/dev/null || true' EXIT
           sleep 2
-          php "$W/gate25.php" "$W/local" publish | tee "$W/cc25-publish-results.txt" || fail=1
-          php "$W/gate25.php" "$W/local" media | tee "$W/cc25-media-results.txt" || fail=1
-          php "$W/gate25.php" "$W/local" relay >"$W/cc25-relay-results.txt" 2>&1 & rp=$!
-          node "$W/gate25.cjs" | tee "$W/cc25-guest-results.txt" || fail=1
-          php "$W/gate25.php" "$W/local" verify | tee "$W/cc25-order-results.txt" || fail=1
-          php "$W/gate25.php" "$W/local" rotate | tee "$W/cc25-rotate-results.txt" || fail=1
-          node "$W/gate25.cjs" rotated | tee "$W/cc25-qr-rotate-results.txt" || fail=1
-          php "$W/gate25.php" "$W/local" restore | tee "$W/cc25-restore-results.txt" || fail=1
-          node "$W/gate25.cjs" restored | tee "$W/cc25-qr-restore-results.txt" || fail=1
+          php "$W/gate26.php" "$W/local" publish | tee "$W/cc26-publish-results.txt" || fail=1
+          php "$W/gate26.php" "$W/local" media | tee "$W/cc26-media-results.txt" || fail=1
+          php "$W/gate26.php" "$W/local" relay >"$W/cc26-relay-results.txt" 2>&1 & rp=$!
+          node "$W/gate26.cjs" | tee "$W/cc26-browser-results.txt" || fail=1
           exit "$fail"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC25-GROUPED-ACCEPTANCE-QA-ONLY
+          name: SOKNA-CC26-GROUPED-ACCEPTANCE-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
-            ${{ runner.temp }}/cp148-qa/cc25-*.png
+            ${{ runner.temp }}/cp148-qa/cc26-*.png
           retention-days: 7
           if-no-files-found: warn
