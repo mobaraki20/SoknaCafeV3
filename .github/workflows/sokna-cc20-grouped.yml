@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-41B interrupted business restore commit boundaries (QA ONLY)
+name: SOKNA RELEASE PRIORITY-41C interrupted business restore commit boundaries (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -8,6 +8,10 @@ permissions:
   actions: read
 jobs:
   restore-boundaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        boundary: [before, after]
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
@@ -98,7 +102,7 @@ jobs:
           ck(tree($dest.'/guest-media')===$f['media'],'promoted media preserved exact');
           foreach($f['tables'] as $n=>$d){ck(digest($p,$n)===$d,'source unchanged '.$n);$v=digest($t,$n);ck($boundary==='before'?$v[0]===0:$v===$d,'target expected '.$n);}
           ck(hash_file('sha256',$backup)===$f['hash'],'backup unchanged');
-          try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('unexpected retry');}catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){echo 'RETRY_REJECTION '.$e->errorCode."\n";ck(in_array($e->errorCode,['target_not_empty','target_changed','restore_interrupted'],true),'unsafe repeated restore denied');}
+          try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('unexpected retry');}catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){echo 'RETRY_REJECTION '.$e->errorCode."\n";ck($e->errorCode===($boundary==='before'?'restore_media_not_empty':'target_not_empty'),'unsafe repeated restore denied with exact guard');}
           ck(tree($dest.'/guest-media')===$f['media'],'retry preserves media');
           if($boundary==='after')ck($auth->phase()==='reenroll_required','committed authority fenced');
           foreach($f['tables'] as $n=>$d){$v=digest($t,$n);ck($boundary==='before'?$v[0]===0:$v===$d,'no retry mutation '.$n);}
@@ -106,7 +110,7 @@ jobs:
           SOKNA_CC41B_PHP
           php -l "$W/gate41b.php"
           php "$W/gate41b.php" "$W/local" seed | tee "$W/receipts/seed.txt"
-          for boundary in before after; do
+          for boundary in '${{ matrix.boundary }}'; do
             php "$W/gate41b.php" "$W/local" prepare "$boundary"
             set +e
             php "$W/gate41b.php" "$W/local" fault "$boundary" > "$W/receipts/fault-$boundary.txt" 2>&1
@@ -118,6 +122,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC41B-BUSINESS-COMMIT-BOUNDARIES
+          name: SOKNA-CC41C-BUSINESS-COMMIT-${{ matrix.boundary }}
           path: ${{ runner.temp }}/cc41b/receipts
           retention-days: 7
