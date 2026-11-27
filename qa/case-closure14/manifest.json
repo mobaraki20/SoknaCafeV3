@@ -1,0 +1,22 @@
+{
+  "source_sha256": "6ac440db12b4f76d135adfa84ba3784e8f4ffde9ef309cd688e64b656a412872",
+  "previous_sha256": "04f8fbbf8d5430db1c5da880e920e351fc17f4cf9f0e2495cfff82ffe3680e7f",
+  "changed": [
+    "local/public/assets/foodcost-pricing.js",
+    "local/public/assets/reports-workspace.js",
+    "local/public/assets/staff-app/preparation-workspace.js",
+    "public/assets/reports-workspace.js",
+    "public/assets/staff-app/preparation-workspace.js"
+  ],
+  "trees": {
+    "local": "ab409cb45c74ee3837f47a606c7e634e0d1025ce21964e3ee6ae9b0bccaed13b",
+    "public": "17c64328adbe7ad9030c0c4c3445f9195e8dfe1732d918c5da35f99486b30318"
+  },
+  "files": {
+    "local/public/assets/foodcost-pricing.js": "604aecd3f6566bfa0b22d15d9020eb0168b0e9437395208f758b42df3fd30e43",
+    "local/public/assets/reports-workspace.js": "06e2856eecec1dd4956d151d1cc2357fb857a7f73f2262022c0678926c776922",
+    "local/public/assets/staff-app/preparation-workspace.js": "2d65d115aafe5c7ea0141f6686a2a26f5f19199c1b1afc6cfa338cbbfeb625cf",
+    "public/assets/reports-workspace.js": "8075411ef3453389086f87a28c08da21f923cce99a1fe0a2e1074cea89f0f5ba",
+    "public/assets/staff-app/preparation-workspace.js": "3c7c494eb061797e859ec9ec2e9a1fd8bd68351a749c63da73201bd5709100d1"
+  }
+}
