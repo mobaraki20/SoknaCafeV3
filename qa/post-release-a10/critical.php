@@ -55,9 +55,9 @@ group('A06 cancellation real transaction manual and auto print',function()use($p
 });
 group('A18 expense real create/reverse',function()use($p,$c,$actor){
  $cat=(string)one($p,'SELECT category_key FROM expense_categories WHERE active=1 ORDER BY category_key LIMIT 1');ck($cat!=='','expense category');
- $a=['category_key'=>$cat,'amount'=>123456,'description'=>'QA A10 expense','occurred_at'=>$c->time()->civilDate().' 12:00:00','source_request_id'=>'qa-a10-expense'];
+ $a=['category_key'=>$cat,'amount'=>123456,'description'=>'QA A10 expense','occurred_at'=>$c->time()->localNow()->modify('-1 minute')->format('Y-m-d H:i:s'),'source_request_id'=>'qa-a10-expense'];
  $e=$c->expenses();$x=$e->create($a,$actor);$y=$e->create($a,$actor);ck($x['id']===$y['id']&&($y['idempotent']??false),'expense create replay');
  $r=$e->reverse((int)$x['id'],'QA reversal','qa-a10-expense-reverse',$actor);ck((int)$r['id']>0,'expense reversal');
  ck((int)one($p,'SELECT SUM(CASE WHEN status=\'reversal\' THEN -amount ELSE amount END) FROM expenses WHERE id=? OR reverses_expense_id=?',[$x['id'],$x['id']])===0,'net expense zero');
 });
-echo 'A10_GROUP_FAILURES='.$fail.PHP_EOL;exit($fail?1:0);
+echo 'A11_GROUP_FAILURES='.$fail.PHP_EOL;exit($fail?1:0);

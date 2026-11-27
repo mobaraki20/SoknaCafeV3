@@ -1,4 +1,4 @@
-name: SOKNA A10 consolidated exact source MariaDB (QA ONLY, fixture date corrected)
+name: SOKNA A11 rebased exact latest delivery grouped QA
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -29,73 +29,56 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Download pinned Local baseline
+      - name: Download last controlled Local delivery
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 45764512635
-          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
-          path: ${{ runner.temp }}/cp148-input/local
-      - name: Download pinned Public baseline
+          run-id: 46067310389
+          name: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/a11-input/local
+      - name: Download last controlled Public delivery
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 45774034628
-          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
-          path: ${{ runner.temp }}/cp148-input/public
-      - name: Reconstruct exact CP160 baseline then current 42-file cumulative delta
+          run-id: 46063873053
+          name: SOKNA-PUBLIC-35JB-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/a11-input/public
+      - name: Exact last delivery plus cumulative fixes
         shell: bash
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/cp148-qa"
           mkdir -p "$W"
-          python3 qa/cp148/prepare-source.py "$W" "$RUNNER_TEMP/cp148-input" | tee "$W/source-results.txt"
-          python3 qa/cp150/apply-cp150.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp151/apply-cp151.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp152/apply-cp152.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp152b/apply-cp152b.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp152c/apply-cp152c.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp152d/apply-cp152d.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp153/apply-cp153.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp154/apply-cp154.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp155/apply-cp155.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp156/apply-cp156.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp157/apply-cp157.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp157b/apply-cp157b.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp158/apply-cp158.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp159/apply-cp159.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp159b/apply-cp159b.py "$W" | tee -a "$W/source-results.txt"
-          python3 qa/cp160/apply-cp160.py "$W" | tee -a "$W/source-results.txt"
-          base64 -d qa/func-pass02/overlay.b64 > "$W/overlay.patch.gz"
-          echo 'ff19835c97d8f5c7d1dbd0fb625f7b7717d26e2a9b5f9c84803ae990cef0f1c4  '"$W/overlay.patch.gz" | sha256sum -c -
-          gzip -dc "$W/overlay.patch.gz" > "$W/overlay.patch"
-          (cd "$W"; git apply --check overlay.patch; git apply overlay.patch)
-          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
-          import pathlib,hashlib,sys
-          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
-          expected={'local':(625,'0d946221bea6cfc1df61faf91b562f568a43caf09a5e44291baa5a87eee8f977'),'public':(258,'5cf7bcd726b3c22d37269341702cbf99ef0c8ce174fcbeef2d29e1760a7eaf20')}
-          for host,(n,sha) in expected.items():
-              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
-              assert len(paths)==n and actual==sha,(host,len(paths),actual)
-              print('PASS EXACT FUNC-PASS-02',host,n,actual)
+          python3 - "$W" "$RUNNER_TEMP/a11-input" <<'PY' | tee "$W/source-results.txt"
+          import pathlib,hashlib,sys,zipfile,io
+          W,I=map(pathlib.Path,sys.argv[1:]); H=lambda b:hashlib.sha256(b).hexdigest()
+          def exact(p,h):
+              b=p.read_bytes();assert H(b)==h,(p,H(b));return b
+          local=exact(I/'local/SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip','79ea97f6be0577c9c724865f0fe271cff8dbb3bf078f12825fa91c6b091a5b45')
+          local=zipfile.ZipFile(io.BytesIO(local)).read('artifacts/local/web.zip')
+          assert H(local)=='fafcb63d1c9f7fd1a014836bf2e7f33bf09a1cc30137fa01ab6f056e779d01e8'
+          public=exact(I/'public/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip','09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f')
+          expected={'local':(626,'b8019526c9fcbbe65bc5cf564769e62ca9175b956dfaee8cade6097f60309b52'),'public':(258,'239d2cbb5651463ab24bb5bb867b6dc727318e930ecf13f3b6c9956897faa77c')}
+          for host,b in [('local',local),('public',public)]:
+              z=zipfile.ZipFile(io.BytesIO(b));assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              r=W/host;z.extractall(r)
+              paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file())
+              actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==expected[host],(host,len(paths),actual)
+              print('PASS EXACT DELIVERY',host,len(paths),actual)
           PY
-      - name: Reconstruct and verify exact cumulative A10
-        shell: bash
-        run: |
-          set -euo pipefail
-          W="$RUNNER_TEMP/cp148-qa"
-          base64 -d qa/post-release-a10/overlay.b64 > "$W/a10.patch.gz"
-          echo '7424040b9f79675e084481498f99b8b42a6a7df8446cb6e5aca4ac029e94525d  '"$W/a10.patch.gz" | sha256sum -c -
-          gzip -dc "$W/a10.patch.gz" > "$W/a10.patch"
-          (cd "$W"; git apply --check a10.patch; git apply a10.patch)
+          base64 -d qa/post-release-a10/rebase.b64 > "$W/rebase.patch.gz"
+          echo '061db84e5b3175fcb59023ea50815a6a434b59c2b91720ab9f30f12fa42047b0  '"$W/rebase.patch.gz" | sha256sum -c -
+          gzip -dc "$W/rebase.patch.gz" > "$W/rebase.patch"
+          (cd "$W"; git apply --check rebase.patch; git apply rebase.patch)
           python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
           import pathlib,hashlib,sys
           root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
-          expected={'local':(625,'ae7521e4535428d5fc2d5e995c5477a30ef91baf05def3df61d4b7fa061d88e5'),'public':(258,'635c4412c32dd00884c10bef2a6d844a14db1ca5091a3ba67c6c504c9febe4c1')}
+          expected={'local':(626,'f7687a2d4c6af1fbc749fe94c36c3111888a3853c75a277a507c49d5b35cf907'),'public':(258,'07715d03571d542cc1f6c862ec1fb266e6cc2b3995f2c6e291c11cc1ba11c2c2')}
           for host,(n,sha) in expected.items():
               r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
               assert len(paths)==n and actual==sha,(host,len(paths),actual)
-              print('PASS EXACT A10',host,n,actual)
+              print('PASS EXACT A11',host,n,actual)
           PY
       - name: Run real Local clean install and A10 grouped critical DB acceptance
         shell: bash
@@ -120,7 +103,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A10-REAL-DB-GATE-EVIDENCE-NO-INSTALL
+          name: SOKNA-A11-REAL-DB-GATE-EVIDENCE-NO-INSTALL
           path: ${{ runner.temp }}/cp148-qa/*-results.txt
           retention-days: 7
           if-no-files-found: warn
