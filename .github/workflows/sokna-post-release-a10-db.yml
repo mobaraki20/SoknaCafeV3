@@ -1,4 +1,4 @@
-name: SOKNA A11 full authenticated pages and real DB grouped QA
+name: SOKNA A12 real DB and grouped full pages QA
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -80,6 +80,23 @@ jobs:
               assert len(paths)==n and actual==sha,(host,len(paths),actual)
               print('PASS EXACT A11',host,n,actual)
           PY
+      - name: Exact A12 archive interaction and compact expense form
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/a12.b64 > "$W/a12.patch.gz"
+          echo '4e2ed9794668428c9225497672201e5cb5ec67517617a5199d25ef562ef452a9  '"$W/a12.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a12.patch.gz" > "$W/a12.patch"
+          (cd "$W"; git apply --check a12.patch; git apply a12.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'098c20ccc5a2f61a8d85c6379397f84ba1de56c2d7a96605bfd8889ac97f624e'),'public':(258,'ed4fbf4e1d4778062dd4f4dff9d1711f294343dda81bbd559d2a0e3ef5ad5b73')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A12',host,n,actual)
+          PY
       - name: Run real Local clean install and A10 grouped critical DB acceptance
         shell: bash
         run: |
@@ -118,7 +135,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A11-FULL-PAGE-GATE-EVIDENCE-NO-INSTALL
+          name: SOKNA-A12-FULL-PAGE-GATE-EVIDENCE-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
