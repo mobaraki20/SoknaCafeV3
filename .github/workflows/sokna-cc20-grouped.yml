@@ -1,4 +1,4 @@
-name: SOKNA 46B final report UI only on registered exact bytes
+name: SOKNA 52 controlled Public operator delivery - exact final routes and clean
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,131 +7,339 @@ permissions:
   contents: read
   actions: read
 jobs:
-  acceptance:
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    services:
-      mariadb:
-        image: mariadb:11.4
-        env:
-          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
-          MARIADB_ROOT_HOST: '%'
-        ports: [3306:3306]
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s --health-timeout=5s --health-retries=20
-    env:
-      QA_DB_PASSWORD: synthetic-cp116-ci-only
-      SOKNA_QA_DISPOSABLE: YES
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 6983e9d52435a746325f60ace428b8548bcc8fc0
+          ref: cecad3d92ab25daaa7ae609a6e32f6470bc9c3d4
           persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
       - uses: actions/download-artifact@v4
         with:
           run-id: 46056788008
           name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Exact current report UI gate (no repeated API acceptance)
+      - name: Reproduce frozen exact final controlled candidate bytes
+        run: python qa/cc52/build_public52.py "$RUNNER_TEMP/candidate" "$RUNNER_TEMP/delivery"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CC52-PUBLIC-FINAL-CANDIDATE-PENDING-RECEIPT
+          path: ${{ runner.temp }}/delivery/*
+          if-no-files-found: error
+          retention-days: 30
+  public-upgrade:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        origin: [35ip, 35iy]
+        route: [routine, emergency]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      QA_ORIGIN: ${{ matrix.origin }}
+      QA_ROUTE: ${{ matrix.route }}
+      SOKNA_CI_DB_PASS: synthetic-cp116-ci-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ae53ee62504a84b07f8d4ea0b215db0608e34e9d
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CC52-PUBLIC-FINAL-CANDIDATE-PENDING-RECEIPT
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        if: ${{ matrix.origin == '35iy' }}
+        with:
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip, mbstring, sodium
+      - name: Exact archived 35ip and previously qualified owner repair
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc46b"; mkdir -p "$W/local" "$W/public" "$W/receipts"
-          A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          B="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
-          echo "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca  $B" | sha256sum -c -
-          unzip -q "$A" -d "$W/local"
-          unzip -q "$B" -d "$W/public"
-          export QA_WORK="$W" TMPDIR="$W"
-          php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/setup.txt"
-          cat > "$W/roles44b.php" <<'PHP'
+          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/14907451327/zip" -o "$RUNNER_TEMP/origin.zip"
+          echo '3536c7dcc88cfa2501aa88662214f1f1b6e8934f22e00b714756de7657bd5754  '"$RUNNER_TEMP/origin.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/cc37b-receipts"
+          python3 - <<'PYCODE'
+          import os,pathlib,zipfile,hashlib,json,base64,io
+          P=pathlib.Path; t=P(os.environ['RUNNER_TEMP']);H=lambda b:hashlib.sha256(b).hexdigest();J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode();tree=lambda d:H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(d.items())).encode())
+          with zipfile.ZipFile(t/'origin.zip') as z:raw=z.read('SOKNA-PUBLIC-35IP-CLEAN-WEB.zip')
+          assert H(raw)=='1206dd043d87f8e832b9d3660924c1f288bc8565a6854bd09144c9c80956c040'
+          with zipfile.ZipFile(io.BytesIO(raw)) as z:
+              assert z.testzip() is None;old={n:z.read(n) for n in z.namelist() if not n.endswith('/')};z.extractall(t/'old-web')
+          stable={n:v for n,v in old.items() if n=='emergency.php' or n.startswith('src/Emergency/')};managed={n:v for n,v in old.items() if n not in stable};before=tree(managed);assert before=='621b6ebee48ef7876fdd8b0ad8e041628c96e407b1f8a47dc5528307843f603a'
+          clean=t/'candidate/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip';assert H(clean.read_bytes())=='09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f'
+          paths=['recovery.php','src/Recovery/StableRecoveryService.php','src/Emergency/PublicUpdateService.php']
+          with zipfile.ZipFile(clean) as z:new={n:z.read(n) for n in paths}
+          after=tree(managed|{n:new[n] for n in paths[:2]});assert after=='0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584'
+          pins={n:H(b) for n,b in stable.items()};ledger=[P(n).stem for n in sorted(managed) if n.startswith('database/migrations/') and n.endswith('.sql')];assert len(ledger)==11
+          plan={'version':old['VERSION.txt'].decode().strip(),'before':before,'after':after,'stable_before':pins,'stable_after':pins|{paths[2]:H(new[paths[2]])},'patch':{n:{'old':H(old[n]),'new':H(new[n]),'b64':base64.b64encode(new[n]).decode()} for n in paths},'ledger':ledger}
+          helper=P('qa/checkpoint107/repair-template.php').read_text().replace('__PLAN_BASE64__',base64.b64encode(J(plan)).decode()).encode();assert H(helper)=='5f605bb5bfa0c5506d75b7ccc259049ee3df8170217d1d9631f877a6733fba75'
+          (t/'repair37b.php').write_bytes(helper)
+          print('PASS exact prior repair helper reproduced, no new helper or engine modification')
+          PYCODE
+          mysql --protocol=TCP -h127.0.0.1 -uroot -p"$QA_DB_PASSWORD" -e 'CREATE DATABASE sokna_ci_cp107 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+          sed 's/5f5010dadaaae7cede43b20ca1e4fc8618362d66f9d31ca288ab96361779b88d/5f605bb5bfa0c5506d75b7ccc259049ee3df8170217d1d9631f877a6733fba75/g' qa/checkpoint107/db-component-test.php > "$RUNNER_TEMP/repair-test.php"
+          php "$RUNNER_TEMP/repair-test.php" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/repair37b.php" | tee "$RUNNER_TEMP/cc37b-receipts/repair.txt"
+          # A real previous activation produces the ledger for the 35iy case.
+          if [[ '${{ matrix.origin }}' == '35iy' ]]; then
+            cat > "$RUNNER_TEMP/prior47.php" <<'PHP'
           <?php
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
-          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $core=sokna_local_bootstrap($cfg);$p=$core->database();$ids=[];
-          foreach(['qa-supervisor'=>['shift_supervision','remote_access'],'qa-cost-supervisor'=>['shift_supervision','inventory_cost_view','inventory_view','remote_access'],'qa-report-only-staff'=>['staff_consumption_reports','remote_access']] as $name=>$caps){
-           $hash=password_hash('synthetic-member-only',PASSWORD_DEFAULT);
-           $p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,$hash,$name]);$id=(int)$p->lastInsertId();$ids[$name]=$id;
-           foreach($caps as $cap)$p->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$id,$cap]);
-           $p->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")->execute([$id,$hash]);
-          }
-          $f=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
-          $byName=array_column($core->publicProjectionBuilder()->authProjections(),null,'username');
-          foreach($ids as $name=>$id){$v=$byName[$name];$f['users'][]=['id'=>$id,'name'=>$name,'role'=>$v['role'],'password'=>'synthetic-member-only','caps'=>$v['capabilities'],'areas'=>$v['preparation_areas'],'hash'=>$v['password_hash']];}
-          file_put_contents($w.'/cp144-fixture.json',json_encode($f,JSON_THROW_ON_ERROR));
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
+          use Sokna\PublicEdge\Core\Migrations;
+          use Sokna\PublicEdge\Health\PublicHealthService;
+          if(getenv('GITHUB_ACTIONS')!=='true'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          [$s,$phase,$web,$pkg]=$argv;
+          foreach(['src/Shared/IranTime.php','src/Emergency/PublicUpdateException.php','src/Update/RoutinePublicUpdateService.php','src/Core/Migrations.php','src/Core/SafeErrors.php','src/Health/PublicHealthService.php'] as $n)require $web.'/'.$n;
+          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_cp107;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $storage=$web.'/storage';$m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());
+          $z=new ZipArchive();if($z->open($pkg)!==true)exit(2);$manifest=json_decode($z->getFromName('manifest.json'),true,512,JSON_THROW_ON_ERROR);$z->close();if(($manifest['target_managed_tree_sha256']??'')!=='c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6')exit(2);
+          if($phase==='stage'){
+           $r->stageUploadedDeltaZip($pkg,'qa47-prior',true);$r->activateStaged('qa47-prior');
+          }elseif($phase==='commit'){
+           $r->commitActivation('qa47-prior',fn($v)=>$h->status()['body']);
+           $snap=$r->snapshot();if($snap['managed_tree_matches_expected']!==true||$r->managedTreeDigest()!==$manifest['target_managed_tree_sha256']||count($m->verifiedAppliedVersions())!==12)exit(3);
+           echo "PASS previous genuine 35iy activation and authoritative ledger\n";
+          }else exit(2);
           PHP
-          php "$W/roles44b.php" "$W"
-          php qa/cp160/public-fixture.php "$W/public"
-          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" > "$W/receipts/local-http.log" 2>&1 &
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 &
-          sleep 2
-          php qa/cp160/worker.php "$W/local" init
-          cat > "$W/ui46b.cjs" <<'UI46B'
-          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs');
-          const W=process.env.QA_WORK,f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
-          const L='http://127.0.0.1:18765',P='http://127.0.0.1:18766/public';
-          function ck(x,m){if(!x)throw Error(m);console.log('PASS '+m)}
-          async function auth(p,base,user){
-           await p.goto(base+(base===L?'/login.php':'/staff/login'));
-           const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});
-           const key=base===L?user:'user:'+f.users.find(u=>u.name===user).id;
-           if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="'+key+'"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}
-           await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');
-           await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);
-           ck(!p.url().includes('/login'),'authenticated '+user+' '+base);
-          }
-          (async()=>{
-           const b=await chromium.launch({channel:'chrome',headless:true});let failed=0;
-           try{
-           for(const base of [L,P])for(const [user,allowed,width] of [['qa-supervisor',false,390],['qa-cashier',false,1280],['qa-cost-supervisor',true,390],['qa-target',true,1280]]){
-            const label=(base===L?'local':'public')+'-'+user+'-'+width;
-            const ctx=await b.newContext({viewport:{width,height:900},locale:'fa-IR'});
-            const p=await ctx.newPage();p.setDefaultTimeout(16000);
-            try{
-             await auth(p,base,user);
-             await p.goto(base+(base===L?'/reports/':'/staff/reports/'));
-             await p.locator('[data-summary] [data-report-kpi="net_sales"]').waitFor({state:'visible'});
-             for(const k of ['inventory','margin']){
-              await p.locator('#report-tab-'+k).click();
-              const s=p.locator('[data-report-section="'+k+'"]');await s.waitFor({state:'visible'});
-              const m=s.locator('[data-report-unavailable]');
-              if(allowed){
-               ck(!await m.isVisible(),'authorized '+k+' '+label);
-               const metric=s.locator(k==='inventory'?'[data-inventory-metrics]':'[data-margin-coverage]');
-               await metric.waitFor({state:'visible'});
-               ck((await metric.innerText()).trim().length>0,'real contents '+k+' '+label);
-              }else{
-               await m.waitFor({state:'visible'});
-               ck((await m.innerText()).includes('مجوز مشاهده بهای مواد'),'permission message '+k+' '+label);
-               ck(await s.evaluate(el=>[...el.children].filter(c=>!c.hasAttribute('data-report-unavailable')).every(c=>c.hidden)),'restricted children hidden '+k+' '+label);
-              }
-              await p.screenshot({path:W+'/receipts/'+label+'-'+k+'.png',animations:'disabled'});
-             }
-             await p.locator('#report-tab-overview').click();
-             ck(await p.locator('[data-summary] [data-report-kpi="net_sales"]').isVisible(),'sales still visible '+label);
-             if(base===L){
-              const analytics=p.locator('[data-export-analytical]');
-              ck((await analytics.count()>0)===allowed,'export control permission '+label);
-             }
-             ck(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'viewport fits '+label);
-             console.log('GROUP PASS REP-L281 '+label);
-            }catch(e){failed++;console.log('GROUP FAIL REP-L281 '+label+' '+e.stack);await p.screenshot({path:W+'/receipts/'+label+'-failure.png',animations:'disabled'}).catch(()=>{});}
-            finally{await ctx.close();}
-           }
-           }finally{await b.close();}
-           if(failed)process.exitCode=1;
-          })().catch(e=>{console.error(e);process.exitCode=1});
-          UI46B
-          node "$W/ui46b.cjs" | tee "$W/receipts/results.txt"
+            for phase in stage commit; do
+              php "$RUNNER_TEMP/prior47.php" "$phase" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/prior/SOKNA-PUBLIC-35IY-35IP-CAFE-QA.zip"
+            done | tee "$RUNNER_TEMP/cc37b-receipts/prior-35iy.txt"
+          fi
+      - name: Actual final controlled ZIP through selected update route
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/emergency37b.php" <<'PHPCODE'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
+          use Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge as Bridge;
+          use Sokna\PublicEdge\Emergency\PublicUpdateException;
+          use Sokna\PublicEdge\Core\Migrations;
+          use Sokna\PublicEdge\Health\PublicHealthService;
+          if(getenv('GITHUB_ACTIONS')!=='true'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only'||$argc!==4)exit(2);
+          [$script,$phase,$web,$pkg]=$argv;
+          function ck($v,$msg){if(!$v)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          $clean=dirname($pkg).'/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip';ck(hash_file('sha256',$clean)==='09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f','exact clean');$z=new ZipArchive();ck($z->open($clean)===true,'clean ZIP');$pins=[];for($i=0;$i<$z->numFiles;$i++){$n=$z->getNameIndex($i);if($n==='emergency.php'||str_starts_with($n,'src/Emergency/'))$pins[$n]=hash('sha256',$z->getFromIndex($i));}$z->close();$want=['version'=>'3.0.0-g3.6-workspace.35jb-controlled-operator-20261127','managed_tree_sha256'=>'e4eca22d180b57ad700ea24361a20f439b5372a8ae15f2e077eb7f0e8026339e','protected_pins'=>$pins];ck(hash_file('sha256',$pkg)==='936f665e4641b3ccaef1c78ff37caa2c395cdb3c3723328999b40105f5cdabb8','exact CC43 public archive');
+          foreach(['src/Shared/IranTime.php','src/Emergency/PublicUpdateException.php','src/Update/RoutinePublicUpdateService.php','src/Core/Migrations.php','src/Core/SafeErrors.php','src/Health/PublicHealthService.php','src/Update/IndependentEmergencyRoutineBridge.php'] as $n)require $web.'/'.$n;
+          $storage=$web.'/storage';if(!is_dir($storage))mkdir($storage,0700,true);
+          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_cp107;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());$b=new Bridge($r,$storage,fn()=>$m->pendingVersions(),fn()=>$h->status()['body']);
+          if($phase==='stage'){
+           ck(count($m->appliedVersions())===(getenv('QA_ORIGIN')==='35iy'?12:11),'actual baseline DB ledger');
+           $old=$r->currentVersion();$tree=$r->managedTreeDigest();ck($tree===(getenv('QA_ORIGIN')==='35iy'?'c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6':'0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584'),'exact prior baseline');
+           $s=$b->snapshot();ck($s['channel']==='emergency_independent_routine_v2'&&$s['managed_tree_matches_expected']===true,'reconciled independent emergency owner');
+           $st=getenv('QA_ROUTE')==='routine'?$r->stageUploadedDeltaZip($pkg,'qa37',true):$b->stageUploadedZip($pkg,'qa37');ck($st['package_sha256']===hash_file('sha256',$pkg)&&$st['version']===$want['version'],'same archive staged by emergency bridge');ck($r->currentVersion()===$old&&$r->managedTreeDigest()===$tree,'stage leaves active tree unchanged');
+           $a=getenv('QA_ROUTE')==='routine'?$r->activateStaged('qa37'):$b->activateStaged('qa37');ck($a['current_version']===$want['version']&&is_array($a['pending_verification'])&&is_file($r->maintenanceLockPath()),'emergency activation stays pending');
+           if(getenv('QA_ROUTE')==='emergency')try{$b->stageUploadedZip($pkg,'qa37');throw new RuntimeException('stage unexpectedly accepted');}catch(PublicUpdateException $e){ck($e->errorCode==='routine_activation_in_progress','pending stage cannot be overwritten');}
+          }elseif($phase==='commit'){
+           ck($r->currentVersion()===$want['version']&&$r->managedTreeDigest()===$want['managed_tree_sha256'],'fresh process exact target tree');
+           $s=getenv('QA_ROUTE')==='routine'?$r->commitActivation('qa37',fn($v)=>$h->status()['body']):$b->commitPending('qa37');ck($s['active_version']===$want['version']&&$s['pending_verification']===null&&$s['db_forward_fence']===null&&!is_file($r->maintenanceLockPath()),'fresh emergency commit');ck(count($m->verifiedAppliedVersions())===12&&(int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='cp107-disposable'")->fetchColumn()===1,'preserved real data and migration ledger');
+           foreach($want['protected_pins'] as $n=>$v)ck(hash_file('sha256',$web.'/'.$n)===$v,'protected unchanged '.$n);
+           if(getenv('QA_ROUTE')==='emergency')try{$b->rollback('qa37');throw new RuntimeException('rollback unexpectedly accepted');}catch(PublicUpdateException $e){ck($e->errorCode==='emergency_rollback_not_qualified','unqualified old code rollback rejected');}
+          }else exit(2);
+          PHPCODE
+          php "$RUNNER_TEMP/emergency37b.php" stage "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/candidate/SOKNA-PUBLIC-35JB-CONTROLLED-UPDATE.zip" | tee "$RUNNER_TEMP/cc37b-receipts/stage.txt"
+          php "$RUNNER_TEMP/emergency37b.php" commit "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/candidate/SOKNA-PUBLIC-35JB-CONTROLLED-UPDATE.zip" | tee "$RUNNER_TEMP/cc37b-receipts/commit.txt"
+      - name: Record actual exact route completion
+        run: |
+          printf '%s\n' '${{ matrix.origin }}:${{ matrix.route }}:936f665e4641b3ccaef1c78ff37caa2c395cdb3c3723328999b40105f5cdabb8:PASS' > "$RUNNER_TEMP/cc37b-receipts/route-result.txt"
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: SOKNA-CC46B-REPORT-UI-EXACT-RECEIPTS
-          path: ${{ runner.temp }}/cc46b/receipts
+          name: SOKNA-CC52-${{ matrix.origin }}-${{ matrix.route }}-FINAL-RECEIPTS
+          path: ${{ runner.temp }}/cc37b-receipts/*
           retention-days: 30
+  clean:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mariadb: ['11.4']
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-disposable-public-clean-ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CC52-PUBLIC-FINAL-CANDIDATE-PENDING-RECEIPT
+          path: ${{ runner.temp }}/delivery
+      - name: Exact factory bytes and isolated Apache PHP
+        run: |
+          set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-clean-canary
+          python3 - <<'PY'
+          import zipfile,pathlib,os,hashlib,shutil,json
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])/'delivery'
+          p=t/'SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip'
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f'
+          root=pathlib.Path('/var/www/sokna-public-clean-canary')
+          for sub in ['root/webroot','sub/webroot/public/menu']:
+              dest=root/sub;dest.mkdir(parents=True,exist_ok=False)
+              with zipfile.ZipFile(p) as z:
+                  assert z.testzip() is None;z.extractall(dest)
+          shutil.copyfile(t/'factory-build-receipt.json',root/'contract.json')
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring php8.3-curl
+          sudo a2enmod rewrite headers php8.3
+          sudo chown -R www-data:www-data /var/www/sokna-public-clean-canary
+          for row in '18080 root' '18081 sub'; do
+            read -r port name <<< "$row"
+            doc="/var/www/sokna-public-clean-canary/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+          done
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+      - name: Real HTTP fresh setup and pairing on exact 35jb root and nested host
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/delivery"
+          python3 - <<'PY'
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib,hashlib,os,subprocess
+          work=pathlib.Path('/var/www/sokna-public-clean-canary');c=json.loads((work/'contract.json').read_text());rows=[]
+          for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu')]:
+              origin=f'http://127.0.0.1:{port}{base}'
+              web=work/name/'webroot'/base.lstrip('/')
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+              def post(action,body,want=200):
+                  req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+                  try:
+                      with op.open(req,timeout=45) as r:code=r.status; data=json.load(r)
+                  except urllib.error.HTTPError as e:code=e.code;data=json.load(e)
+                  assert code==want,(name,action,code,data.get('code'))
+                  return data
+              code,_,hdr=get('/__sokna_route_probe__');assert code==204 and hdr.get('X-Sokna-Route-Probe')=='ok'
+              code,html,_=get('/setup/index.php');assert code==200 and b'<!doctype html>' in html.lower()
+              _,raw,_=get('/setup/api.php?action=status');j=json.loads(raw);assert j['success'] and not j['setup']['installed'] and j['setup']['base_path']==base and j['preflight']['ok']
+              body={'csrf':j['csrf'],'db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_'+name,'user':'root','pass':'sokna-disposable-public-clean-ci'},'create_database':True,'routing_probe_ok':True,'owner_password':'disposable-owner-CI-only-20261126','emergency_password':'disposable-emergency-CI-only-20261126','storage_dir':'storage'}
+              installed=post('install',body);assert installed['success'] and installed['installed'] and installed['owner_initialized'] and not installed['paired']
+              _,raw,_=get('/setup/api.php?action=status');s=json.loads(raw);assert s['setup']['installed'] and s['setup']['state']=='ready_to_pair'
+              assert post('install',body,409)['code']=='already_installed'
+              pair=post('pair',{'pairing_code':installed['pairing_code'],'installation_id':'sokna-ci-'+name,'shared_secret':'disposable-CI-pair-secret-only-0123456789','display_name':'QA only'})
+              assert pair['success'] and pair['paired']
+              _,raw,_=get('/health');h=json.loads(raw)
+              assert h['ok'] and h['database']=='ready' and h['applied_migrations']==h['catalog_migrations']==12 and h['pending_migrations']==0 and h['emergency_ready'] and h['version']==c['target'],(name,h)
+              assert all(hashlib.sha256((web/n).read_bytes()).hexdigest()==sha for n,sha in c['protected'].items())
+              # Fresh install must contain no historical update transaction or fence.
+              state=web/'storage/routine-update-v2/state.json'
+              if subprocess.run(['sudo','-u','www-data','test','-f',str(state)]).returncode==0:
+                  st=json.loads(subprocess.check_output(['sudo','-u','www-data','cat',str(state)]));assert st.get('db_forward_fence') is None and st.get('pending_verification') is None and st.get('activation_journal') is None
+              assert subprocess.run(['sudo','-u','www-data','test','-f',str(web/'storage/maintenance.lock')]).returncode==1
+              assert h['routine_update']['active_version']==c['target'] and not h['routine_update']['pending_verification']
+              # Pairing alone deliberately does not publish a guest menu.
+              try:
+                  get('/menu')
+                  raise AssertionError('Unpublished menu unexpectedly available')
+              except urllib.error.HTTPError as e:
+                  assert e.code==503 and 'منوی عمومی هنوز منتشر نشده' in e.read().decode('utf-8'),(name,e.code)
+              # Exercise the real signed Local publish API with synthetic data only.
+              import time,hmac,secrets
+              snapshot={'format':'sokna-guest-snapshot-v1','cafe_name':'SOKNA-QA-CANARY','categories':[{'id':1,'name':'QA Category'}],'items':[{'id':1,'category_id':1,'name':'SOKNA-QA-ITEM','price':1000,'available':True}]}
+              envelope={'format':'sokna-guest-snapshot-v1','snapshot':snapshot,'media_manifest':[]}
+              digest=hashlib.sha256(json.dumps(envelope,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+              payload={'snapshot':snapshot,'media_manifest':[],'content_hash':digest,'revision_id':'guest-'+digest[:32],'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'authority_epoch':1}
+              raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode()
+              route='/api/v1/local/guest/publish';ts=str(int(time.time()));nonce=secrets.token_hex(16)
+              signing='\n'.join(['sokna-relay-v1','POST',route,ts,nonce,hashlib.sha256(raw).hexdigest()])
+              sig=hmac.new(b'disposable-CI-pair-secret-only-0123456789',signing.encode(),hashlib.sha256).hexdigest()
+              req=urllib.request.Request(origin+route,raw,{'Content-Type':'application/json','X-Sokna-Installation':'sokna-ci-'+name,'X-Sokna-Timestamp':ts,'X-Sokna-Nonce':nonce,'X-Sokna-Signature':sig})
+              try:
+                  with op.open(req,timeout=30) as response:
+                      p=json.load(response);assert response.status==200 and p['ok'] is True,(name,p)
+              except urllib.error.HTTPError as e:
+                  raise AssertionError((name,'signed publish',e.code,e.read().decode('utf-8')[:500]))
+              code,html,_=get('/menu');assert code==200 and b'SOKNA-QA-ITEM' in html,(name,code)
+              rows.append({'layout':base or '/','setup':True,'pairing':True,'duplicate_install_rejected':True,'db_migrations':12,'unpublished_menu_http_503':True,'signed_publish':True,'menu_http_200':True,'emergency_ready':True,'protected_files_unchanged':6})
+              print('PASS actual Apache setup pairing and menu',name,base or '/')
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])
+          src=p/'delivery/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip'
+          b=src.read_bytes();assert hashlib.sha256(b).hexdigest()==c['clean_sha256']
+          (p/'delivery/public-clean-receipt.json').write_text(json.dumps({'status':'PASS_EXACT_CONTROLLED_CLEAN_HTTP','sha256':c['clean_sha256'],'version':c['target'],'layouts':rows,'old_host_update_authorized':False,'production_cafe_authorized':False,'actual_home_install_verified':False,'requires_empty_separate_path_and_db':True},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CC52-CLEAN-FINAL-RECEIPTS
+          path: ${{ runner.temp }}/delivery/public-clean-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+  delivery:
+    needs: [build, public-upgrade, clean]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CC52-PUBLIC-FINAL-CANDIDATE-PENDING-RECEIPT
+          path: ${{ runner.temp }}/delivery
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-CC52-*-FINAL-RECEIPTS
+          path: ${{ runner.temp }}/receipts
+      - name: Independent controlled delivery receipt - no automatic installation
+        run: |
+          python3 - <<'PY'
+          import pathlib,json,hashlib,os
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'delivery';r=t/'receipts'
+          b=json.loads((d/'factory-build-receipt.json').read_text())
+          sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+          assert b['delivery_authorized'] is False and b['production_authorized'] is False
+          assert sha(d/'SOKNA-PUBLIC-35JB-CONTROLLED-UPDATE.zip')==b['update_sha256']=='936f665e4641b3ccaef1c78ff37caa2c395cdb3c3723328999b40105f5cdabb8'
+          assert sha(d/'SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip')==b['clean_sha256']=='09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f'
+          routes=[]
+          for origin in ['35ip','35iy']:
+              for route in ['routine','emergency']:
+                  p=r/f'SOKNA-CC52-{origin}-{route}-FINAL-RECEIPTS'
+                  assert (p/'route-result.txt').read_text().strip()==f'{origin}:{route}:{b["update_sha256"]}:PASS'
+                  logs=(p/'stage.txt').read_text()+(p/'commit.txt').read_text()
+                  assert 'PASS fresh emergency commit' in logs and 'PASS preserved real data and migration ledger' in logs
+                  routes.append({'origin':origin,'route':route,'status':'PASS','receipt_sha256':sha(p/'route-result.txt')})
+          c=json.loads((r/'SOKNA-CC52-CLEAN-FINAL-RECEIPTS/public-clean-receipt.json').read_text())
+          assert c['status']=='PASS_EXACT_CONTROLLED_CLEAN_HTTP' and c['sha256']==b['clean_sha256'] and len(c['layouts'])==2
+          assert {x['layout'] for x in c['layouts']}=={'/','/public/menu'}
+          for row in c['layouts']:
+              assert row['setup'] and row['pairing'] and row['signed_publish'] and row['db_migrations']==12 and row['protected_files_unchanged']==6
+          out={'status':'CONTROLLED_PUBLIC_OPERATOR_DELIVERY_READY','run_id':os.environ['GITHUB_RUN_ID'],'version':b['target'],'update_sha256':b['update_sha256'],'clean_sha256':b['clean_sha256'],'baselines':b['baselines'],'route_receipts':routes,'clean_receipt':c,'controlled_operator_delivery_authorized':True,'production_host_accepted':False,'automatic_deployment_authorized':False,'requires_exact_preflight_and_verified_backup':True,'clean_empty_path_and_empty_db_only':True,'local_release_included':False}
+          (d/'DELIVERY-RECEIPT.json').write_text(json.dumps(out,indent=2))
+          print('PASS CONTROLLED PUBLIC OPERATOR DELIVERY',out['version'])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-PUBLIC-35JB-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/delivery/*
+          retention-days: 30
+          if-no-files-found: error
