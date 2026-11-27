@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-39 four remaining native Local interruption boundaries (QA ONLY)
+name: SOKNA RELEASE PRIORITY-40 missing financial correction audit backup recovery (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,136 +7,94 @@ permissions:
   contents: read
   actions: read
 jobs:
-  native-local:
-    runs-on: windows-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {origin: C2, fault: APACHE_STOPPED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
-          - {origin: C2, fault: DATABASE_BACKUP_VERIFIED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
-          - {origin: C2, fault: POINTER_SWITCHED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
-          - {origin: C2, fault: COMMITTED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
+  audit-restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     env:
-      SOKNA_R186_CI_ONLY: 'YES'
-      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
-      SOKNA_ORIGIN: ${{ matrix.origin }}
-      SOKNA_FAULT: ${{ matrix.fault }}
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          ref: 6983e9d52435a746325f60ace428b8548bcc8fc0
           persist-credentials: false
-      - uses: actions/checkout@v4
-        with:
-          ref: f38c20083068e540d593876a2c527c51e0157f92
-          path: native-src
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.13.5'}
-      - uses: actions/setup-dotnet@v4
-        with: {dotnet-version: '8.0.x'}
       - uses: actions/download-artifact@v4
         with:
           run-id: 46036608931
           name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - uses: actions/download-artifact@v4
-        with:
-          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
-          run-id: 45764512635
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/gg
-      - uses: actions/download-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          run-id: ${{ matrix.run }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/baseline
-      - uses: actions/download-artifact@v4
-        with:
-          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
-          run-id: 45707538026
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/helper
-      - uses: actions/download-artifact@v4
-        with:
-          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
-          run-id: 45707401488
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/apache
-      - name: Test quarantine rejection and create isolated positive fixture with identical web bytes
-        shell: pwsh
+      - name: Verify actual frozen Local web archive then exercise new audit recovery scope
+        shell: bash
         run: |
-          $ErrorActionPreference='Stop'
-          $q=Join-Path $env:RUNNER_TEMP 'candidate/LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip'
-          if((Get-FileHash $q -Algorithm SHA256).Hash.ToLowerInvariant() -cne '19e7591defdb6a368705c9c117ed5bcd048108e2f96484fe9ba0031c4999a117'){throw 'CC36_OUTER_DRIFT'}
-          $bases=@(Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'); if($bases.Count -ne 1){throw 'BASELINE_ARCHIVE_MISSING_OR_AMBIGUOUS'}; $env:SOKNA_BASELINE_ZIP=$bases[0].FullName
-          # Actual negative gate must refuse original quarantined outer.
-          python native-src/packaging/windows/release-gates/check_local_release_set.py $q --require-installable
-          if($LASTEXITCODE -eq 0){throw 'QUARANTINE_UNEXPECTEDLY_INSTALLABLE'}
-          'QUARANTINED ORIGINAL REJECTED BY INSTALLABILITY GATE'|Set-Content "$env:RUNNER_TEMP/quarantine-negative.txt"
-          @'
-          from pathlib import Path
-          import os,sys,hashlib,json,zipfile,io,re
-          P=Path; H=lambda b:hashlib.sha256(b).hexdigest(); J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
-          assert os.environ['GITHUB_ACTIONS']=='true' and os.environ['RUNNER_OS']=='Windows' and os.environ['SOKNA_R186_CI_ONLY']=='YES'
-          t=Path(os.environ['RUNNER_TEMP']); q=t/'candidate/LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip'; old=t/'gg/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip'; base=Path(os.environ['SOKNA_BASELINE_ZIP']);origin=os.environ['SOKNA_ORIGIN'];fault=os.environ['SOKNA_FAULT']
-          assert H(q.read_bytes())=='19e7591defdb6a368705c9c117ed5bcd048108e2f96484fe9ba0031c4999a117'
-          assert H(old.read_bytes())=='a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f'
-          with zipfile.ZipFile(q) as z:m=json.loads(z.read('release-set.json'));w=z.read('artifacts/local/web.zip');assert z.testzip() is None
-          with zipfile.ZipFile(old) as z:prior=json.loads(z.read('release-set.json'))
-          assert m['for_install'] is False and m['production_pass'] is False and m['qa_notes']['operator_install_allowed'] is False
-          assert H(w)=='f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f'
-          assert m['targets']['local']['managed_tree_sha256']=='f6a745b7febaacc4d312b4bb4f0ceab2e3c176ef6a04b73638733be3a6a6e950'
-          assert prior['targets']['local'] in [x['local'] for x in m['supported_baselines']]
-          # CI fixture ONLY, not operational admission, with same inner bytes. Do not publish fixture.
-          m.update(for_install=True,production_pass=True,qualification=prior['qualification'],status='CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING',qa_notes={'scope':'DISPOSABLE_CI_FIXTURE_ONLY_NOT_RELEASE','distribution_authorized':False,'production_accepted':False,'field_install_verified':False,'source_quarantine_sha256':H(q.read_bytes()),'historical_qualification_fixture_only':True})
-          out=t/'LOCAL-231GH-PANEL-FIXTURE-CI-ONLY.zip'
-          with zipfile.ZipFile(out,'w') as z:
-           for n,b in sorted({'release-set.json':J(m),'artifacts/local/web.zip':w}.items()):
-            i=zipfile.ZipInfo(n,(2026,11,27,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=zipfile.ZIP_DEFLATED;z.writestr(i,b,compresslevel=9)
-          with zipfile.ZipFile(out) as z:assert z.read('artifacts/local/web.zip')==w
-          script=Path('qa/factory/prepare_checkpoint77_native.py' if fault=='none' else 'qa/factory/prepare_checkpoint83_fault.py');s=script.read_text(encoding='utf-8')
-          s=s.replace("origin=os.environ[\"SOKNA_ORIGIN\"]", "origins['GG']=('a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f','bafc41567eb3ed3db042855474bf51fdacc2a926094885f561411ae4dae42fa6')\norigin=os.environ[\"SOKNA_ORIGIN\"]")
-          s=s.replace('LOCAL-231GG-PANEL-FIXTURE-CI-ONLY.zip','LOCAL-231GH-PANEL-FIXTURE-CI-ONLY.zip').replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',H(w)).replace("@('GE','GF')","@('GE','GF','GG')")
-          s=s.replace(" $fault=$env:SOKNA_FAULT\n $args=", " $fault=$env:SOKNA_FAULT\n $args=")
-          # Preserve exact previous runner behavior, add separate evidence of quarantine rejection via the static install gate.
-          s=s.replace("(tmp/'native-matrix.ps1').write_text(s,encoding='utf8')", "(tmp/'native-matrix.ps1').write_text(s,encoding='utf8')")
-          os.environ['SOKNA_CURRENT_QA_ZIP']=str(out);os.environ['SOKNA_MATRIX_TARGET_ZIP']=str(out)
-          exec(compile(s,str(script),'exec'),{'__file__':str(script.resolve()),'__name__':'__main__'})
-          # Export exact fixture path and pinned original hash for separate receipt reconciliation.
-          (t/'cc37-fixture.json').write_bytes(J({'source_outer_sha256':H(q.read_bytes()),'fixture_outer_sha256':H(out.read_bytes()),'web_sha256':H(w),'target_tree_sha256':m['targets']['local']['managed_tree_sha256'],'origin':origin,'fault':fault,'production_authorized':False,'scope':'DISPOSABLE_CI_ONLY'}))
-          '@ | Set-Content "$env:RUNNER_TEMP/native37.py" -Encoding utf8NoBOM
-          python "$env:RUNNER_TEMP/native37.py"
-          if($LASTEXITCODE -ne 0){throw 'FIXTURE_PREPARE_FAILED'}
-          $env:SOKNA_MATRIX_TARGET_ZIP=Join-Path $env:RUNNER_TEMP 'LOCAL-231GH-PANEL-FIXTURE-CI-ONLY.zip'
-          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
-          Push-Location native-src
-          try {
-            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
-            if($LASTEXITCODE -ne 0){throw 'NATIVE_MATRIX_FAILED'}
-          }finally{Pop-Location}
-      - name: Bind native test receipt to original and identical web bytes, not original outer admission
-        shell: pwsh
-        run: |
-          $r=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
-          $f=Get-Content "$env:RUNNER_TEMP/cc37-fixture.json" -Raw|ConvertFrom-Json
-          if($r.status -ne 'PASS' -or $r.candidate_sha256 -cne $f.fixture_outer_sha256 -or $r.target_tree_sha256 -cne $f.target_tree_sha256 -or !$r.independent_restore -or $r.actual_field_host -or $r.distribution_authorized){throw 'RECEIPT_DRIFT'}
-          $forward=$env:SOKNA_FAULT -in @('POINTER_SWITCHED','COMMITTED')
-          $expectedPhase=if($forward){'COMMITTED'}else{'RECOVERED_TO_PREVIOUS_SLOT'}
-          $expectedLedger=if($forward){93}else{91}
-          if($r.phase -ne $expectedPhase -or $r.migrations -ne $expectedLedger){throw 'EXPECTED_RECOVERY_NOT_PROVEN'}
-          if($env:SOKNA_FAULT -eq 'none' -and !$r.panel_activation_tested){throw 'PANEL_NOT_PROVEN'}
+          set -euo pipefail
+          W="$RUNNER_TEMP/cc40"; mkdir -p "$W/local"
+          A="$RUNNER_TEMP/candidate/LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
+          echo "f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f  $A" | sha256sum -c -
+          unzip -tq "$A"
+          unzip -q "$A" -d "$W/local"
+          export QA_WORK="$W" TMPDIR="$W"
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-results.txt"
+          cat > "$W/gate40.php" <<'SOKNA_CC40_PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}
+          $mode=$argv[2]??'seed';$pass='synthetic-cc40-backup-password';$path=$W.'/cc40-business.skbf';$fpath=$W.'/cc40-fixture.json';
+          function digest(PDO $p,string $t){$order=$t==='remaining_account_discount_lines'?'grant_id,order_item_id':'id';$rows=$p->query('SELECT * FROM `'.$t.'` ORDER BY '.$order)->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$row)foreach($row as &$v)if($v!==null)$v=(string)$v;unset($v,$row);return ['count'=>count($rows),'sha256'=>hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR))];}
+          function rejects(callable $f,string $code){try{$f();}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);return;}throw new RuntimeException('unexpected success '.$code);}
+          if($mode==='seed'){
+           $fixture=json_decode(file_get_contents($W.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);$sid=(int)$fixture['hall']['partial']['session'];$settle=$c->settlements();$committed='remaining-discount-correction-cc40-committed';$abandoned='remaining-discount-correction-cc40-abandoned';$reason='QA40 restore verification';$before=digest($p,'settlement_records');$beforeLines=digest($p,'settlement_record_lines');
+           $preview=$settle->previewRemainingDiscountCorrection($sid,'fixed',26000,$admin);$r=$settle->adjustRemainingDiscount($sid,'fixed',26000,$preview['expected_signature'],$reason,$committed,$admin);ck((int)$r['revision_id']>0&&$r['discount_amount']===26000,'actual financial correction recorded');
+           $status=$settle->remainingDiscountCorrectionStatus($sid,$committed,$admin);$decision=$settle->abandonRemainingDiscountCorrection($sid,$abandoned,$admin);ck($status['state']==='committed'&&$decision['state']==='abandoned','actual terminal decisions before backup');
+           ck(digest($p,'settlement_records')===$before&&digest($p,'settlement_record_lines')===$beforeLines,'original paid documents unchanged by correction');
+           $tables=['remaining_account_discount_grants','remaining_account_discount_lines','remaining_account_discount_revisions','settlement_records','settlement_record_lines','settlement_tender_allocations','audit_log'];$f=['source'=>$cfg['installation']['id'],'sid'=>$sid,'committed'=>$committed,'abandoned'=>$abandoned,'status'=>$status,'decision'=>$decision,'reason'=>$reason,'tables'=>[],'paid'=>$settle->account($sid)['paid_total'],'remaining'=>$settle->account($sid)['remaining_total']];
+           foreach($tables as $t){$f['tables'][$t]=digest($p,$t);ck($f['tables'][$t]['count']>0,'nonempty '.$t);}
+           $r=$c->businessBackup()->createEncrypted($path,$pass,(int)$admin['id']);$f['sha']=hash_file('sha256',$path);ck($r['sha256']===$f['sha'],'encrypted backup exact bytes');file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));exit;
+          }
+          $f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);ck(hash_file('sha256',$path)===$f['sha'],'original encrypted bytes unchanged');
+          // Exactly isolated DB cloned schema in disposable CI only; no external endpoint configured.
+          // Copy only actual schema and migration ledger, never source business rows.
+          $p->exec('CREATE DATABASE sokna_cc40_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          $t=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cc40_restore;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+          $t->exec('SET FOREIGN_KEY_CHECKS=0');foreach($p->query('SHOW FULL TABLES WHERE Table_type=\'BASE TABLE\'')->fetchAll(PDO::FETCH_NUM) as $row){$name=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$name))throw new RuntimeException('unexpected table');$ddl=$p->query('SHOW CREATE TABLE `'.$name.'`')->fetch(PDO::FETCH_NUM)[1];$t->exec($ddl);}
+          foreach(['schema_migrations','schema_migration_statements'] as $name){$rows=$p->query('SELECT * FROM `'.$name.'`')->fetchAll(PDO::FETCH_ASSOC);foreach($rows as $row){$cols=array_keys($row);$t->prepare('INSERT INTO `'.$name.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}}$t->exec('SET FOREIGN_KEY_CHECKS=1');
+          ck($t->query('SELECT DATABASE()')->fetchColumn()==='sokna_cc40_restore'&&$t->query('SELECT COUNT(*) FROM users')->fetchColumn()==0,'separate empty target database');
+          $destId='qa40-target-independent';$dest=$W.'/cc40-dest-data';if(!is_dir($dest))mkdir($dest,0700,true);$o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$destId);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$destId,$auth,null,$dest);
+          $manifest=$b->inspectEncrypted($path,$pass);ck($manifest['stream_verified']===true&&$manifest['target_ready']===true&&$manifest['target_kind']==='empty'&&$manifest['source_installation_id']===$f['source'],'actual target inspection ready, source identity verified');
+          $r=$b->restoreEncryptedToEmptyTarget($path,$pass,0);ck($r['restored']===true&&$r['source_installation_id']===$f['source'],'real encrypted restore completed');ck($r['public_authority_fence_confirmed']===false&&$r['public_authority_fence_error']==='public_not_configured','no false peer confirmation when Public not configured');ck($auth->phase()==='reenroll_required','target authority fenced independently');ck(scalar($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$destId,'destination machine identity preserved');
+          foreach($f['tables'] as $table=>$digest){ck(digest($t,$table)===$digest,'restored immutable rows '.$table);ck(digest($p,$table)===$digest,'source unchanged '.$table);}
+          $targetCfg=$cfg;$targetCfg['db']['name']='sokna_cc40_restore';$targetCfg['app']['data_dir']=$dest;$targetCfg['installation']['id']=$destId;$targetCfg['public']['base_url']='';$targetCfg['public']['shared_secret']='';
+          $tc=\Sokna\Local\Core\Bootstrap::fromArray($targetCfg);$ts=$tc->settlements();$sid=$f['sid'];
+          ck($ts->remainingDiscountCorrectionStatus($sid,$f['committed'],$admin)===$f['status'],'restored committed status and exact original revision ID');
+          ck($ts->remainingDiscountCorrectionStatus($sid,$f['abandoned'],$admin)===$f['decision'],'restored abandonment decision');
+          $a=$ts->account($sid);ck($a['paid_total']===$f['paid']&&$a['remaining_total']===$f['remaining'],'restored financial account exact paid and remaining values');
+          $r=$ts->adjustRemainingDiscount($sid,'fixed',26000,str_repeat('0',64),$f['reason'],$f['committed'],$admin);ck($r['idempotent']===true&&$r['revision_id']===$f['status']['result']['revision_id'],'committed correction replay returns same revision, no mutation');
+          rejects(fn()=>$ts->adjustRemainingDiscount($sid,'fixed',26000,str_repeat('0',64),$f['reason'],$f['abandoned'],$admin),'discount_correction_abandoned');
+          ck($ts->abandonRemainingDiscountCorrection($sid,$f['abandoned'],$admin)===$f['decision'],'abandon replay no duplicate audit');
+          foreach($f['tables'] as $table=>$d){ck(digest($t,$table)===$d,'after replay exact rows '.$table);ck(digest($p,$table)===$d,'source remains unchanged '.$table);}
+          echo "GROUP PASS HALL-20261126-DISCOUNT-UI-02 exact correction audit restoration and safe replay\n";
+          SOKNA_CC40_PHP
+          (php "$W/gate40.php" "$W/local" seed && php "$W/gate40.php" "$W/local" restore) | tee "$W/cc40-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC39-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-QA-ONLY
+          name: SOKNA-CC40-FINANCIAL-AUDIT-RESTORE-RECEIPTS-QA-ONLY
           path: |
-            ${{ runner.temp }}/matrix-receipt.json
-            ${{ runner.temp }}/cc37-fixture.json
-            ${{ runner.temp }}/quarantine-negative.txt
-          if-no-files-found: warn
+            ${{ runner.temp }}/cc40/*-results.txt
+            ${{ runner.temp }}/cc40/cc40-fixture.json
           retention-days: 7
+          if-no-files-found: warn
