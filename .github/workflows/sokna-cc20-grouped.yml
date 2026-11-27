@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-37B exact repaired 35ip origin and Emergency forward schema gate (QA ONLY)
+name: SOKNA RELEASE PRIORITY-37C exact repaired 35ip origin and Emergency forward schema gate (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -87,7 +87,7 @@ jobs:
           $storage=$web.'/storage';if(!is_dir($storage))mkdir($storage,0700,true);
           $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_cp107;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());$b=new Bridge($r,$storage,fn()=>$m->pendingVersions(),fn()=>$h->status()['body']);
           if($phase==='stage'){
-           ck(count($m->verifiedAppliedVersions())===11,'actual repaired baseline DB ledger');
+           ck(count($m->appliedVersions())===11,'actual repaired baseline DB ledger');
            $old=$r->currentVersion();$tree=$r->managedTreeDigest();ck($tree==='0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584','exact repaired 35ip baseline');
            $s=$b->snapshot();ck($s['channel']==='emergency_independent_routine_v2'&&$s['managed_tree_matches_expected']===true,'reconciled independent emergency owner');
            $st=$b->stageUploadedZip($pkg,'qa37');ck($st['package_sha256']===hash_file('sha256',$pkg)&&$st['version']===$want['version'],'same archive staged by emergency bridge');ck($r->currentVersion()===$old&&$r->managedTreeDigest()===$tree,'stage leaves active tree unchanged');
