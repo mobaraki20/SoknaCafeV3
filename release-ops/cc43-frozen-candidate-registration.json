@@ -1,0 +1,23 @@
+{
+  "schema": "sokna-frozen-qa-registration-v1",
+  "checkpoint": "CC43",
+  "source_archive_sha256": "7df0e9b58f56aa5b73e577bdba9fa135c1912ee7caf98e02ee38209f2bbaf3db",
+  "producer": {
+    "run_id": 46056788008,
+    "artifact_id": 15227186188,
+    "artifact": "SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL",
+    "commit": "b8a571a473502dd6bcdb46a5f22294159c9fdb4d",
+    "artifact_sha256": "0bfc14a8884dea7c35ffebcade313e0138dddc91adf62a177cc14df431e73b3a"
+  },
+  "package_sha256": {
+    "LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip": "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a",
+    "LOCAL-231GI-UPDATE-QA-DO-NOT-INSTALL.zip": "41a7622255ba11fc8664c3cc6441fefe4ba88d0892743cad452171a4e7685c0d",
+    "PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip": "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca",
+    "PUBLIC-35JA-UPDATE-QA-DO-NOT-INSTALL.zip": "3b297bb2561caeb9fd1dcb57d165270d6e4f4ba476d432b2672c6d2162c42077"
+  },
+  "scope": "Exact existing QA bytes; no new package version; not the active-source pointer and not a factory admission receipt.",
+  "local_clean_web_only": true,
+  "production_authorized": false,
+  "operator_installable": false,
+  "field_acceptance": false
+}
