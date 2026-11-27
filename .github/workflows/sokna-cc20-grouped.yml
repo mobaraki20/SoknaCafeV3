@@ -1,0 +1,615 @@
+name: SOKNA grouped acceptance of exact CASE-CLOSURE-20 (QA ONLY)
+on:
+  push:
+    branches: [qa/func-pass02-db-20261127]
+    paths: [.github/workflows/sokna-cc20-grouped.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Reconstruct exact CP160 baseline then current 42-file cumulative delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          mkdir -p "$W"
+          python3 qa/cp148/prepare-source.py "$W" "$RUNNER_TEMP/cp148-input" | tee "$W/source-results.txt"
+          python3 qa/cp150/apply-cp150.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp151/apply-cp151.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152/apply-cp152.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152b/apply-cp152b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152c/apply-cp152c.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152d/apply-cp152d.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp153/apply-cp153.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp154/apply-cp154.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp155/apply-cp155.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp156/apply-cp156.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp157/apply-cp157.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp157b/apply-cp157b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp158/apply-cp158.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp159/apply-cp159.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp159b/apply-cp159b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp160/apply-cp160.py "$W" | tee -a "$W/source-results.txt"
+          base64 -d qa/func-pass02/overlay.b64 > "$W/overlay.patch.gz"
+          echo 'ff19835c97d8f5c7d1dbd0fb625f7b7717d26e2a9b5f9c84803ae990cef0f1c4  '"$W/overlay.patch.gz" | sha256sum -c -
+          gzip -dc "$W/overlay.patch.gz" > "$W/overlay.patch"
+          (cd "$W"; git apply --check overlay.patch; git apply overlay.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(625,'0d946221bea6cfc1df61faf91b562f568a43caf09a5e44291baa5a87eee8f977'),'public':(258,'5cf7bcd726b3c22d37269341702cbf99ef0c8ce174fcbeef2d29e1760a7eaf20')}
+          for host,(n,sha) in expected.items():
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==sha,(host,len(paths),actual)
+              print('PASS EXACT FUNC-PASS-02',host,n,actual)
+          PY
+      - name: Apply exact six-file incremental change and verify every file
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/func-pass03/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/func-pass03/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/fp3-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/func-pass03/manifest.json'))
+          for host,n in [('local',625),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT FUNC-PASS-03',host,n,actual)
+          PYCODE
+          base64 -d qa/case-closure07/overlay.b64 > "$W/cc07.patch.gz"
+          echo '4939a176c2983a84acade25002d00ca365cfecf029b8bba4ba4d73f2d9cece3d  '"$W/cc07.patch.gz" | sha256sum -c -
+          gzip -dc "$W/cc07.patch.gz" > "$W/cc07.patch"
+          (cd "$W"; git apply --check cc07.patch; git apply cc07.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc07-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure07/manifest.json'))
+          for host,n in [('local',625),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-06',host,n,actual)
+          PYCODE
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure08/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure08/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc08-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure08/manifest.json'))
+          for host,n in [('local',625),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-08',host,n,actual)
+          PYCODE
+      - name: Apply exact CASE-CLOSURE-09 delta and verify complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure09/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure09/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc09-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure09/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-09',host,n,actual)
+          PYCODE
+      - name: Apply exact recovery identity fix and verify every file
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure10b/identity.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure10b/identity.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc10b-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure10b/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-10',host,n,actual)
+          PYCODE
+      - name: Apply exact CASE-CLOSURE-11 delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure11/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure11/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc11-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure11/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-11',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-12 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure12/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure12/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc12-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure12/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-12',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-13 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure13/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure13/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc13-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure13/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-13',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-14 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure14/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure14/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc14-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure14/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-14',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-15 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure15/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure15/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc15-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure15/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-15',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-15B and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure15b/deep-link.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure15b/deep-link.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc15b-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure15b/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-15B',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-15C and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure15c/readiness.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure15c/readiness.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc15c-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure15c/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-15C',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-16 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure16/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure16/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc16-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure16/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-16',host,n,actual)
+          PYCODE
+      - name: Verify exact cumulative CASE-CLOSURE-20 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          cat > "$W/cc17-20.patch" <<'SOKNA_QA_CC17_20_PATCH'
+          --- a/local/public/assets/admin-workspace.js
+          +++ b/local/public/assets/admin-workspace.js
+          @@ -64,3 +64,3 @@
+           function teamFilterText(v){return String(v??'').normalize('NFKC').replace(/[يى]/g,'ی').replace(/ك/g,'ک').replace(/[۰-۹٠-٩]/g,d=>String('۰۱۲۳۴۵۶۷۸۹'.includes(d)?'۰۱۲۳۴۵۶۷۸۹'.indexOf(d):'٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[\u200c\u200e\u200f]/g,' ').trim().toLocaleLowerCase('fa-IR')}
+          -function renderTeam(){if(!snap)return;const body=$('[data-team]');body.replaceChildren();const usersErr=sectionError('users'),personnelErr=sectionError('personnel');openEnabled('team',!usersErr&&!personnelErr);const count=$('[data-team-count]');if(usersErr||personnelErr){if(count)count.textContent='اطلاعات اعضای تیم در دسترس نیست.';const tr=el('tr','sc-table-empty-row'),td=el('td','sc-section-unavailable',(personnelErr?.message||usersErr?.message||'اطلاعات اعضای تیم فعلاً در دسترس نیست.'));td.colSpan=6;tr.append(td);body.append(tr);return}const all=teamRows(),query=teamFilterText($('[data-team-search]')?.value),statusFilter=$('[data-team-status]')?.value||'all',accessFilter=$('[data-team-access]')?.value||'all';const filtered=all.filter(({personnel:p,user:u})=>{const active=p?Number(p.active)===1:Number(u?.active)===1,access=!!u&&Number(u.active)===1;const hay=teamFilterText([p?.display_name,u?.display_name,p?.job_title,p?.personnel_code,u?.username].filter(Boolean).join(' '));return (!query||query.split(/\s+/).every(t=>hay.includes(t)))&&(statusFilter==='all'||active===(statusFilter==='active'))&&(accessFilter==='all'||(accessFilter==='none'?!access:access&&(accessFilter==='admin'?u.role==='admin':u.role!=='admin')))});if(count)count.textContent=`${L.humanDigits(filtered.length)} از ${L.humanDigits(all.length)} عضو`;filtered.forEach(row=>{const p=row.personnel,u=row.user,name=p?.display_name||u?.display_name||'—',active=p?Number(p.active)===1:Number(u?.active)===1,access=!!u&&Number(u.active)===1;const tr=document.createElement('tr');tr.dataset.searchTarget=`team:${p?.id||'u'+u?.id}`;cell(tr,'نام',name);cell(tr,'سمت',p?.job_title||'—');const login=document.createElement('td');login.dataset.label='ورود به سامانه';login.append(access?badge(u.role==='admin'?'مدیر':u.username,'success'):badge('بدون دسترسی','neutral'));tr.append(login);const capabilityCell=cell(tr,'دسترسی‌ها','');if(access&&u.role!=='admin'&&(u.capabilities||[]).length>2){const key=tr.dataset.searchTarget,details=el('details','sc-team-capability-summary'),summary=el('summary','',teamAccessSummary(u)),list=el('ul','sc-team-capability-list');for(const cap of u.capabilities)list.append(el('li','',capLabels[cap]||cap));details.append(summary,list);details.open=teamOpenDetails.has(key);details.addEventListener('toggle',()=>{if(!details.isConnected)return;if(details.open)teamOpenDetails.add(key);else teamOpenDetails.delete(key)});capabilityCell.append(details)}else capabilityCell.textContent=access?teamAccessSummary(u):'—';const st=document.createElement('td');st.dataset.label='وضعیت';st.append(badge(active?'فعال':'غیرفعال',active?'success':'neutral'));tr.append(st);const ac=document.createElement('td');ac.dataset.label='عملیات';const acts=el('div','sc-actions sc-row-actions');acts.append(button('ویرایش',()=>editTeam(row)));ac.append(acts);tr.append(ac);body.append(tr)});emptyTable(body,6,all.length?'عضوی مطابق فیلتر پیدا نشد.':'هنوز عضوی برای تیم ثبت نشده است.')}
+          +function renderTeam(){if(!snap)return;const body=$('[data-team]');body.replaceChildren();const usersErr=sectionError('users'),personnelErr=sectionError('personnel');openEnabled('team',!usersErr&&!personnelErr);const count=$('[data-team-count]');if(usersErr||personnelErr){if(count)count.textContent='اطلاعات اعضای تیم در دسترس نیست.';const tr=el('tr','sc-table-empty-row'),td=el('td','sc-section-unavailable',(personnelErr?.message||usersErr?.message||'اطلاعات اعضای تیم فعلاً در دسترس نیست.'));td.colSpan=6;tr.append(td);body.append(tr);return}const all=teamRows(),query=teamFilterText($('[data-team-search]')?.value),statusFilter=$('[data-team-status]')?.value||'all',accessFilter=$('[data-team-access]')?.value||'all';const filtered=all.filter(({personnel:p,user:u})=>{const active=p?Number(p.active)===1:Number(u?.active)===1,access=!!u&&Number(u.active)===1;const hay=teamFilterText([p?.display_name,u?.display_name,p?.job_title,p?.personnel_code,u?.username].filter(Boolean).join(' '));return (!query||query.split(/\s+/).every(t=>hay.includes(t)))&&(statusFilter==='all'||active===(statusFilter==='active'))&&(accessFilter==='all'||(accessFilter==='none'?!access:access&&(accessFilter==='admin'?u.role==='admin':u.role!=='admin')))});if(count)count.textContent=`${L.humanDigits(filtered.length)} از ${L.humanDigits(all.length)} عضو`;filtered.forEach(row=>{const p=row.personnel,u=row.user,name=p?.display_name||u?.display_name||'—',active=p?Number(p.active)===1:Number(u?.active)===1,access=!!u&&Number(u.active)===1;const tr=document.createElement('tr');tr.dataset.searchTarget=`team:${p?.id||'u'+u?.id}`;if(p?.id)tr.dataset.personnelId=String(p.id);if(u?.id)tr.dataset.userId=String(u.id);cell(tr,'نام',name);cell(tr,'سمت',p?.job_title||'—');const login=document.createElement('td');login.dataset.label='ورود به سامانه';login.append(access?badge(u.role==='admin'?'مدیر':u.username,'success'):badge('بدون دسترسی','neutral'));tr.append(login);const capabilityCell=cell(tr,'دسترسی‌ها','');if(access&&u.role!=='admin'&&(u.capabilities||[]).length>2){const key=tr.dataset.searchTarget,details=el('details','sc-team-capability-summary'),summary=el('summary','',teamAccessSummary(u)),list=el('ul','sc-team-capability-list');for(const cap of u.capabilities)list.append(el('li','',capLabels[cap]||cap));details.append(summary,list);details.open=teamOpenDetails.has(key);details.addEventListener('toggle',()=>{if(!details.isConnected)return;if(details.open)teamOpenDetails.add(key);else teamOpenDetails.delete(key)});capabilityCell.append(details)}else capabilityCell.textContent=access?teamAccessSummary(u):'—';const st=document.createElement('td');st.dataset.label='وضعیت';st.append(badge(active?'فعال':'غیرفعال',active?'success':'neutral'));tr.append(st);const ac=document.createElement('td');ac.dataset.label='عملیات';const acts=el('div','sc-actions sc-row-actions');acts.append(button('ویرایش',()=>editTeam(row)));ac.append(acts);tr.append(ac);body.append(tr)});emptyTable(body,6,all.length?'عضوی مطابق فیلتر پیدا نشد.':'هنوز عضوی برای تیم ثبت نشده است.')}
+           function syncTeamAccessFields(){const f=$('[data-team-form]'),on=f.elements.system_access.checked,box=$('[data-team-login-fields]'),responsibilities=$('[data-team-responsibilities]',f);box.hidden=!on;if(responsibilities)responsibilities.hidden=!on;f.elements.username.required=on;const admin=f.elements.account_role.value==='admin';f.dataset.role=f.elements.account_role.value;f.elements.account_role.disabled=!on||f.dataset.self==='1';$$('[name="capabilities"]',f).forEach(i=>i.disabled=!on||admin);$$('[name="preparation_areas"]',f).forEach(i=>i.disabled=!on||admin);$$('[data-team-preset]',f).forEach(i=>i.disabled=!on||admin);f.elements.username.disabled=!on;f.elements.password.disabled=!on;const needsRemote=on&&!admin&&!!teamCapabilityInput(f,'remote_access')?.checked&&f.dataset.hadRemoteAccess!=='1';const roleChanged=!!f.elements.user_id.value&&f.elements.account_role.value!==f.dataset.originalRole;f.elements.password.minLength=admin||needsRemote||roleChanged?8:4;f.elements.password.required=on&&(f.dataset.passwordRequired==='1'||needsRemote||roleChanged||(!f.elements.user_id.value&&admin));const rs=$('[data-team-remote-state]',f);if(rs)rs.textContent=needsRemote?'برای فعال‌سازی دسترسی اینترنتی رمز حداقل ۸ کاراکتری تعیین کن.':!on?'':f.dataset.remoteReady==='1'&&(admin||teamCapabilityInput(f,'remote_access')?.checked)?'ورود اینترنتی با همین رمز آماده است.':f.dataset.passwordRequired==='1'?'برای فعال‌سازی حساب، رمز اختصاصی تعیین کن.':teamCapabilityInput(f,'remote_access')?.checked?'پس از تعیین رمز یا نخستین ورود موفق محلی، ورود اینترنتی آماده می‌شود.':'این حساب فقط دسترسی محلی دارد.';f.elements.active.disabled=f.dataset.self==='1';f.elements.system_access.disabled=f.dataset.self==='1';if(responsibilities)responsibilities.hidden=!on||admin;}
+          @@ -112,3 +112,25 @@
+           $('[data-bulk-form]').addEventListener('submit',async e=>{e.preventDefault();if(e.submitter?.value!=='submit'){closeDialog(e.currentTarget);return}const f=e.currentTarget,plan=updateBulkPreview();if(!plan?.valid||!plan.known||!plan.created.length)return;await SoknaUI.busy(f,async()=>{try{const j=await post({action:'tables_bulk_create',from_number:Number(f.elements.from_number.value||0),to_number:Number(f.elements.to_number.value||0),name_prefix:f.elements.name_prefix.value,zone_label:f.elements.zone_label.value});const receipt=bulkTableResult(j.result);closeDialog(f);f.reset();updateBulkPreview();const loaded=await refresh(receipt);if(!loaded)toast(receipt+' · بازخوانی فهرست ناموفق بود.','warning','ساخت میزها')}catch(err){actionError(err)}})});
+          -const params=new URLSearchParams(location.search),tab=params.get('tab');if(tab){const normalized=['users','personnel'].includes(tab)?'team':tab,b=$$('[data-tab]').find(x=>x.dataset.tab===normalized);b?.click()}(async()=>{await refresh();const table=params.get('table'),personnel=params.get('personnel'),user=params.get('user');let row=null;if(table)row=root.querySelector(`[data-search-target="table:${table}"]`);else if(personnel||user){row=teamRows().map((x,i)=>({x,el:$('[data-team]').children[i]})).find(v=>(personnel&&String(v.x.personnel?.id||'')===String(personnel))||(user&&String(v.x.user?.id||'')===String(user)))?.el||null}if(row){row.classList.add('sc-command-target');row.scrollIntoView({block:'center'})}})();
+          +function adminSearchDestination(params){
+          + const raw=params.get('tab'),alias=['users','personnel'].includes(raw)?'team':raw;
+          + const validTabs=['team','settings','modules','tables','notifications'];
+          + const keys=['table','personnel','user'].filter(k=>params.has(k));
+          + const key=keys.length===1?keys[0]:null,value=key?params.get(key):null;
+          + const targetTab=key==='table'?'tables':key?'team':null;
+          + const tab=validTabs.includes(alias)?alias:(!raw&&targetTab?targetTab:null);
+          + const target=key&&/^([1-9][0-9]*)$/.test(value)&&params.getAll(key).length===1&&tab===targetTab?{key,value}:null;
+          + return {tab,target};
+          +}
+          +function focusAdminSearchTarget(destination){
+          + const target=destination.target;if(!target)return false;
+          + const section=target.key==='table'?'tables':target.key==='personnel'?'personnel':'users';
+          + if(sectionError(section)||(destination.tab==='team'&&(sectionError('personnel')||sectionError('users'))))return false;
+          + const selected=$('[data-tab][aria-selected="true"]');if(selected?.dataset.tab!==destination.tab)return false;
+          + const selector=target.key==='table'?'[data-tables] [data-search-target]':'[data-team] [data-search-target]';
+          + const row=$$(selector).find(r=>target.key==='table'?r.dataset.searchTarget===`table:${target.value}`:r.dataset[target.key+'Id']===target.value);
+          + if(!row)return false;
+          + row.classList.add('sc-command-target');row.scrollIntoView({block:'center'});return true;
+          +}
+          +const destination=adminSearchDestination(new URLSearchParams(location.search));
+          +if(destination.tab)$$('[data-tab]').find(x=>x.dataset.tab===destination.tab)?.click();
+          +(async()=>{if(await refresh())focusAdminSearchTarget(destination)})();
+ 
+          --- a/local/public/assets/operations-workspace.js
+          +++ b/local/public/assets/operations-workspace.js
+          @@ -374,3 +374,4 @@
+           // Public projection events and the shared five-second timer use one scheduler.
+          -renderPendingIntents();updateExpensePreview();function initializeOperationsRoute(){window.SoknaInteractions?.setupTabs?.(root);const route=routeFromLocation();routeReady=true;applyOperationsRoute(route,{canonical:route.explicit&&!route.autoStock});const generation=routeVersion;(async()=>{await refresh();if(generation!==routeVersion)return;if(route.autoStock&&snap?.inventory?.open_count)switchWorkflow('stock',{updateUrl:true,replace:true});else if(route.explicit&&route.autoStock)writeOperationsRoute(route.key,{replace:true});highlightRouteItem(route)})()}
+          +renderPendingIntents();$$('[data-document-history]').forEach(bindDocumentHistory);
+          +updateExpensePreview();function initializeOperationsRoute(){window.SoknaInteractions?.setupTabs?.(root);const route=routeFromLocation();routeReady=true;applyOperationsRoute(route,{canonical:route.explicit&&!route.autoStock});const generation=routeVersion;(async()=>{await refresh();if(generation!==routeVersion)return;if(route.autoStock&&snap?.inventory?.open_count)switchWorkflow('stock',{updateUrl:true,replace:true});else if(route.explicit&&route.autoStock)writeOperationsRoute(route.key,{replace:true});highlightRouteItem(route)})()}
+           if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initializeOperationsRoute,{once:true});else initializeOperationsRoute();
+          @@ -384,2 +385,3 @@
+           function validateDocumentHistory(j,kind,prior){if(j?.success!==true||j.kind!==kind||j.history_scope!=='local_query'||!Array.isArray(j.rows)||j.rows.length>50||typeof j.has_more!=='boolean'||typeof j.cost_visible!=='boolean')throw Error('پاسخ تاریخچه قابل تأیید نیست.');let before=prior?Number(prior):Infinity;for(const row of j.rows){const id=Number(row?.id);if(!Number.isSafeInteger(id)||id<1||id>=before)throw Error('ترتیب اسناد معتبر نیست.');before=id;if(kind==='receipts'){if(typeof row.received_at!=='string'||!row.received_at||typeof row.item_name!=='string'||!['g','ml','count'].includes(row.base_unit)||!['number','string'].includes(typeof row.received_quantity_base)||!Number.isFinite(Number(row.received_quantity_base))||Number(row.received_quantity_base)<=0||(!j.cost_visible&&Object.hasOwn(row,'total_cost'))||(j.cost_visible&&(!Object.hasOwn(row,'total_cost')||(row.total_cost!==null&&(!Number.isSafeInteger(Number(row.total_cost))||Number(row.total_cost)<0)))))throw Error('سند خرید معتبر نیست.');}else if(typeof row.occurred_at!=='string'||!row.occurred_at||typeof row.category_name!=='string'||!['number','string'].includes(typeof row.amount)||!Number.isSafeInteger(Number(row.amount))||Number(row.amount)<0||!['committed','reversed','pending','reversal'].includes(row.status))throw Error('سند هزینه معتبر نیست.');}if(j.has_more&&(j.rows.length!==50||String(j.next_before_id)!==String(before)))throw Error('ادامه تاریخچه معتبر نیست.');if(!j.has_more&&j.next_before_id!==null)throw Error('ادامه تاریخچه معتبر نیست.');return j;}
+          +function receiptHistoryTarget(query){const values=query.getAll('receipt_id');if(values.length!==1)return '';const value=values[0];return /^[1-9][0-9]*$/.test(value)&&Number.isSafeInteger(Number(value))?value:'';}
+           function bindDocumentHistory(box){const kind=box.dataset.documentHistory,form=box.querySelector('[data-document-history-form]'),body=box.querySelector('[data-document-history-rows]'),notice=box.querySelector('[data-document-history-status]'),more=box.querySelector('[data-document-history-more]');let sequence=0,next=null,applied='',rows=[],loading=false;
+          @@ -388,8 +390,8 @@
+            function paint(costVisible){body.replaceChildren();for(const row of rows){const tr=document.createElement('tr');tr.dataset.historyDocumentId=String(row.id);cell(tr,'شناسه',L.integer(row.id));if(kind==='receipts'){cell(tr,'زمان',L.dateTime(row.received_at));cell(tr,'کالا',row.item_name);cell(tr,'مقدار',`${majorText(row.received_quantity_base,row.base_unit)} ${majorUnitLabel(row.base_unit)}`);cell(tr,'هزینه',!costVisible?'دسترسی محدود':row.total_cost==null?'—':money(row.total_cost));cell(tr,'تأمین‌کننده',row.supplier||'—');}else{cell(tr,'زمان',L.dateTime(row.occurred_at));cell(tr,'دسته',row.category_name);cell(tr,'شرح',row.description||'—');cell(tr,'مبلغ',money(row.amount));cell(tr,'وضعیت',expenseStatusLabel(row.status));}body.append(tr);}}
+          - async function load(append=false){const q=fields(),signature=q.toString();if(append&&(loading||!next||signature!==applied))return;const cursor=append?next:null;if(cursor)q.set('before_id',cursor);const seq=++sequence;loading=true;more.disabled=true;notice.textContent='در حال دریافت تاریخچه…';if(!append){body.replaceChildren();rows=[];next=null;more.hidden=true;}try{const remote=root.dataset.host==='public'||document.body.dataset.staffUiMode==='public';const response=remote?await window.SoknaPublicRealtime.realtime('operations.query',Object.fromEntries(q.entries())):await request(`${api}?${q}`);if(seq!==sequence)return;const j=validateDocumentHistory(response,kind,cursor);rows=[...(append?rows:[]),...j.rows];next=j.has_more?String(j.next_before_id):null;applied=signature;paint(j.cost_visible&&canCost);if(kind==='receipts'&&form.elements.id.value&&rows.length===1){body.firstElementChild?.classList.add('sc-command-target');}notice.textContent=rows.length?`${L.integer(rows.length)} سند از دفتر اصلی · ${next?'ادامه موجود است':'پایان فهرست'}`:'در این فیلتر سندی پیدا نشد.';more.hidden=!next;}catch(e){if(seq!==sequence)return;invalidate('تاریخچه قابل تأیید نیست؛ برای دریافت مجدد ارتباط با سیستم اصلی را بررسی کنید.');}finally{if(seq===sequence){loading=false;more.disabled=false;}}}
+          + async function load(append=false){const q=fields(),signature=q.toString();if(append&&(loading||!next||signature!==applied))return;const cursor=append?next:null;if(cursor)q.set('before_id',cursor);const seq=++sequence;loading=true;more.disabled=true;notice.textContent='در حال دریافت تاریخچه…';if(!append){body.replaceChildren();rows=[];next=null;more.hidden=true;}try{const remote=root.dataset.host==='public'||document.body.dataset.staffUiMode==='public';const response=remote?await window.SoknaPublicRealtime.realtime('operations.query',Object.fromEntries(q.entries())):await request(`${api}?${q}`);if(seq!==sequence)return;const j=validateDocumentHistory(response,kind,cursor);const exactId=q.get('id');if(exactId&&/^[0-9]+$/.test(exactId)&&(j.has_more||j.rows.length>1||j.rows.some(row=>Number(row.id)!==Number(exactId))))throw Error('شناسه سند با پاسخ تاریخچه مطابقت ندارد.');rows=[...(append?rows:[]),...j.rows];next=j.has_more?String(j.next_before_id):null;applied=signature;paint(j.cost_visible&&canCost);if(kind==='receipts'&&form.elements.id.value&&rows.length===1){body.firstElementChild?.classList.add('sc-command-target');}notice.textContent=rows.length?`${L.integer(rows.length)} سند از دفتر اصلی · ${next?'ادامه موجود است':'پایان فهرست'}`:'در این فیلتر سندی پیدا نشد.';more.hidden=!next;}catch(e){if(seq!==sequence)return;invalidate('تاریخچه قابل تأیید نیست؛ برای دریافت مجدد ارتباط با سیستم اصلی را بررسی کنید.');}finally{if(seq===sequence){loading=false;more.disabled=false;}}}
+            const invalidateFilter=()=>invalidate('فیلتر تغییر کرد؛ دوباره تاریخچه را دریافت کنید.');form.addEventListener('input',invalidateFilter);form.addEventListener('change',invalidateFilter);form.addEventListener('submit',e=>{e.preventDefault();void load()});more.addEventListener('click',()=>void load(true));
+            // A report link to an older receipt searches its actual identity, not just the recent 40.
+          - const requested=new URLSearchParams(location.search).get('receipt_id');if(kind==='receipts'&&requested&&/^[1-9][0-9]*$/.test(requested)){box.open=true;form.elements.id.value=requested;void load();}
+          -}
+          -$$('[data-document-history]').forEach(bindDocumentHistory);
+          + const requested=receiptHistoryTarget(new URLSearchParams(location.search));if(kind==='receipts'&&requested){box.open=true;form.elements.id.value=requested;void load();}
+          +}
+          +
+           })();
+          --- a/local/public/assets/system-diagnostics.js
+          +++ b/local/public/assets/system-diagnostics.js
+          @@ -78,6 +78,19 @@
+           function renderUpdatePartial(errors){const box=$('[data-updates-partial]');if(!box)return;const entries=Object.values(errors||{}).filter(e=>e&&typeof e==='object');box.replaceChildren();box.hidden=!entries.length;if(!entries.length)return;box.append(el('strong','','بخشی از وضعیت به‌روزرسانی تأیید نشده است.'));for(const e of entries)box.append(el('div','',`${e.message||'اطلاعات این بخش در دسترس نیست.'}${e.support_id?` · کد پیگیری ${e.support_id}`:''}`));}
+          -function renderUpdates(){renderUpdatePartial(updatePartialErrors);const staged=$('[data-staged]'),ps=$('[data-public-staged]');staged.hidden=legacyLocalBlocked;const legacyForm=$('[data-update-upload]'),maintenanceForm=$('[data-maintenance-upload]'),legacyActions=$('[data-legacy-local-actions]');if(legacyForm)legacyForm.hidden=legacyLocalBlocked;if(maintenanceForm)maintenanceForm.hidden=!legacyLocalBlocked;if(legacyActions)legacyActions.hidden=legacyLocalBlocked;syncLocalUpdateFile();if(sectionError('updates')){$('[data-local-current-version]').textContent='—';$('[data-public-current-version]').textContent='—';staged.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');ps.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');controlsDisabled(['[data-activate]','[data-repair]','[data-rollback]','[data-public-activate]','[data-public-repair]','[data-public-rollback]','[data-public-emergency-code]'],true);controlsDisabled(['[data-update-upload] button','[data-update-upload] input'],legacyLocalBlocked);controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]','[data-maintenance-activate]'],true);setEmergencyLink($('[data-public-emergency-link]'),'');return}controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-public-update-upload] button','[data-public-update-upload] input'],false);const local=updates?.local||{},localVersion=shortVersion(local.current_version),recoveryRequired=local.recovery_mode?.required===true;versionBadge('[data-local-current-version]',local.current_version);const pendingMigrations=Number(local.staged?.database_preflight?.pending_count||0);if(recoveryRequired)eventFeedback('[data-local-update-feedback]','سامانه در حالت بازیابی به‌روزرسانی است. مسیرهای کاری موقتاً مسدود شده‌اند؛ بسته اصلاحی بعدی را همین‌جا انتخاب و نصب کن.','warning');staged.textContent=local.staged?.version?(local.staged?.status==='failed'?`نصب بسته ${shortVersion(local.staged.version)} ناموفق بوده و Stage برای تشخیص/بازیابی نگه داشته شده است.`:`بسته ${shortVersion(local.staged.version)} بررسی شده و آماده نصب است.${pendingMigrations>0?` ${L.integer(pendingMigrations)} تغییر ساختار داده نیز هنگام نصب اعمال می‌شود.`:''}`):'فایلی برای نصب آماده نشده است.';$('[data-activate]').disabled=!local.staged?.version||local.staged.version===local.current_version;$('[data-repair]').disabled=recoveryRequired||!local.staged?.version||local.staged.version!==local.current_version;const discard=$('[data-discard-staged]');if(discard)discard.disabled=!local.staged?.version;if(updatePartialErrors.update_center){staged.textContent='وضعیت بسته آماده‌شده تأیید نشده است.';controlsDisabled(['[data-activate]','[data-repair]','[data-discard-staged]'],true);}const rollbackSafety=local.rollback||{},rollbackReady=!recoveryRequired&&Boolean(local.lkg_recovery_id)&&rollbackSafety.allowed!==false;$('[data-rollback]').disabled=!rollbackReady||!!updatePartialErrors.update_center;const localRollbackState=$('[data-local-rollback-state]');if(localRollbackState){const hasPoint=Boolean(local.lkg_recovery_id),blocked=recoveryRequired||(hasPoint&&rollbackSafety.allowed===false);localRollbackState.querySelector('span').textContent=updatePartialErrors.update_center?'وضعیت نقطه بازگشت قابل تأیید نیست.':recoveryRequired?'دیتابیس ممکن است رو‌به‌جلو تغییر کرده باشد؛ بازگرداندن کد قدیمی عمداً مسدود است و بازیابی با بسته اصلاحی از همین صفحه انجام می‌شود.':blocked?'نقطهٔ بازگشت فایل موجود است، اما چون migration رو‌به‌جلو اجرا شده بازگردانی کد به نسخه قبلی ایمن نیست.':hasPoint?'یک نقطهٔ بازگشت سالم و قابل‌استفاده آماده است.':'هنوز نقطهٔ بازگشت سالمی وجود ندارد؛ هنگام نصب نسخهٔ بعدی به‌صورت خودکار ساخته می‌شود.';$('[data-rollback]').title=recoveryRequired?'در حالت بازیابی، rollback کد قدیمی مجاز نیست':blocked?'Rollback پس از migrationهای رو‌به‌جلو مسدود است':hasPoint?'بازگردانی به آخرین وضعیت سالم':'نقطهٔ بازگشت سالمی موجود نیست'}
+          +function validEvidenceInstant(value){
+          + if(typeof value!=='string')return null;const m=value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/);if(!m)return null;
+          + const [y,mo,d,h,mi,sec]=m.slice(1,7).map(Number);if(y<1970||mo<1||mo>12||d<1||d>new Date(Date.UTC(y,mo,0)).getUTCDate()||h>23||mi>59||sec>59)return null;
+          + const n=Date.parse(value);return Number.isFinite(n)?n:null;
+          +}
+          +function renderPublicVersionEvidence(cached,probe,live,sectionFailed=false){
+          + const n=$('[data-public-version-evidence]'),v=$('[data-public-current-version]');if(!n||!v)return;
+          + const source=sectionFailed?'unknown':live?'live':cached?'cached':'unknown';v.dataset.versionSource=source;
+          + const checked=validEvidenceInstant(probe?.captured_at)!==null?(L.instantDateTime||L.dateTime)(probe.captured_at):'ثبت نشده';
+          + const reason=sectionFailed?'وضعیت مرکز بروزرسانی در دسترس نیست':live?'هویت و نسخه زنده تأیید شد':probe?.status==='checking'?'در حال استعلام؛ هنوز تأیید نشده':probe?.status==='fresh'?'پاسخ زنده دریافت شد اما هویت یا نسخه قابل تأیید نیست':'استعلام زنده ناموفق یا ناموجود است';
+          + const code=typeof probe?.error_code==='string'&&/^[a-zA-Z0-9_:-]{1,80}$/.test(probe.error_code)?` · علت: ${probe.error_code}`:'';
+          + n.textContent=`${source==='live'?'نسخه زنده':source==='cached'?'آخرین نسخه ثبت‌شده در Local؛ نسخه زنده تأیید نشده':'نسخه تأییدنشده'} · ${reason} · زمان استعلام: ${checked}${code}`;
+          +}
+          +function renderUpdates(){renderUpdatePartial(updatePartialErrors);const staged=$('[data-staged]'),ps=$('[data-public-staged]');staged.hidden=legacyLocalBlocked;const legacyForm=$('[data-update-upload]'),maintenanceForm=$('[data-maintenance-upload]'),legacyActions=$('[data-legacy-local-actions]');if(legacyForm)legacyForm.hidden=legacyLocalBlocked;if(maintenanceForm)maintenanceForm.hidden=!legacyLocalBlocked;if(legacyActions)legacyActions.hidden=legacyLocalBlocked;syncLocalUpdateFile();if(sectionError('updates')){$('[data-local-current-version]').textContent='—';$('[data-public-current-version]').textContent='—';renderPublicVersionEvidence('',publicLiveRefresh,false,true);staged.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');ps.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');controlsDisabled(['[data-activate]','[data-repair]','[data-rollback]','[data-public-activate]','[data-public-repair]','[data-public-rollback]','[data-public-emergency-code]'],true);controlsDisabled(['[data-update-upload] button','[data-update-upload] input'],legacyLocalBlocked);controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]','[data-maintenance-activate]'],true);setEmergencyLink($('[data-public-emergency-link]'),'');return}controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-public-update-upload] button','[data-public-update-upload] input'],false);const local=updates?.local||{},localVersion=shortVersion(local.current_version),recoveryRequired=local.recovery_mode?.required===true;versionBadge('[data-local-current-version]',local.current_version);const pendingMigrations=Number(local.staged?.database_preflight?.pending_count||0);if(recoveryRequired)eventFeedback('[data-local-update-feedback]','سامانه در حالت بازیابی به‌روزرسانی است. مسیرهای کاری موقتاً مسدود شده‌اند؛ بسته اصلاحی بعدی را همین‌جا انتخاب و نصب کن.','warning');staged.textContent=local.staged?.version?(local.staged?.status==='failed'?`نصب بسته ${shortVersion(local.staged.version)} ناموفق بوده و Stage برای تشخیص/بازیابی نگه داشته شده است.`:`بسته ${shortVersion(local.staged.version)} بررسی شده و آماده نصب است.${pendingMigrations>0?` ${L.integer(pendingMigrations)} تغییر ساختار داده نیز هنگام نصب اعمال می‌شود.`:''}`):'فایلی برای نصب آماده نشده است.';$('[data-activate]').disabled=!local.staged?.version||local.staged.version===local.current_version;$('[data-repair]').disabled=recoveryRequired||!local.staged?.version||local.staged.version!==local.current_version;const discard=$('[data-discard-staged]');if(discard)discard.disabled=!local.staged?.version;if(updatePartialErrors.update_center){staged.textContent='وضعیت بسته آماده‌شده تأیید نشده است.';controlsDisabled(['[data-activate]','[data-repair]','[data-discard-staged]'],true);}const rollbackSafety=local.rollback||{},rollbackReady=!recoveryRequired&&Boolean(local.lkg_recovery_id)&&rollbackSafety.allowed!==false;$('[data-rollback]').disabled=!rollbackReady||!!updatePartialErrors.update_center;const localRollbackState=$('[data-local-rollback-state]');if(localRollbackState){const hasPoint=Boolean(local.lkg_recovery_id),blocked=recoveryRequired||(hasPoint&&rollbackSafety.allowed===false);localRollbackState.querySelector('span').textContent=updatePartialErrors.update_center?'وضعیت نقطه بازگشت قابل تأیید نیست.':recoveryRequired?'دیتابیس ممکن است رو‌به‌جلو تغییر کرده باشد؛ بازگرداندن کد قدیمی عمداً مسدود است و بازیابی با بسته اصلاحی از همین صفحه انجام می‌شود.':blocked?'نقطهٔ بازگشت فایل موجود است، اما چون migration رو‌به‌جلو اجرا شده بازگردانی کد به نسخه قبلی ایمن نیست.':hasPoint?'یک نقطهٔ بازگشت سالم و قابل‌استفاده آماده است.':'هنوز نقطهٔ بازگشت سالمی وجود ندارد؛ هنگام نصب نسخهٔ بعدی به‌صورت خودکار ساخته می‌شود.';$('[data-rollback]').title=recoveryRequired?'در حالت بازیابی، rollback کد قدیمی مجاز نیست':blocked?'Rollback پس از migrationهای رو‌به‌جلو مسدود است':hasPoint?'بازگردانی به آخرین وضعیت سالم':'نقطهٔ بازگشت سالمی موجود نیست'}
+           controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]'],!maintenanceVerifyReady);if(legacyLocalBlocked){staged.hidden=true;const activation=$('[data-maintenance-activate]');if(activation)activation.disabled=!(maintenanceReady&&/^[a-fA-F0-9]{32}$/.test(verifiedMaintenanceStage));controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-activate]','[data-repair]','[data-discard-staged]','[data-rollback]'],true);renderUnifiedUpdaterReadiness({ready:maintenanceReady,verification_ready:maintenanceVerifyReady,panel_bound:maintenanceReady,code:maintenanceReadinessCode});}
+           renderUpdateFailure(local.last_failure||null,recoveryRequired||local.staged?.status==='failed');
+          -const pc=(updates?.components||[]).find(x=>x.id==='public-edge')||{},pr=publicLiveRefresh||{},ru=pr.routine_update||{},legacy=pr.update||{},active=String(ru.active_version||'').trim(),current=String(ru.current_version||'').trim(),tree=String(ru.managed_tree_sha256||'').trim(),expectedTree=String(ru.expected_managed_tree_sha256||'').trim(),publicLive=pr.status==='fresh'&&Number(ru.protocol)===2&&!!active&&!!current&&active===current&&ru.managed_tree_matches_expected===true&&!!tree&&tree===expectedTree,fence=ru.db_forward_fence&&typeof ru.db_forward_fence==='object',pending=!!ru.pending_verification||!!ru.activation_journal||ru.interrupted_activation===true,stagedVersion=String(ru.staged?.version||'').trim(),routineHasRecovery=!!String(ru.lkg_recovery_id||'').trim(),publicCanMutate=publicLive&&!pending,canInstall=publicCanMutate&&!!stagedVersion&&stagedVersion!==active,canRepair=publicCanMutate&&!fence&&!!stagedVersion&&stagedVersion===active,canRollback=publicCanMutate&&!fence&&routineHasRecovery;versionBadge('[data-public-current-version]',publicLive?active:pc.current_version);ps.textContent=!publicLive?(pr.status==='fresh'?'نسخه Public نیاز به بررسی دارد. انتخاب و بررسی فایل باز است؛ نصب فقط بعد از تأیید وضعیت زنده فعال می‌شود.':pr.status==='checking'?'در حال بررسی نسخه زنده وب عمومی… انتخاب فایل فعال است.':'وضعیت زنده Public فعلاً دریافت نشد. بررسی فایل را می‌توان دوباره انجام داد؛ نصب تا اتصال موفق فعال نمی‌شود.'):stagedVersion?`بسته ${shortVersion(stagedVersion)} در Public گزارش شده است.${pending?' یک عملیات قبلی هنوز نهایی نشده است.':''}`:'فایل جدیدی انتخاب کن تا به‌روزرسانی بعدی بررسی شود.';ps.hidden=publicLive&&!stagedVersion&&!pending;controlsDisabled(['[data-public-update-upload] button','[data-public-update-upload] input'],false);$('[data-public-activate]').disabled=!canInstall;$('[data-public-repair]').disabled=!canRepair;$('[data-public-rollback]').disabled=!canRollback;const publicRollbackState=$('[data-public-rollback-state]');if(publicRollbackState){const message=!publicLive?'هویت زنده Public قابل تأیید نیست؛ بازگشت و نصب مسدود است.':fence?'به‌علت فنس دیتابیس Forward-only، بازگشت کد قدیمی مجاز نیست.':pending?'چرخه نصب Public ناتمام است؛ بازگشت باید از موتور مالک بررسی شود.':routineHasRecovery?'نقطه بازیابی Routine شناسایی شده است.':'نقطه بازگشت معتبر Routine یافت نشد؛ سابقه قدیمی Emergency کافی نیست.';publicRollbackState.querySelector('span').textContent=message;$('[data-public-rollback]').title=message;}const publicBase=snap?.components?.public_edge?.base_url||snap?.components?.public_edge?.base_origin||'',link=$('[data-public-emergency-link]');setEmergencyLink(link,publicBase?publicBase.replace(/\/$/,'')+'/emergency.php':'')}
+          +const pc=(updates?.components||[]).find(x=>x.id==='public-edge')||{},pr=publicLiveRefresh||{},ru=pr.routine_update||{},legacy=pr.update||{},active=String(ru.active_version||'').trim(),current=String(ru.current_version||'').trim(),tree=String(ru.managed_tree_sha256||'').trim(),expectedTree=String(ru.expected_managed_tree_sha256||'').trim(),publicLive=pr.status==='fresh'&&Number(ru.protocol)===2&&!!active&&!!current&&active===current&&ru.managed_tree_matches_expected===true&&!!tree&&tree===expectedTree,fence=ru.db_forward_fence&&typeof ru.db_forward_fence==='object',pending=!!ru.pending_verification||!!ru.activation_journal||ru.interrupted_activation===true,stagedVersion=String(ru.staged?.version||'').trim(),routineHasRecovery=!!String(ru.lkg_recovery_id||'').trim(),publicCanMutate=publicLive&&!pending,canInstall=publicCanMutate&&!!stagedVersion&&stagedVersion!==active,canRepair=publicCanMutate&&!fence&&!!stagedVersion&&stagedVersion===active,canRollback=publicCanMutate&&!fence&&routineHasRecovery;versionBadge('[data-public-current-version]',publicLive?active:pc.current_version);renderPublicVersionEvidence(pc.current_version,pr,publicLive);ps.textContent=!publicLive?(pr.status==='fresh'?'نسخه Public نیاز به بررسی دارد. انتخاب و بررسی فایل باز است؛ نصب فقط بعد از تأیید وضعیت زنده فعال می‌شود.':pr.status==='checking'?'در حال بررسی نسخه زنده وب عمومی… انتخاب فایل فعال است.':'وضعیت زنده Public فعلاً دریافت نشد. بررسی فایل را می‌توان دوباره انجام داد؛ نصب تا اتصال موفق فعال نمی‌شود.'):stagedVersion?`بسته ${shortVersion(stagedVersion)} در Public گزارش شده است.${pending?' یک عملیات قبلی هنوز نهایی نشده است.':''}`:'فایل جدیدی انتخاب کن تا به‌روزرسانی بعدی بررسی شود.';ps.hidden=publicLive&&!stagedVersion&&!pending;controlsDisabled(['[data-public-update-upload] button','[data-public-update-upload] input'],false);$('[data-public-activate]').disabled=!canInstall;$('[data-public-repair]').disabled=!canRepair;$('[data-public-rollback]').disabled=!canRollback;const publicRollbackState=$('[data-public-rollback-state]');if(publicRollbackState){const message=!publicLive?'هویت زنده Public قابل تأیید نیست؛ بازگشت و نصب مسدود است.':fence?'به‌علت فنس دیتابیس Forward-only، بازگشت کد قدیمی مجاز نیست.':pending?'چرخه نصب Public ناتمام است؛ بازگشت باید از موتور مالک بررسی شود.':routineHasRecovery?'نقطه بازیابی Routine شناسایی شده است.':'نقطه بازگشت معتبر Routine یافت نشد؛ سابقه قدیمی Emergency کافی نیست.';publicRollbackState.querySelector('span').textContent=message;$('[data-public-rollback]').title=message;}const publicBase=snap?.components?.public_edge?.base_url||snap?.components?.public_edge?.base_origin||'',link=$('[data-public-emergency-link]');setEmergencyLink(link,publicBase?publicBase.replace(/\/$/,'')+'/emergency.php':'')}
+           function renderAutomaticBackupStatus(){
+          @@ -98,3 +111,6 @@
+             }else if(a.state==='REMOTE_VERIFIED'&&a.has_remote_receipt===true&&a.last_remote_verified_at_utc){
+          -   tone='success';message=`آخرین بکاپ تأییدشده در فضای آف‌سایت: ${L.dateTime(a.last_remote_verified_at_utc)}`;
+          +    const checked=validEvidenceInstant(a.last_remote_verified_at_utc),age=Date.now()-checked;
+          +    if(checked===null||age<0){message='زمان رسید بکاپ آف‌سایت معتبر نیست؛ تازگی تأیید نشده است.';}
+          +    else if(age>=24*60*60*1000){message=`آخرین بکاپ آف‌سایت تأیید شده، اما بیش از یک دوره روزانه گذشته است: ${(L.instantDateTime||L.dateTime)(a.last_remote_verified_at_utc)}؛ وضعیت تازه تأیید نشده است.`;}
+          +    else{tone='success';message=`آخرین بکاپ تأییدشده در فضای آف‌سایت: ${(L.instantDateTime||L.dateTime)(a.last_remote_verified_at_utc)}`;}
+             }else{
+          @@ -113,3 +129,19 @@
+           }
+          -function renderRecovery(){renderAutomaticBackupStatus();const body=$('[data-backups]');body.replaceChildren();const selectors=['[data-backup-create]','[data-recovery-upload] button','[data-recovery-upload] input','[data-backup-inspect]','[data-backup-restore]'];if(sectionError('recovery')){controlsDisabled(selectors,true);syncRestoreControls();const tr=document.createElement('tr'),td=el('td','sc-section-unavailable',sectionErrorText('recovery','اطلاعات پشتیبان و بازیابی در دسترس نیست.'));td.colSpan=3;tr.append(td);body.append(tr);return}controlsDisabled(selectors,false);syncRestoreControls();(recovery?.backups||[]).forEach((b,i)=>{const tr=document.createElement('tr');const name=document.createElement('td');name.dataset.label='نسخه پشتیبان';name.textContent=b.id;name.append(el('div','sc-muted',L.dateTime(b.modified_at)));name.dir='ltr';const size=document.createElement('td');size.dataset.label='حجم';size.textContent=`${L.integer(Math.max(1,Math.round(Number(b.size_bytes||0)/1024)))} کیلوبایت`;const action=document.createElement('td');action.dataset.label='عمل';const a=el('a','sc-button sc-button--secondary','دانلود');a.href=appPath(`/system/recovery-download.php?id=${encodeURIComponent(b.id)}`);action.append(a);tr.append(name,size,action);body.append(tr)});if(!body.children.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='هنوز نسخه پشتیبان ساخته نشده است.';tr.append(td);body.append(tr)}}
+          +const backupHistories={manual:{rows:[],next:null,sequence:0},uploaded:{rows:[],next:null,sequence:0}};
+          +function validBackupPage(page,kind,before=null){
+          + if(!page||page.kind!==kind||!Array.isArray(page.rows)||page.rows.length>20||typeof page.has_more!=='boolean')return false;
+          + const prefix=kind==='manual'?'business-':'uploaded-';let last=before;
+          + for(const row of page.rows){if(typeof row?.id!=='string'||!row.id.startsWith(prefix)||!/^[A-Za-z0-9._-]{6,80}$/.test(row.id)||(last!==null&&row.id>=last)||row.kind!==kind||!Number.isSafeInteger(row.size_bytes)||row.size_bytes<0||typeof row.modified_at!=='string'||!Number.isFinite(Date.parse(row.modified_at))||row.verification!=='not_verified'||row.source_installation_id!==null)return false;last=row.id;}
+          + return page.has_more?page.rows.length===20&&page.next_before===last:page.next_before===null;
+          +}
+          +function paintBackupHistory(kind,message=''){
+          + const state=backupHistories[kind],body=$(kind==='manual'?'[data-backups]':'[data-uploaded-backups]'),more=$(`[data-backup-history-more="${kind}"]`),notice=$(`[data-backup-history-status="${kind}"]`);if(!body||!more||!notice)return;
+          + body.replaceChildren();for(const b of state.rows){const tr=el('tr');tr.dataset.backupId=b.id;const name=el('td');name.dataset.label='شناسه فایل';const id=el('strong','',b.id);id.dir='ltr';name.append(id,el('div','sc-muted',(L.instantDateTime||L.dateTime)(b.modified_at)),el('small','sc-muted',`${kind==='manual'?'ساخته‌شده در سامانه':'بارگذاری‌شده'} · بررسی و مبدأ فایل تأیید نشده`));const size=el('td','',`${L.integer(b.size_bytes)} بایت`);size.dataset.label='حجم';const action=el('td');action.dataset.label='عمل';const a=el('a','sc-button sc-button--secondary','دانلود');a.href=appPath(`/system/recovery-download.php?id=${encodeURIComponent(b.id)}`);action.append(a);tr.append(name,size,action);body.append(tr);}
+          + if(!state.rows.length){const tr=el('tr'),td=el('td','sc-empty',message||'فایلی در این فهرست نیست.');td.colSpan=3;tr.append(td);body.append(tr);}
+          + notice.textContent=message||`${L.integer(state.rows.length)} فایل · ${state.next?'ادامه موجود است':'پایان فهرست'}`;more.hidden=!state.next;more.disabled=false;
+          +}
+          +function resetBackupHistory(kind,page){const state=backupHistories[kind];state.sequence++;state.rows=[];state.next=null;if(!validBackupPage(page,kind)){paintBackupHistory(kind,'فهرست فایل‌ها قابل تأیید نیست.');return;}state.rows=page.rows.slice();state.next=page.next_before;paintBackupHistory(kind);}
+          +async function loadMoreBackupHistory(kind){const state=backupHistories[kind],cursor=state.next,more=$(`[data-backup-history-more="${kind}"]`);if(!cursor||!more||more.disabled||sectionError('recovery'))return;const seq=++state.sequence;more.disabled=true;try{const params=new URLSearchParams({section:'backup_history',kind,before:cursor});const j=await request(`${api}?${params}`);if(seq!==state.sequence)return;if(j.success!==true||!validBackupPage(j.backup_history,kind,cursor))throw Error('invalid history');state.rows.push(...j.backup_history.rows);state.next=j.backup_history.next_before;paintBackupHistory(kind);}catch(e){if(seq===state.sequence)paintBackupHistory(kind,'دریافت ادامه فهرست ناموفق بود؛ دوباره تلاش کنید.');}finally{if(seq===state.sequence)more.disabled=false;}}
+          +function renderRecovery(){renderAutomaticBackupStatus();const selectors=['[data-backup-create]','[data-recovery-upload] button','[data-recovery-upload] input','[data-backup-inspect]','[data-backup-restore]'];if(sectionError('recovery')){controlsDisabled(selectors,true);syncRestoreControls();resetBackupHistory('manual',null);resetBackupHistory('uploaded',null);return;}controlsDisabled(selectors,false);syncRestoreControls();resetBackupHistory('manual',recovery?.manual_history);resetBackupHistory('uploaded',recovery?.uploaded_history);}
+          +for(const kind of ['manual','uploaded'])$(`[data-backup-history-more="${kind}"]`)?.addEventListener('click',()=>void loadMoreBackupHistory(kind));
+           // Read-only recovery of the SAME durable request after Apache reload or
+          @@ -450,3 +482,3 @@
+             if(generation!==publicProbeGeneration)return;
+          -  publicLiveRefresh={status:'failed'};
+          +  publicLiveRefresh={status:'failed',captured_at:new Date().toISOString(),error_code:'client_probe_failed'};
+             eventFeedback('[data-public-update-feedback]','بررسی اتصال وب عمومی انجام نشد. می‌توانی فایل را انتخاب کنی و دوباره وضعیت را بررسی کنی.','warning');
+          @@ -457,3 +489,4 @@
+            const generation=++publicProbeGeneration;
+          - publicLiveRefresh={status:'checking'};
+          + publicLiveRefresh={status:'checking',captured_at:publicLiveRefresh?.captured_at||null};
+          + const cached=(updates?.components||[]).find(x=>x.id==='public-edge')?.current_version||'';versionBadge('[data-public-current-version]',cached);renderPublicVersionEvidence(cached,publicLiveRefresh,false);
+            controlsDisabled(['[data-public-activate]','[data-public-repair]','[data-public-rollback]'],true);
+          @@ -482,3 +515,3 @@
+           }
+          -async function loadRecovery(msg=''){const generation=++recoveryGeneration;root.setAttribute('aria-busy','true');try{const j=await request(`${api}?section=recovery`);if(generation!==recoveryGeneration)return;recovery=j.recovery;automaticBackup=j.automatic_backup||null;sectionErrors.recovery=null;renderRecovery();setStatus('');if(msg)toast(msg)}catch(e){if(generation!==recoveryGeneration)return;automaticBackup=null;sectionErrors.recovery={message:e.message};renderRecovery();setStatus(e.message,true)}finally{if(generation===recoveryGeneration)root.removeAttribute('aria-busy')}}
+          +async function loadRecovery(msg=''){const generation=++recoveryGeneration;for(const kind of ['manual','uploaded']){backupHistories[kind].sequence++;const more=$(`[data-backup-history-more="${kind}"]`);if(more)more.disabled=true;}root.setAttribute('aria-busy','true');try{const j=await request(`${api}?section=recovery`);if(generation!==recoveryGeneration)return;recovery=j.recovery;automaticBackup=j.automatic_backup||null;sectionErrors.recovery=null;renderRecovery();setStatus('');if(msg)toast(msg)}catch(e){if(generation!==recoveryGeneration)return;automaticBackup=null;sectionErrors.recovery={message:e.message};renderRecovery();setStatus(e.message,true)}finally{if(generation===recoveryGeneration)root.removeAttribute('aria-busy')}}
+           function forceTab(name){if(name==='maintenance')name='updates';if(!['health','updates','recovery'].includes(name))return;$$('[data-tab]').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===name?'true':'false'));$$('[data-panel]').forEach(p=>p.hidden=p.dataset.panel!==name)}const requestedTab=new URLSearchParams(location.search).get('tab');if(requestedTab)forceTab(requestedTab);
+          @@ -543,3 +576,3 @@
+           $('[data-restore-pass]')?.addEventListener('input',()=>{restoreChecked=false;restoreMessage($('[data-restore-id]').value?'رمز را وارد کن و فایل را بررسی کن.':'ابتدا فایل را بارگذاری کن.');syncRestoreControls()});
+          -$('[data-recovery-upload]')?.addEventListener('submit',async e=>{e.preventDefault();if(restoreBusy||restoreComplete)return;const form=e.currentTarget,body=new FormData(form),epoch=++restoreEpoch;restoreChecked=false;restoreFileName='';$('[data-restore-id]').value='';restoreBusy=true;syncRestoreControls();restoreMessage('در حال بارگذاری فایل…');try{const j=await request(appPath('/system/recovery-upload.php'),{method:'POST',headers:{'X-CSRF-Token':csrf},body});if(epoch!==restoreEpoch)return;$('[data-restore-id]').value=j.backup.id;restoreFileName=j.backup.file_name||j.backup.id;restoreMessage('فایل بارگذاری شد. رمز را وارد کن و فایل را بررسی کن.')}catch(err){restoreMessage(err.status===413?'حجم فایل از سقف بارگذاری بیشتر است.':err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+          +$('[data-recovery-upload]')?.addEventListener('submit',async e=>{e.preventDefault();if(restoreBusy||restoreComplete)return;const form=e.currentTarget,body=new FormData(form),epoch=++restoreEpoch;restoreChecked=false;restoreFileName='';$('[data-restore-id]').value='';restoreBusy=true;syncRestoreControls();restoreMessage('در حال بارگذاری فایل…');try{const j=await request(appPath('/system/recovery-upload.php'),{method:'POST',headers:{'X-CSRF-Token':csrf},body});if(epoch!==restoreEpoch)return;$('[data-restore-id]').value=j.backup.id;restoreFileName=j.backup.file_name||j.backup.id;restoreMessage('فایل بارگذاری شد. رمز را وارد کن و فایل را بررسی کن.');if(activeTab()==='recovery')void loadRecovery();}catch(err){restoreMessage(err.status===413?'حجم فایل از سقف بارگذاری بیشتر است.':err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+           $('[data-backup-inspect]')?.addEventListener('click',async()=>{if(restoreBusy||restoreComplete||!$('[data-restore-id]').value||!$('[data-restore-pass]').value)return;const epoch=++restoreEpoch;restoreChecked=false;restoreBusy=true;syncRestoreControls();restoreMessage('در حال بررسی رمز، محتوا و سازگاری مقصد…');try{const j=await post({action:'backup_inspect',id:$('[data-restore-id]').value,passphrase:$('[data-restore-pass]').value});if(epoch!==restoreEpoch)return;const m=j.manifest||{};restoreChecked=m.stream_verified===true&&m.target_ready===true;restoreMessage(restoreChecked?'محتوای فایل و بررسی اولیه مقصد تأیید شد. شرایط مقصد هنگام بازیابی دوباره بررسی می‌شود.':m.stream_verified===true?'محتوای فایل تأیید شد، اما مقصد آماده نیست. '+(m.target_issue?.message||''):'اعتبار کامل فایل تأیید نشد.',restoreChecked?'success':'warning')}catch(err){restoreMessage(err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+          --- a/local/public/system/api.php
+          +++ b/local/public/system/api.php
+          @@ -63,2 +63,8 @@
+                           'maintenance_panel_bound'=>$panelBound,'maintenance_verification_bound'=>$verificationBound,'public_update_refresh'=>$publicRefresh,'nonfatal_errors'=>$errors]);
+          +        }
+          +        if($section==='backup_history'){
+          +            if((string)($user['role']??'')!=='admin')WebAction::json(['success'=>false,'code'=>'forbidden'],403);
+          +            $kind=$_GET['kind']??'';$before=$_GET['before']??null;
+          +            if(!is_string($kind)||($before!==null&&!is_string($before)))throw new RecoveryException('invalid_backup_cursor','درخواست تاریخچه معتبر نیست.',422);
+          +            WebAction::json(['success'=>true,'backup_history'=>$core->recoveryWorkspace()->backupPage($kind,$before)]);
+                   }
+          --- a/local/public/system/index.php
+          +++ b/local/public/system/index.php
+          @@ -72,3 +72,3 @@
+               <section class="sc-card sc-system-operation-card"><div class="sc-card__body sc-stack">
+          -      <div class="sc-section-head"><div><h2>به‌روزرسانی وب عمومی</h2><p>فایل را انتخاب کن، بررسی کن و نصب کن. اگر ارتباط قطع شود، ارسال قابل ادامه است.</p></div><span class="sc-badge sc-version-badge" data-public-current-version aria-label="نسخه نصب‌شده وب عمومی">—</span></div>
+          +      <div class="sc-section-head"><div><h2>به‌روزرسانی وب عمومی</h2><p>فایل را انتخاب کن، بررسی کن و نصب کن. اگر ارتباط قطع شود، ارسال قابل ادامه است.</p></div><span class="sc-badge sc-version-badge" data-public-current-version aria-label="نسخه گزارش‌شده وب عمومی">—</span></div><p class="sc-muted" data-public-version-evidence role="status" aria-live="polite">در انتظار استعلام نسخه زنده.</p>
+                 <form data-public-update-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><div class="sc-field"><label class="sc-field__label" for="sc-public-update-package">فایل به‌روزرسانی وب عمومی</label><div class="sc-file-picker" data-file-picker><input class="sc-file-picker__input" id="sc-public-update-package" type="file" name="package" accept=".zip,application/zip" required><button class="sc-button sc-button--secondary" type="button" data-file-trigger aria-controls="sc-public-update-package">انتخاب فایل</button><span class="sc-file-picker__name" data-file-name aria-live="polite">فایلی انتخاب نشده است</span></div></div><div class="sc-actions sc-system-update-actions"><button class="sc-button" type="submit">بررسی فایل</button><button class="sc-button" type="button" data-public-activate>نصب به‌روزرسانی</button></div></form>
+          @@ -106,3 +106,3 @@
+                 <div class="sc-actions"><button class="sc-button" type="button" data-backup-create>ساخت و دانلود نسخه پشتیبان</button></div>
+          -      <div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>نسخه پشتیبان</th><th>حجم</th><th>عمل</th></tr></thead><tbody data-backups></tbody></table></div>
+          +      <div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>نسخه پشتیبان</th><th>حجم</th><th>عمل</th></tr></thead><tbody data-backups></tbody></table></div><p class="sc-muted" data-backup-history-status="manual" role="status"></p><button type="button" class="sc-button sc-button--secondary" data-backup-history-more="manual" hidden>نمایش فایل‌های قدیمی‌تر</button>
+               </div></section>
+          @@ -112,2 +112,3 @@
+                 <form data-recovery-upload class="sc-stack" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8') ?>"><div class="sc-field"><label class="sc-field__label" for="sc-recovery-backup-file">فایل پشتیبان</label><div class="sc-file-picker" data-file-picker><input class="sc-file-picker__input" id="sc-recovery-backup-file" type="file" name="backup" required><button class="sc-button sc-button--secondary" type="button" data-file-trigger aria-controls="sc-recovery-backup-file">انتخاب فایل</button><span class="sc-file-picker__name" data-file-name aria-live="polite">فایلی انتخاب نشده است</span></div></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="submit">بارگذاری فایل پشتیبان</button></div></form>
+          +      <details class="sc-disclosure"><summary>فایل‌های قبلاً بارگذاری‌شده برای بازیابی</summary><p class="sc-muted">وجود فایل به معنی بررسی یا آمادگی بازیابی نیست. فایل و رمز باید در فرایند بازیابی بررسی شوند.</p><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>فایل بارگذاری‌شده</th><th>حجم</th><th>عمل</th></tr></thead><tbody data-uploaded-backups></tbody></table></div><p class="sc-muted" data-backup-history-status="uploaded" role="status"></p><button type="button" class="sc-button sc-button--secondary" data-backup-history-more="uploaded" hidden>نمایش فایل‌های قدیمی‌تر</button></details>
+                 <input type="hidden" data-restore-id>
+          --- a/local/src/Domain/Recovery/RecoveryWorkspaceService.php
+          +++ b/local/src/Domain/Recovery/RecoveryWorkspaceService.php
+          @@ -8,3 +8,22 @@
+               public function __construct(private readonly BusinessBackupService $backup,private readonly Observability $observability){}
+          -    public function snapshot(): array{$dir=$this->dir();$rows=[];foreach(glob($dir.'/business-*.skbf')?:[] as $p){$rows[]=['id'=>basename($p,'.skbf'),'size_bytes'=>(int)filesize($p),'modified_at'=>gmdate('c',(int)filemtime($p))];}usort($rows,fn($a,$b)=>strcmp($b['modified_at'],$a['modified_at']));return ['backups'=>array_slice($rows,0,20),'machine_identity_excluded'=>['runtime_machine_secret','print_agent_identity','tls_private_key'],'takeover_status'=>'G3_PUBLIC_REENROLLMENT_PENDING'];}
+          +    public function snapshot(): array
+          +    {
+          +        $manual=$this->backupPage('manual');$uploaded=$this->backupPage('uploaded');
+          +        return ['backups'=>$manual['rows'],'manual_history'=>$manual,'uploaded_history'=>$uploaded,'machine_identity_excluded'=>['runtime_machine_secret','print_agent_identity','tls_private_key'],'takeover_status'=>'G3_PUBLIC_REENROLLMENT_PENDING'];
+          +    }
+          +    /** Cursor is the immutable stored ID, not a mutable offset or upload filename. */
+          +    public function backupPage(string $kind,?string $before=null): array
+          +    {
+          +        $prefix=match($kind){'manual'=>'business-','uploaded'=>'uploaded-',default=>throw new RecoveryException('invalid_backup_kind','نوع تاریخچه معتبر نیست.',422)};
+          +        $valid=static fn(string $id):bool=>str_starts_with($id,$prefix)&&preg_match('/^[A-Za-z0-9._-]{6,80}$/D',$id)===1;
+          +        if($before!==null&&!$valid($before))throw new RecoveryException('invalid_backup_cursor','شناسه ادامه تاریخچه معتبر نیست.',422);
+          +        $dir=$this->dir();if(!is_readable($dir))throw new RecoveryException('recovery_storage','فهرست فایل‌های پشتیبان در دسترس نیست.',503);$paths=glob($dir.'/'.$prefix.'*.skbf');
+          +        if($paths===false)throw new RecoveryException('recovery_storage','فهرست فایل‌های پشتیبان در دسترس نیست.',503);
+          +        $ids=[];foreach($paths as $path){$id=basename($path,'.skbf');if($valid($id)&&($before===null||strcmp($id,$before)<0)&&!is_link($path)&&is_file($path))$ids[]=$id;}
+          +        rsort($ids,SORT_STRING);$rows=[];
+          +        foreach($ids as $id){$path=$dir.'/'.$id.'.skbf';clearstatcache(true,$path);if(is_link($path)||!is_file($path))continue;$size=@filesize($path);$mtime=@filemtime($path);if($size===false||$mtime===false)continue;
+          +            $rows[]=['id'=>$id,'kind'=>$kind,'size_bytes'=>$size,'modified_at'=>gmdate('c',$mtime),'verification'=>'not_verified','source_installation_id'=>null];if(count($rows)===21)break;}
+          +        $more=count($rows)>20;if($more)array_pop($rows);
+          +        return ['kind'=>$kind,'rows'=>$rows,'has_more'=>$more,'next_before'=>$more?$rows[count($rows)-1]['id']:null];
+          +    }
+               public function create(string $passphrase,int $actorId): array{$id='business-'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(3));$path=$this->dir().'/'.$id.'.skbf';$meta=$this->backup->createEncrypted($path,$passphrase,$actorId);$set=['format'=>'sokna-recovery-set-v1','created_at'=>$meta['created_at'],'business_backup'=>['path'=>basename($path),'sha256'=>$meta['sha256']],'source_installation_id'=>$meta['source_installation_id'],'excluded_machine_identity'=>$meta['excluded_machine_identity']];file_put_contents($this->dir().'/'.$id.'.recovery.json',json_encode($set,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);return ['id'=>$id,'size_bytes'=>$meta['size'],'sha256'=>$meta['sha256'],'download'=>'/system/recovery-download.php?id='.rawurlencode($id)];}
+          --- a/public/assets/operations-workspace.js
+          +++ b/public/assets/operations-workspace.js
+          @@ -226,2 +226,3 @@
+           const countSaveProgress=$('[data-count-save-progress]');if(countSaveProgress){countSaveProgress.hidden=!canOps;countSaveProgress.addEventListener('click',async()=>{if(!remoteCountEditable())return;await SoknaUI.busy(countSaveProgress,async()=>{const ok=await flushCountDrafts();toast(ok?'پیشرفت شمارش ذخیره شد.':'بعضی ردیف‌ها هنوز ذخیره نشده‌اند.',ok?'success':'warning')})})}const finalizeBtn=$('[data-count-finalize]');if(finalizeBtn){finalizeBtn.hidden=!canFinalize;finalizeBtn.addEventListener('click',async()=>{if(!remoteCountFinalizable())return;await SoknaUI.busy(finalizeBtn,async()=>{const saved=await flushCountDrafts();if(!saved){toast('پیش از نهایی‌سازی، ردیف‌های ذخیره‌نشده را بررسی کن.','warning');return}if(!await SoknaUI.confirm('مرور و نهایی‌کردن شمارش','همه تغییرات ذخیره شده‌اند. پس از نهایی‌شدن، این شمارش دیگر قابل ویرایش نیست.'))return;if(!remoteCountFinalizable())return;try{await post({action:'count_finalize',session_id:Number(snap.inventory.open_count.id)});countDrafts.clear();await refresh('شمارش نهایی شد.')}catch(e){actionError(e)}})})}const cancelBtn=$('[data-count-cancel]');if(cancelBtn){cancelBtn.hidden=!canOps;cancelBtn.addEventListener('click',async()=>{if(!remoteCountEditable())return;if(!await SoknaUI.confirm('لغو شمارش','شمارش باز لغو شود؟',true))return;await SoknaUI.busy(cancelBtn,async()=>{if(!remoteCountEditable())return;try{await post({action:'count_cancel',session_id:Number(snap.inventory.open_count.id)});await refresh('شمارش لغو شد.')}catch(e){actionError(e)}})})}
+          +$$('[data-document-history]').forEach(bindDocumentHistory);
+           updateExpensePreview();function initializeOperationsRoute(){window.SoknaInteractions?.setupTabs?.(root);const route=routeFromLocation();routeReady=true;applyOperationsRoute(route,{canonical:route.explicit&&!route.autoStock});const generation=routeVersion;(async()=>{await refresh();if(generation!==routeVersion)return;if(route.autoStock&&snap?.inventory?.open_count)switchWorkflow('stock',{updateUrl:true,replace:true});else if(route.explicit&&route.autoStock)writeOperationsRoute(route.key,{replace:true});highlightRouteItem(route)})()}
+          @@ -237,2 +238,3 @@
+           function waitForHistoryTransport(){const transport=window.SoknaPublicRealtime;if(transport?.canQueryLive?.())return Promise.resolve();return new Promise((resolve,reject)=>{const finish=error=>{clearTimeout(timer);document.removeEventListener('sokna:staff-mutation-readiness',check);error?reject(error):resolve();};const check=()=>{if(transport?.canQueryLive?.())finish(null);};const timer=setTimeout(()=>finish(new Error('مسیر زنده تاریخچه تأیید نشد.')),12000);document.addEventListener('sokna:staff-mutation-readiness',check);check();});}
+          +function receiptHistoryTarget(query){const values=query.getAll('receipt_id');if(values.length!==1)return '';const value=values[0];return /^[1-9][0-9]*$/.test(value)&&Number.isSafeInteger(Number(value))?value:'';}
+           function bindDocumentHistory(box){const kind=box.dataset.documentHistory,form=box.querySelector('[data-document-history-form]'),body=box.querySelector('[data-document-history-rows]'),notice=box.querySelector('[data-document-history-status]'),more=box.querySelector('[data-document-history-more]');let sequence=0,next=null,applied='',rows=[],loading=false;
+          @@ -241,8 +243,8 @@
+            function paint(costVisible){body.replaceChildren();for(const row of rows){const tr=document.createElement('tr');tr.dataset.historyDocumentId=String(row.id);cell(tr,'شناسه',L.integer(row.id));if(kind==='receipts'){cell(tr,'زمان',L.dateTime(row.received_at));cell(tr,'کالا',row.item_name);cell(tr,'مقدار',`${majorText(row.received_quantity_base,row.base_unit)} ${majorUnitLabel(row.base_unit)}`);cell(tr,'هزینه',!costVisible?'دسترسی محدود':row.total_cost==null?'—':money(row.total_cost));cell(tr,'تأمین‌کننده',row.supplier||'—');}else{cell(tr,'زمان',L.dateTime(row.occurred_at));cell(tr,'دسته',row.category_name);cell(tr,'شرح',row.description||'—');cell(tr,'مبلغ',money(row.amount));cell(tr,'وضعیت',expenseStatusLabel(row.status));}body.append(tr);}}
+          - async function load(append=false,bootstrap=false){const q=fields(),signature=q.toString();if(append&&(loading||!next||signature!==applied))return;const cursor=append?next:null;if(cursor)q.set('before_id',cursor);const seq=++sequence;loading=true;more.disabled=true;notice.textContent='در حال دریافت تاریخچه…';if(!append){body.replaceChildren();rows=[];next=null;more.hidden=true;}try{const remote=root.dataset.host==='public'||document.body.dataset.staffUiMode==='public';if(remote&&bootstrap){await window.SoknaPublicRealtime.model('operations_workspace');if(seq!==sequence)return;await waitForHistoryTransport();if(seq!==sequence)return;}const response=remote?await window.SoknaPublicRealtime.realtime('operations.query',Object.fromEntries(q.entries())):await request(`${api}?${q}`);if(seq!==sequence)return;const j=validateDocumentHistory(response,kind,cursor);rows=[...(append?rows:[]),...j.rows];next=j.has_more?String(j.next_before_id):null;applied=signature;paint(j.cost_visible&&canCost);if(kind==='receipts'&&form.elements.id.value&&rows.length===1){body.firstElementChild?.classList.add('sc-command-target');}notice.textContent=rows.length?`${L.integer(rows.length)} سند از دفتر اصلی · ${next?'ادامه موجود است':'پایان فهرست'}`:'در این فیلتر سندی پیدا نشد.';more.hidden=!next;}catch(e){if(seq!==sequence)return;invalidate('تاریخچه قابل تأیید نیست؛ برای دریافت مجدد ارتباط با سیستم اصلی را بررسی کنید.');}finally{if(seq===sequence){loading=false;more.disabled=false;}}}
+          + async function load(append=false,bootstrap=false){const q=fields(),signature=q.toString();if(append&&(loading||!next||signature!==applied))return;const cursor=append?next:null;if(cursor)q.set('before_id',cursor);const seq=++sequence;loading=true;more.disabled=true;notice.textContent='در حال دریافت تاریخچه…';if(!append){body.replaceChildren();rows=[];next=null;more.hidden=true;}try{const remote=root.dataset.host==='public'||document.body.dataset.staffUiMode==='public';if(remote&&bootstrap){const transport=window.SoknaPublicRealtime;if(!transport?.canQueryLive?.()){void Promise.resolve().then(()=>transport?.model('operations_workspace')).catch(()=>{});await waitForHistoryTransport();}if(seq!==sequence)return;}const response=remote?await window.SoknaPublicRealtime.realtime('operations.query',Object.fromEntries(q.entries())):await request(`${api}?${q}`);if(seq!==sequence)return;const j=validateDocumentHistory(response,kind,cursor);const exactId=q.get('id');if(exactId&&/^[0-9]+$/.test(exactId)&&(j.has_more||j.rows.length>1||j.rows.some(row=>Number(row.id)!==Number(exactId))))throw Error('شناسه سند با پاسخ تاریخچه مطابقت ندارد.');rows=[...(append?rows:[]),...j.rows];next=j.has_more?String(j.next_before_id):null;applied=signature;paint(j.cost_visible&&canCost);if(kind==='receipts'&&form.elements.id.value&&rows.length===1){body.firstElementChild?.classList.add('sc-command-target');}notice.textContent=rows.length?`${L.integer(rows.length)} سند از دفتر اصلی · ${next?'ادامه موجود است':'پایان فهرست'}`:'در این فیلتر سندی پیدا نشد.';more.hidden=!next;}catch(e){if(seq!==sequence)return;invalidate('تاریخچه قابل تأیید نیست؛ برای دریافت مجدد ارتباط با سیستم اصلی را بررسی کنید.');}finally{if(seq===sequence){loading=false;more.disabled=false;}}}
+            const invalidateFilter=()=>invalidate('فیلتر تغییر کرد؛ دوباره تاریخچه را دریافت کنید.');form.addEventListener('input',invalidateFilter);form.addEventListener('change',invalidateFilter);form.addEventListener('submit',e=>{e.preventDefault();void load()});more.addEventListener('click',()=>void load(true));
+            // A report link to an older receipt searches its actual identity, not just the recent 40.
+          - const requested=new URLSearchParams(location.search).get('receipt_id');if(kind==='receipts'&&requested&&/^[1-9][0-9]*$/.test(requested)){box.open=true;form.elements.id.value=requested;const initial=()=>{if(sequence===0&&form.elements.id.value===requested)void load(false,true);};if(document.readyState==='complete')setTimeout(initial,0);else window.addEventListener('pageshow',initial,{once:true});}
+          -}
+          -$$('[data-document-history]').forEach(bindDocumentHistory);
+          + const requested=receiptHistoryTarget(new URLSearchParams(location.search));if(kind==='receipts'&&requested){box.open=true;form.elements.id.value=requested;void load(false,true);}
+          +}
+          +
+           })();
+          SOKNA_QA_CC17_20_PATCH
+          (cd "$W"; git apply --check cc17-20.patch; git apply cc17-20.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc20-source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]); H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local': '088c6f6f003f1269dc5226656d6ddb55529bae1038336ff1e1b9f0bde9e23d9a', 'public': '13ee753dcd1cfec1c2ec6cfad42ccb0fc67a34d7c81667a02a37269a93ad8c07'}
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-20',host,n,actual)
+          PYCODE
+
+      - name: Grouped real database HTTP and Chrome acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          export QA_WORK="$W" TMPDIR="$W"
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
+          cat > "$W/cc20-historical.php" <<'SOKNA_QA_CC20_HISTORICAL_PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$path=$W.'/config.php';$cfg=require $path;if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);$admin2=$p->query("SELECT id,role FROM users WHERE username='qa-admin2' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin||!$admin2)exit(2);$fail=0;
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function group($n,$fn){global $fail;try{$fn();echo "GROUP PASS $n\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL '.$n.' '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}function reject($fn,$code){try{$fn();throw new RuntimeException('expected '.$code);}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);}}
+          use Sokna\Local\Core\Config;
+          use Sokna\Local\Domain\Integrations\IntegrationSettingsService;
+          use Sokna\Local\Domain\Integrations\AccommodationTransport;
+          use Sokna\Local\Domain\Integrations\AccommodationService;
+          $svc=$c->adminControls();$t=[];
+          group('INT-L401 INT-L402 INT-L403 INT-L404 config owner and historical settlement with simulated peer',function()use($c,$cfg,$p,$admin,$path,$W,&$t){
+           $base='http://127.0.0.1:18767';$key='synthetic-cc16-accommodation';$fp=substr(hash('sha256',$key),0,12);$new=$cfg;$new['integrations']['accommodation']=['enabled'=>false,'base_url'=>$base,'api_key'=>$key];file_put_contents($path,"<?php return ".var_export($new,true).";\n",LOCK_EX);
+           $make=fn()=>new IntegrationSettingsService(Config::fromArray(require $path),$path);
+           $s=$make();$a=$s->accommodationModuleSnapshot($p);ck($a['enabled']===false&&$a['configured']===true,'disabled configuration retained');reject(fn()=>$s->saveAccommodation(['base_url'=>$base,'api_key'=>$key],$p),'integration_disabled');$r=$s->setAccommodationEnabled(true,$p);ck($r['changed']===true&&$r['reload_required']===true,'enable through sole config owner');$fresh=$make();ck($fresh->accommodationModuleSnapshot($p)['enabled']===true,'fresh read enabled');reject(fn()=>$fresh->saveAccommodation(['enabled'=>false,'base_url'=>$base],$p),'module_owner');ck(($fresh->accommodationSnapshot()['key_fingerprint']??'')===$fp,'fingerprint only');
+           $cfgEnabled=require $path;$core=sokna_local_bootstrap($cfgEnabled);$calls=0;$transport=new AccommodationTransport(Config::fromArray($cfgEnabled),function($action,$method,$parameters,$timeout)use(&$calls){$calls++;return ['success'=>true,'transaction_id'=>'qa-cc16-transaction','tracking_id'=>'qa-cc16-tracking'];},$path);
+           reject(fn()=>$transport->testConnection($base,'000000000000'),'accommodation_config_changed');ck($calls===0,'wrong fingerprint no peer request');$ok=$transport->testConnection($base,$fp);ck($ok['success']===true&&$ok['key_fingerprint']===$fp&&$ok['base_url']===$base&&$calls===1,'matching saved configuration tested once');
+           // Create one dedicated unpaid order in the intentionally empty tax session of the disposable fixture.
+           $f=json_decode(file_get_contents($W.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
+           $sid=(int)$f['hall']['tax']['session'];$table=(int)$f['hall']['tax']['table'];$item=(int)$f['tax_item'];$clock=$core->businessClock()->assignment();
+           $p->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES('qa-cc16-hotel-order','qa-cc16-hotel-token',?,?,'staff','accounted',100000,16600,?,?,?,?)")->execute([$table,$sid,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);
+           $oid=(int)$p->lastInsertId();$p->prepare("INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,'QA CC16 accommodation item',100000,1,1,'hot_bar',100000)")->execute([$oid,$item]);
+           $account=$core->settlements()->account($sid);ck($account['remaining_total']===100000&&(int)$account['receipt_count']===0,'dedicated synthetic unpaid account');
+           $ac=new AccommodationService($p,$core->identityRepository(),$core->capabilities(),$core->settlements(),$transport);
+           $expected=['expected_session_id'=>$sid,'expected_remaining_total'=>$account['remaining_total'],'expected_signature'=>$account['signature']];$prepared=$ac->prepare($sid,['reservation_code'=>'qa-cc16-room','guest_name'=>'QA guest','room_name'=>'QA room'],$expected,$admin);$tid=(int)$prepared['id'];ck($fresh->accommodationModuleSnapshot($p)['can_disable']===false,'unresolved transfer blocks disable');reject(fn()=>$fresh->setAccommodationEnabled(false,$p),'accommodation_unresolved');reject(fn()=>$fresh->saveAccommodation(['base_url'=>$base,'api_key'=>'synthetic-new-key'],$p),'accommodation_unresolved');
+           $paid=$ac->attemptCharge($tid,$admin);ck(($paid['success']??false)===true,'actual Local settlement using simulated accommodation response');$settlement=$p->query('SELECT id,business_date,total FROM settlement_records WHERE accommodation_transfer_id='.$tid." AND status='completed'")->fetch(PDO::FETCH_ASSOC);ck(is_array($settlement),'historical accommodation settlement persisted');$date=$settlement['business_date'];$before=$core->reporting()->report($date,$date)['financial_context']['accommodation'];$document=$p->query('SELECT * FROM settlement_records WHERE id='.(int)$settlement['id'])->fetch(PDO::FETCH_ASSOC);$transfer=$ac->byId($tid);
+           $fresh->setAccommodationEnabled(false,$p);$cfgOff=require $path;$off=sokna_local_bootstrap($cfgOff);$after=$off->reporting()->report($date,$date)['financial_context'];ck($after['accommodation_enabled']===false&&$after['accommodation']===$before,'financial history exactly retained after disable');ck($document===$p->query('SELECT * FROM settlement_records WHERE id='.(int)$settlement['id'])->fetch(PDO::FETCH_ASSOC)&&$transfer===$ac->byId($tid),'settlement and transfer unchanged');ck($cfgOff['integrations']['accommodation']['api_key']===$key&&$cfgOff['integrations']['accommodation']['base_url']===$base&&$cfgOff['public']===$cfg['public'],'credentials and unrelated settings unchanged');reject(fn()=>$transport->testConnection($base,$fp),'integration_disabled');$t['settlement']=$settlement;$t['base']=$base;$t['fingerprint']=$fp;
+          });
+          // Browser starts with feature disabled even if acceptance failed.
+          $new=require $path;$new['integrations']['accommodation']=['enabled'=>false,'base_url'=>'http://127.0.0.1:18767','api_key'=>'synthetic-cc16-accommodation'];file_put_contents($path,"<?php return ".var_export($new,true).";\n",LOCK_EX);$t['base']='http://127.0.0.1:18767';$t['fingerprint']=substr(hash('sha256','synthetic-cc16-accommodation'),0,12);file_put_contents($W.'/cc16-fixture.json',json_encode($t,JSON_THROW_ON_ERROR));exit($fail?1:0);
+          SOKNA_QA_CC20_HISTORICAL_PHP
+          cat > "$W/cc20-module.cjs" <<'SOKNA_QA_CC20_MODULE_CJS'
+          const fs=require('fs'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,base='http://127.0.0.1:18765';let fail=0;
+          function ck(x,n){if(!x)throw Error(n);console.log('PASS '+n)}
+          async function wait(p,fn,n){for(let i=0;i<100;i++){if(await fn()){ck(true,n);return}await p.waitForTimeout(100)}throw Error(n)}
+          async function auth(p){await p.goto(base+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!=='qa-target'){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="qa-target"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'actual admin login');}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1280,height:900},locale:'fa-IR'});await auth(p);await p.goto(base+'/finance/');ck(await p.locator('[data-tab="accommodation"]').count()===0,'disabled finance tab absent');await p.goto(base+'/integrations/');ck(await p.locator('[data-accommodation-form]').count()===0,'disabled integration tab absent');await p.goto(base+'/admin/');const toggle=async enabled=>{return p.evaluate(async enabled=>{const root=document.querySelector('[data-admin-workspace]');const r=await fetch(new URL(root.dataset.api,document.baseURI),{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({action:'module_toggle',module_key:'accommodation',enabled,csrf_token:root.dataset.csrf})});return {status:r.status,json:await r.json()}},enabled)};const enable=await toggle(true);ck(enable.status===200&&enable.json.success===true,'enable through actual admin endpoint');await p.goto(base+'/finance/');ck(await p.locator('[data-tab="accommodation"]').count()===1,'enabled finance tab visible');await p.goto(base+'/integrations/');ck(await p.locator('[data-accommodation-form]').count()===1,'enabled integration tab visible');await p.goto(base+'/admin/');const disable=await toggle(false);ck(disable.status===200&&disable.json.success===true,'disable through actual admin endpoint');await p.goto(base+'/finance/');ck(await p.locator('[data-tab="accommodation"]').count()===0,'finance tab removed after disable');await p.goto(base+'/integrations/');ck(await p.locator('[data-accommodation-form]').count()===0,'connection tab removed after disable');console.log('GROUP PASS INT-L401 ADM-L440 actual module visibility and owner endpoint');}catch(e){fail++;console.log('GROUP FAIL INT-L401 ADM-L440 '+e.stack)}finally{await b.close()}process.exitCode=fail?1:0})().catch(e=>{console.error(e);process.exitCode=1});
+          SOKNA_QA_CC20_MODULE_CJS
+          cat > "$W/cc20-ops.php" <<'SOKNA_QA_CC20_OPS_PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);$bar=$p->query("SELECT id,role FROM users WHERE username='qa-bar-a' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin||!$bar)exit(2);$fail=0;
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function group($n,$fn){global $fail;try{$fn();echo "GROUP PASS $n\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL '.$n.' '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}function reject($fn,$code){try{$fn();throw new RuntimeException('expected '.$code);}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);}}
+          $mode=$argv[2]??'';
+          if($mode==='sync'){$pub=$c->publicEdgePublisher();$seq=$pub->seedProjectionInvalidations(['operations_workspace','operations','inventory','inventory_cost'],'qa.cc15');ck($seq>0,'seed operations invalidation');$r=$pub->syncProjectionModelsV2(250,4,10,null,['operations_workspace','operations','inventory','inventory_cost']);ck(($r['success']??false)===true,'signed operations V2 ACK');ck(($pub->syncHeartbeat(5)['success']??false)===true,'signed heartbeat');exit;}
+          if($mode==='relay'){for($end=time()+240;time()<$end;){try{$r=$c->publicEdgeRelay()->syncRealtimeExchange(8,3);if(($r['processed']??0)>0||($r['acked']??0)>0)echo 'RELAY '.json_encode($r)."\n";}catch(Throwable $e){echo 'RELAY_ERROR '.$e->getMessage()."\n";}usleep(250000);}exit;}
+          $day=$c->time()->civilDate();$t=['day'=>$day];
+          group('OPS-L162 seed single old receipt for deep link only',function()use($c,$p,$admin,$day,&$t){
+          $p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('module.inventory.enabled','1'),('module.supply.enabled','1'),('inventory_initialized','1'),('inventory_reconciliation_required','0') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+          $p->exec("INSERT INTO inventory_items(item_code,name,category,base_unit,active) VALUES('qa-cc15b-a','QA CC15B receipt','ingredient','count',1)");$item=(int)$p->lastInsertId();for($i=0;$i<45;$i++){$id=(int)$c->supply()->receiveDirect(['item_id'=>$item,'unit_count'=>'1','total_cost'=>$i===0?'':'1000','supplier'=>'QA CC15B supplier','occurred_at'=>$day.' 00:01:00','request_token'=>md5('qa-cc15b-r-'.$i)],$admin)['receipt_id'];if($i===0)$t['receipts']=$id;}ck(isset($t['receipts']),'old receipt seeded beyond snapshot limit');});
+          group('PRT-L478 actual query plans for complete search',function()use($c,$p){$svc=$c->printManagement();$dest=(string)scalar($p,'SELECT destination_key FROM print_destinations ORDER BY destination_key LIMIT 1');$order=(int)scalar($p,"SELECT id FROM orders WHERE public_code='qa150-order-0'");$ins=$p->prepare("INSERT INTO print_jobs(public_token,idempotency_key,contract_version,job_type,destination_key,status,payload_json,content_sha256,entity_type,entity_id) VALUES(?,?,4,'preparation',?,?,'{}',?,'order_reprint',?)");for($i=0;$i<320;$i++)$ins->execute([md5('qa-cc15b-print-'.$i),'qa-cc15b-print-'.$i,$dest,$i<245?'pending':'submitted',hash('sha256','{}'),(string)$order]);$from=(new ReflectionMethod($svc,'jobFrom'))->invoke($svc);$select=(new ReflectionMethod($svc,'jobSelect'))->invoke($svc);$where=" WHERE j.status IN ('pending','failed','blocked','unknown','recovery_hold') AND (CAST(j.id AS CHAR)='15000' OR j.entity_id='15000' OR CAST(o.business_order_number AS CHAR)='15000' OR sr.invoice_number='15000')";foreach(['count'=>'SELECT COUNT(*)'.$from.$where,'page'=>$select.$where." ORDER BY CASE WHEN j.status IN ('failed','blocked','unknown','recovery_hold') THEN 0 ELSE 1 END,j.id DESC LIMIT 25 OFFSET 200"] as $label=>$sql){$rows=$p->query('EXPLAIN '.$sql)->fetchAll(PDO::FETCH_ASSOC);echo 'EXPLAIN '.$label.' '.json_encode($rows,JSON_UNESCAPED_UNICODE)."\n";ck(count($rows)>0,'real MariaDB EXPLAIN '.$label);$by=array_column($rows,null,'table');foreach(['d','a','adj','o','sr'] as $alias){if(isset($by[$alias]))ck(in_array($by[$alias]['type'],$alias==='d'?['eq_ref','const','system','ref','index','ALL']:['eq_ref','const','system','ref'],true),'business reference access '.$label.' '.$alias);}}});
+          file_put_contents($W.'/cc15b-fixture.json',json_encode($t,JSON_THROW_ON_ERROR));exit($fail?1:0);
+          SOKNA_QA_CC20_OPS_PHP
+          cat > "$W/cc20-ops.cjs" <<'SOKNA_QA_CC20_OPS_CJS'
+          const fs=require('fs'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json')),t=JSON.parse(fs.readFileSync(W+'/cc15b-fixture.json')),local='http://127.0.0.1:18765',pub='http://127.0.0.1:18766/public';let fail=0;
+          function ck(x,n){if(!x)throw Error(n);console.log('PASS '+n)}async function wait(p,fn,n){for(let i=0;i<140;i++){if(await fn()){ck(true,n);return}await p.waitForTimeout(150)}throw Error(n)}
+          async function auth(p,base,user){await p.goto(base+(base===local?'/login.php':'/staff/login'));const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key=base===local?user:'user:'+f.users.find(u=>u.name===user).id;if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${key}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user+' '+base);}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const ctx=await b.newContext({viewport:{width:1280,height:900},locale:'fa-IR'}),p=await ctx.newPage();p.setDefaultTimeout(22000);p.on('pageerror',e=>console.log('PAGEERROR '+e.message));p.on('response',r=>{if(r.url().includes('/api/staff/read')||r.url().includes('/api/staff/realtime'))console.log('ROUTE '+r.status()+' '+new URL(r.url()).pathname+' '+(new URL(r.url()).searchParams.get('model')||''));});try{await auth(p,pub,'qa-target');const u=pub+'/staff/operations/?workflow=receive&receipt_id='+t.receipts;let reads=0,queries=0;p.on('request',r=>{if(r.url().includes('/api/staff/read?model=operations_workspace'))reads++;if(r.url().endsWith('/api/staff/realtime')&&r.method()==='POST'&&r.postDataJSON()?.payload?.action==='receipt_history')queries++});await p.goto(u);const box=p.locator('[data-document-history="receipts"]'),row=box.locator(`[data-history-document-id="${t.receipts}"]`);await wait(p,async()=>await row.isVisible(),'exact deep link old receipt Public after transport bootstrap');ck(queries===1,'one explicit old document request');ck(await row.evaluate(e=>e.classList.contains('sc-command-target')),'exact receipt highlighted');ck((await row.locator('[data-label="هزینه"]').textContent()).trim()==='—','old receipt unknown cost');await p.screenshot({path:W+'/cc15b-old-receipt.png'});console.log('GROUP PASS OPS-L162 direct Public receipt link, real transport');}catch(e){console.log('DEEP_LINK_DIAGNOSTIC '+JSON.stringify(await p.evaluate(()=>({url:location.pathname+location.search,ready:window.SoknaPublicRealtime?.canQueryLive?.(),state:document.body.dataset.publicMutationState,status:document.querySelector('[data-document-history-status]')?.textContent,hidden:!!document.querySelector('[data-document-history=receipts]')?.closest('[hidden]'),open:document.querySelector('[data-document-history=receipts]')?.open}))));console.log('GROUP FAIL OPS-L162 direct Public receipt link '+e.stack);process.exitCode=1}finally{await ctx.close();await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+          SOKNA_QA_CC20_OPS_CJS
+          cat > "$W/cc20-admin.php" <<'SOKNA_QA_CC20_ADMIN_PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
+          $W=getenv('QA_WORK');$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          require $W.'/local/bootstrap.php';$c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
+          $r=$c->adminControls()->bulkCreateTables(['from_number'=>901,'to_number'=>924,'name_prefix'=>'QA table','zone_label'=>'QA zone'],$admin);if(count($r['created'])!==24)throw new RuntimeException('fixture table creation');
+          foreach([923,924] as $n){$id=(int)$p->query('SELECT id FROM cafe_tables WHERE table_number='.$n)->fetchColumn();$c->adminControls()->saveTable(['id'=>$id,'name'=>'QA table '.$n,'table_number'=>$n,'zone_label'=>'QA zone','active'=>false],$admin);}
+          $f=['user'=>(int)$p->query("SELECT id FROM users WHERE username='qa-admin2'")->fetchColumn(),'table'=>(int)$p->query('SELECT id FROM cafe_tables WHERE table_number=901')->fetchColumn(),'all'=>(int)$p->query('SELECT COUNT(*) FROM cafe_tables')->fetchColumn(),'inactive'=>(int)$p->query('SELECT COUNT(*) FROM cafe_tables WHERE active=0')->fetchColumn()];file_put_contents($W.'/admin-fixture.json',json_encode($f,JSON_THROW_ON_ERROR));echo "PASS disposable admin fixture\n";
+          SOKNA_QA_CC20_ADMIN_PHP
+          cat > "$W/cc20-admin.cjs" <<'SOKNA_QA_CC20_ADMIN_CJS'
+          const fs=require('fs'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
+          const W=process.env.QA_WORK,f=JSON.parse(fs.readFileSync(W+'/admin-fixture.json')),base='http://127.0.0.1:18765';
+          let fail=0;function ck(x,n){if(!x)throw Error(n);console.log('PASS '+n)}
+          async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){fail++;console.log('GROUP FAIL '+n+' '+e.stack)}}
+          async function auth(p,user,pw){await p.goto(base+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!==user){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${user}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(pw);await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'actual login '+user)}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});try{const p=await b.newPage({viewport:{width:1280,height:900},locale:'fa-IR'});p.setDefaultTimeout(15000);await auth(p,'qa-target','synthetic-qa-admin-not-real');
+          await group('HELP-L571 real global search and exact admin target',async()=>{await p.goto(base+'/admin/');const input=p.locator('[data-global-search-input]');await input.fill('qa-admin2');const link=p.locator(`[data-global-search-results] a[href*="user=${f.user}"]`);await link.waitFor({state:'visible'});await Promise.all([p.waitForNavigation(),link.click()]);const target=p.locator(`[data-team] tr[data-user-id="${f.user}"].sc-command-target`);await target.waitFor({state:'visible'});ck(await p.locator('.sc-command-target').count()===1,'only exact account highlighted');ck(await p.locator('[data-panel="team"]').isVisible(),'actual team panel selected');await p.goto(base+'/admin/?tab=tables&table='+f.table);await p.locator(`[data-tables] [data-search-target="table:${f.table}"].sc-command-target`).waitFor({state:'visible'});ck(await p.locator('.sc-command-target').count()===1,'only exact table highlighted');await p.screenshot({path:W+'/cc20-admin-target.png'});});
+          await group('ADM-L441 actual table list and inactive records at desktop and mobile',async()=>{await p.goto(base+'/admin/?tab=tables');await p.waitForFunction(n=>document.querySelectorAll('[data-tables] tr[data-search-target]').length===n,f.all);const rows=p.locator('[data-tables] tr[data-search-target]');ck(await rows.count()===f.all,'all records rendered');const filter=p.locator('[data-qr-filter]');await filter.selectOption('inactive');ck(await rows.count()===f.inactive,'inactive records retained');await filter.selectOption('all');ck(await rows.count()===f.all,'all records restored');for(const width of [1280,390]){await p.setViewportSize({width,height:844});await p.waitForTimeout(250);ck(await p.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'no page horizontal overflow '+width);await rows.last().scrollIntoViewIfNeeded();ck(await rows.last().isVisible(),'last row reachable '+width);await p.screenshot({path:W+'/cc20-tables-'+width+'.png',fullPage:true});}});
+          await group('HELP-L571 actual non-admin result restriction',async()=>{const q=await b.newPage();await auth(q,'qa-cashier','synthetic-member-only');const r=await q.request.get(base+'/search/api.php?q=qa-admin2');const j=await r.json();ck(r.ok()&&j.success===true,'authenticated search responds');ck(!j.search.results.some(x=>['user','personnel','setting'].includes(x.type)),'restricted administrative result not returned');await q.close();});
+          }finally{await b.close()}process.exitCode=fail?1:0})().catch(e=>{console.error(e);process.exitCode=1});
+          SOKNA_QA_CC20_ADMIN_CJS
+          fail=0
+          php "$W/cc20-historical.php" "$W/local" | tee "$W/cc20-historical-results.txt" || fail=1
+          php "$W/cc20-ops.php" "$W/local" | tee "$W/cc20-ops-db-results.txt" || fail=1
+          php "$W/cc20-admin.php" | tee "$W/cc20-admin-fixture-results.txt" || fail=1
+          php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-fixture-results.txt" || fail=1
+          npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
+          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-server.log" 2>&1 & pp=$!
+          php -S 127.0.0.1:18767 "$GITHUB_WORKSPACE/qa/case-closure16/peer.php" >"$W/peer-server.log" 2>&1 & peer=$!
+          rp=''; trap 'kill "$lp" "$pp" "$peer" $rp 2>/dev/null || true' EXIT
+          sleep 2
+          php "$W/cc20-ops.php" "$W/local" sync | tee "$W/cc20-sync-results.txt" || fail=1
+          php "$W/cc20-ops.php" "$W/local" relay >"$W/cc20-relay-results.txt" 2>&1 & rp=$!
+          node "$W/cc20-ops.cjs" | tee "$W/cc20-ops-browser-results.txt" || fail=1
+          node "$W/cc20-module.cjs" | tee "$W/cc20-module-browser-results.txt" || fail=1
+          node "$W/cc20-admin.cjs" | tee "$W/cc20-admin-browser-results.txt" || fail=1
+          exit "$fail"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CC20-GROUPED-ACCEPTANCE-QA-ONLY
+          path: |
+            ${{ runner.temp }}/cp148-qa/*-results.txt
+            ${{ runner.temp }}/cp148-qa/cc20-*.png
+          retention-days: 7
+          if-no-files-found: warn
