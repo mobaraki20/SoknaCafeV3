@@ -1,4 +1,4 @@
-name: SOKNA 48 exact frozen Local standard clean setup on Windows (QA only)
+name: SOKNA 48B actual financial dates from UI on frozen Local (QA only)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,54 +7,141 @@ permissions:
   contents: read
   actions: read
 jobs:
-  native-clean:
-    runs-on: windows-latest
-    timeout-minutes: 20
+  financial-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     env:
-      SOKNA_R186_CI_ONLY: 'YES'
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          ref: 6983e9d52435a746325f60ace428b8548bcc8fc0
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           run-id: 46056788008
+          name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/cp76/out
-      - uses: actions/download-artifact@v4
-        with:
-          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
-          run-id: 45707538026
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/helper
-      - uses: actions/download-artifact@v4
-        with:
-          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
-          run-id: 45707401488
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/apache
-      - name: Standard clean web setup with exact 231gi in disposable Windows
-        shell: pwsh
+          path: ${{ runner.temp }}/candidate
+      - name: Real financial form submission with synthetic records only
+        shell: bash
         run: |
-          $ErrorActionPreference='Stop'
-          $receipt=Get-Content "$env:RUNNER_TEMP/cp76/out/candidate-receipt.json" -Raw|ConvertFrom-Json
-          $pkg='LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip'
-          $sha='cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a'
-          $version='3.0.0-g6.2-workspace.231gi-cc43-qa'
-          if($receipt.packages.$pkg -cne $sha -or $receipt.production_authorized -ne $false -or $receipt.local_clean_web_only -ne $true){throw 'INVALID_CANDIDATE_RECEIPT'}
-          if((Get-FileHash "$env:RUNNER_TEMP/cp76/out/$pkg" -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'CANDIDATE_ARCHIVE_DRIFT'}
-          $s=Get-Content 'qa/factory/checkpoint78-standard-clean-web.ps1' -Raw
-          $s=$s.Replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip',$pkg).Replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',$sha).Replace('3.0.0-g6.2-workspace.231gg-checkpoint76-qa',$version)
-          $p=Join-Path $env:RUNNER_TEMP 'native-clean48.ps1'
-          Set-Content $p $s -Encoding utf8NoBOM
-          & $p
-          if($LASTEXITCODE -ne 0){throw 'NATIVE_CLEAN_FAILED'}
+          set -euo pipefail
+          W="$RUNNER_TEMP/cc48b"; mkdir -p "$W/local" "$W/receipts"
+          A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
+          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
+          unzip -q "$A" -d "$W/local"
+          export QA_WORK="$W" TMPDIR="$W"
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/receipts/fixture.txt"
+          cat > "$W/verify.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          $p=sokna_local_bootstrap($cfg)->database();
+          if($argv[2]==='seed'){
+           if((int)$p->query('SELECT COUNT(*) FROM tax_rate_versions')->fetchColumn()===0)$p->exec("INSERT INTO tax_rate_versions(rate_bps,effective_from) VALUES(500,'2020-01-01 00:00:00')");
+           exit;
+          }
+          $rows=json_decode(file_get_contents($w.'/receipts/accepted-ui.json'),true,512,JSON_THROW_ON_ERROR);
+          if(count($rows)!==7)throw new RuntimeException('missing UI mutation receipts '.count($rows));
+          foreach($rows as $v){$kind=$v['kind'];$table=match($kind){'tax_rate'=>'tax_rate_versions','tax_policy'=>'tax_item_policy_versions','expense_create'=>'expenses'};$q=$p->prepare('SELECT * FROM '.$table.' WHERE id=?');$q->execute([$v['id']]);$r=$q->fetch(PDO::FETCH_ASSOC);
+           $time=$kind==='expense_create'?'occurred_at':'effective_from';$value=match($kind){'tax_rate'=>'rate_bps','tax_policy'=>'custom_rate_bps','expense_create'=>'amount'};
+           if(!$r||$r[$time]!==$v['expected']||(int)$r[$value]!==(int)($v['rate_bps']??$v['amount']))throw new RuntimeException('UI receipt DB mismatch '.$kind);
+           echo 'PASS actual UI saved database row '.$kind.' '.$v['expected'].PHP_EOL;
+          }
+          PHP
+          php "$W/verify.php" "$W" seed
+          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" > "$W/receipts/local-http.log" 2>&1 &
+          sleep 2
+          cat > "$W/ui.cjs" <<'JS'
+          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs');
+          const W=process.env.QA_WORK,base='http://127.0.0.1:18765',f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
+          const accepted=[];let failures=0;
+          function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)}
+          async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){failures++;console.log('GROUP FAIL '+n+' '+e.stack)}}
+          async function auth(p){await p.goto(base+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!=='qa-target'){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="qa-target"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'real administrator login')}
+          async function ready(p,sel){await p.waitForFunction(s=>{const el=document.querySelector(s);return el&&!el.disabled&&el.offsetParent!==null},sel,{timeout:20000})}
+          async function putDate(p,selector,iso){
+           const wrap=p.locator(selector+' + .sc-jalali-control');
+           const date=wrap.locator('.sc-jalali-date'),time=wrap.locator('.sc-jalali-time');
+           const j=iso?await p.evaluate(s=>window.SoknaJalali.gregorianToJalali(...s.slice(0,10).split('-').map(Number)).map((n,i)=>String(n).padStart(i?2:4,'0')).join('/'),iso):'';
+           await date.fill(j);if(await time.count())await time.fill(iso?iso.slice(11,16):'');
+           await ck(await p.locator(selector).inputValue()===iso,'visible date produces correct hidden value '+selector+' '+iso);
+          }
+          async function mutate(p,selector,action){
+           const pending=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/finance/api.php')&&r.request().postDataJSON().action===action);
+           await p.locator(selector).click();const r=await pending,j=await r.json();ck(r.ok()&&j.success,'UI saved '+action);
+           const data=r.request().postDataJSON();await ready(p,selector);
+           return {data,result:j.result}
+          }
+          async function checkTax(p,kind){
+           const rate=kind==='tax_rate',field=rate?'[data-tax-effective]':'[data-tax-policy-effective]',save=rate?'[data-save-tax-rate]':'[data-save-tax-policy]';
+           if(!rate){await ready(p,'[data-tax-item]');await p.locator('[data-tax-item]').selectOption(String(f.tax_item));await ready(p,save);await p.locator('[data-tax-policy]').selectOption('custom_rate')}
+           for(const [i,iso] of ['2026-03-21T04:05','2030-01-02T09:15',''].entries()){
+            await ready(p,save);
+            await p.locator(rate?'[data-tax-rate]':'[data-tax-custom]').fill(String(7+i));
+            await putDate(p,field,iso);
+            const started=Date.now(),r=await mutate(p,save,kind);
+            ck(r.data.effective_from===iso.replace('T',' '),'actual UI submitted exact intent '+kind+' '+(iso||'now'));
+            if(iso)ck(r.result.effective_from.startsWith(iso+':00')&&r.result.effective_from.endsWith('+03:30'),'response confirms Iran local timestamp '+kind);
+            else ck(Math.abs(Date.parse(r.result.effective_from)-started)<120000,'blank intent records now '+kind);
+            accepted.push({kind,id:r.result.id,expected:r.result.effective_from.slice(0,19).replace('T',' '),rate_bps:(7+i)*100});
+           }
+           await p.screenshot({path:W+'/receipts/'+kind+'.png'});
+          }
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const c=await b.newContext({viewport:{width:1280,height:900},locale:'fa-IR'});const p=await c.newPage();p.setDefaultTimeout(20000);
+           try{await auth(p);await p.goto(base+'/finance/?tab=tax');await p.locator('[data-tab="settings"]').click();await ready(p,'[data-save-tax-rate]');
+           await group('FIN-L220 UI tax rate explicit future now',()=>checkTax(p,'tax_rate'));
+           await group('FIN-L220 UI item policy explicit future now',()=>checkTax(p,'tax_policy'));
+           await group('FIN-L220 actual invoice filter dates',async()=>{
+            await p.goto(base+'/finance/?tab=receipts');await p.locator('[data-invoice-from] + .sc-jalali-control .sc-jalali-date').waitFor({state:'visible'});
+            await putDate(p,'[data-invoice-from]','2026-01-01');
+            const pending=p.waitForResponse(r=>{const u=new URL(r.url());return u.pathname.endsWith('/finance/api.php')&&u.searchParams.get('action')==='invoices'&&u.searchParams.get('from')==='2026-01-01'&&u.searchParams.get('to')==='2030-12-31'});
+            await putDate(p,'[data-invoice-to]','2030-12-31');const res=await pending;ck(res.ok()&&(await res.json()).success,'real invoice search preserved both dates');
+            const req=[];const listener=r=>{if(r.url().includes('/finance/api.php')&&new URL(r.url()).searchParams.get('action')==='invoices')req.push(r.url())};p.on('request',listener);
+            await p.locator('[data-invoice-from] + .sc-jalali-control .sc-jalali-date').fill('1405/99/99');await p.waitForTimeout(1000);
+            ck(req.length===0,'invalid invoice date does not send an unfiltered request');p.off('request',listener);
+            await putDate(p,'[data-invoice-from]','2026-01-01');await p.screenshot({path:W+'/receipts/invoice-filter.png'});
+           });
+           await group('FIN-L220 real expense form timestamp',async()=>{
+            await p.goto(base+'/operations/?tab=expenses');await ready(p,'[data-open="expense-create"]');
+            await p.locator('[data-open="expense-create"]').click();const form=p.locator('form[data-form="expense-create"]');await form.waitFor({state:'visible'});
+            const cat=form.locator('select[name="category_key"]');await p.waitForFunction(()=>document.querySelector('form[data-form="expense-create"] select[name="category_key"]')?.options.length>0);
+            if(!await cat.inputValue())await cat.selectOption({index:0});
+            await form.locator('[name="amount"]').fill('12345');await form.locator('[name="description"]').fill('Synthetic CC48 dated expense');
+            const sel='form[data-form="expense-create"] [name="occurred_at"]';
+            const iso=await p.evaluate(()=>{const d=new Date(Date.now()-60000),a=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d).map(x=>[x.type,x.value]));return a.year+'-'+a.month+'-'+a.day+'T'+a.hour+':'+a.minute});
+            await putDate(p,sel,iso);
+            const pending=p.waitForResponse(r=>r.url().includes('/operations/api.php')&&r.request().method()==='POST'&&r.request().postDataJSON().action==='expense_create');
+            await form.locator('[data-ops-submit]').click();const res=await pending,j=await res.json();
+            ck(res.ok()&&j.success&&Number(j.result.id)>0,'actual UI expense committed');
+            ck(res.request().postDataJSON().occurred_at===iso.replace('T',' '),'expense intent preserved');
+            accepted.push({kind:'expense_create',id:j.result.id,expected:iso.replace('T',' ')+':00',amount:12345});await form.waitFor({state:'hidden'});await p.screenshot({path:W+'/receipts/expense.png'});
+           });
+           }finally{fs.writeFileSync(W+'/receipts/accepted-ui.json',JSON.stringify(accepted));await c.close();await b.close()}
+           if(failures)process.exitCode=1;
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          JS
+          node "$W/ui.cjs" | tee "$W/receipts/browser-results.txt"
+          php "$W/verify.php" "$W" verify | tee "$W/receipts/db-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC48-NATIVE-CLEAN-WINDOWS-RECEIPT-QA-ONLY
-          path: ${{ runner.temp }}/checkpoint78-standard-clean-web-receipt.json
-          if-no-files-found: warn
+          name: SOKNA-CC48B-FINANCIAL-UI-RECEIPTS
+          path: ${{ runner.temp }}/cc48b/receipts
           retention-days: 30
