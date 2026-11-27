@@ -1,4 +1,4 @@
-name: SOKNA A13 grouped order login and printing acceptance
+name: SOKNA A14 grouped actual order printing dashboard and compact headers
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -97,6 +97,23 @@ jobs:
               assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
               print('PASS EXACT A12',host,n,actual)
           PY
+      - name: A14 shared compact page header exact source
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/a14.b64 > "$W/a14.patch.gz"
+          echo '1519ac76ab50f91923381e342e17b935ad3319e09cc7b62b1b14a36861e6b252  '"$W/a14.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a14.patch.gz" > "$W/a14.patch"
+          (cd "$W"; git apply --check a14.patch; git apply a14.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'d797176c7c6509b4b316cd5c2dd3c1c4a0ceb8f5cce6a188988515b47cf9438a'),'public':(258,'80ad4bde59d592a36cd20f56b58862aa027b694ea04aafe0bcc5e7599a090b25')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A14',host,n,actual)
+          PY
       - name: Run real Local clean install and A10 grouped critical DB acceptance
         shell: bash
         run: |
@@ -129,11 +146,14 @@ jobs:
           trap 'kill "$lp" "$pp" 2>/dev/null || true' EXIT
           sleep 2
           php qa/cp160/worker.php "$W/local" init | tee "$W/sync-results.txt"
-          node qa/post-release-a10/a13.cjs 2>&1 | tee "$W/browser-results.txt"
+          php qa/post-release-a10/a14-fixture.php "$W/local" prepare | tee "$W/a14-fixture-results.txt"
+          php qa/post-release-a10/a14-fixture.php "$W/local" sync | tee -a "$W/a14-fixture-results.txt"
+          export QA_REPO="$PWD"
+          node qa/post-release-a10/a14.cjs 2>&1 | tee "$W/browser-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A13-ACCEPTANCE-EVIDENCE-NO-INSTALL
+          name: SOKNA-A14-ACCEPTANCE-EVIDENCE-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log

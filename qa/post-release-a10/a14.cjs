@@ -1,0 +1,38 @@
+const {chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright'),fs=require('fs');
+const f=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/cp144-fixture.json')), local='http://127.0.0.1:18765',pub='http://127.0.0.1:18766/public',out=process.env.RUNNER_TEMP+'/screenshots';
+fs.mkdirSync(out,{recursive:true}); let failures=0;
+function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)}
+async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){failures++;console.log('GROUP FAIL '+n+' '+e.stack)}}
+async function auth(p,base,user='qa-target'){await p.goto(base+(base===local?'/login.php':'/staff/login'));const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key=base===local?user:'user:'+f.users.find(u=>u.name===user).id;if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="'+key+'"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'real login '+base)}
+async function overflow(p){ck(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'no overall horizontal overflow')}
+(async()=>{const b=await chromium.launch({channel:'chrome',headless:true});async function withPage(base,w,fn){const ctx=await b.newContext({viewport:{width:w,height:900},locale:'fa-IR'});const p=await ctx.newPage();p.setDefaultTimeout(16000);try{p.on('pageerror',e=>console.log('PAGE ERROR '+e.message));await auth(p,base);await fn(p)}finally{await ctx.close()}}
+
+
+const cp=require('child_process');
+const fixture=mode=>console.log(cp.execFileSync('php',[process.env.QA_REPO+'/qa/post-release-a10/a14-fixture.php',process.env.RUNNER_TEMP+'/local',mode],{encoding:'utf8'}).trim());
+async function shot(p,n){await p.screenshot({path:out+'/'+n+'.png',fullPage:true})}
+for(const w of [390,1280]){
+ for(const base of [local,pub])await group((base===local?'Local':'Public')+' compact header '+w,()=>withPage(base,w,async p=>{
+  for(const [label,route] of [['reports',base===local?'/reports/':'/staff/reports/'],['expenses',base===local?'/operations/?tab=expenses':'/staff/operations/?tab=expenses'],['customers',base===local?'/subscribers/':'/staff/subscribers/']]){
+   await p.goto(base+route);const h=p.locator('.sc-page-header');const d=h.locator('[data-page-help]');await d.waitFor();ck(await h.locator('.sc-page-header__copy>p').count()===0,'no permanent subtitle '+label);ck(!await d.locator('p').isVisible(),'description collapsed '+label);await overflow(p);await shot(p,(base===local?'local':'public')+'-'+label+'-compact-'+w);const height=await h.evaluate(e=>e.getBoundingClientRect().height);await d.locator('summary').click();ck(await d.locator('p').isVisible(),'help available '+label);await overflow(p);ck(Math.abs(await h.evaluate(e=>e.getBoundingClientRect().height)-height)<2,'help no layout shift');if(label==='reports')await shot(p,(base===local?'local':'public')+'-header-help-'+w);await d.locator('summary').click();
+  }
+ }));
+ await group('Local print template actual editor '+w,()=>withPage(local,w,async p=>{
+  await p.goto(local+'/printing/?tab=templates');await p.locator('[data-print-tab="templates"]').click();const edit=p.getByRole('button',{name:'ویرایش به نسخه جدید'}).first();await edit.waitFor();await edit.click();const d=p.locator('[data-dialog="template-editor"]');await d.waitFor({state:'visible'});const form=d.locator('[data-template-editor-form]');const footer=d.locator('[data-preview-edit="footer"]');await footer.waitFor();await footer.scrollIntoViewIfNeeded();await footer.click();await d.locator('[data-template-preview-controls]').waitFor();const before=await footer.evaluate(e=>parseFloat(e.style.fontSize));const plus=d.locator('[data-template-preview-font-plus]');if(await plus.isEnabled()){await plus.click();ck(await footer.evaluate(e=>parseFloat(e.style.fontSize))>before,'footer increases directly')}else{await d.locator('[data-template-preview-font-minus]').click();ck(await footer.evaluate(e=>parseFloat(e.style.fontSize))<before,'footer decreases directly')}
+  ck(await form.locator('[name=footer_font_size]').inputValue()!=='','font value bound to draft');await shot(p,'print-live-'+w);await d.locator('[data-template-editor-reset]').click();ck(Math.abs(await footer.evaluate(e=>parseFloat(e.style.fontSize))-before)<0.01,'reset restores actual base preview');await d.locator('[data-dialog-close]').last().click();await d.waitFor({state:'hidden'});
+ }));
+ await group('Public actual order draft card interactions '+w,()=>withPage(pub,w,async p=>{
+  fixture('heartbeat');await p.goto(pub+'/staff/operator/');const global=p.locator('[data-global-order],[data-staff-order],[data-mobile-new-order]').filter({visible:true}).first();await global.waitFor();await global.click();const table=p.locator('[data-pick-table]').first();await table.waitFor();await table.click();const search=p.locator('[data-order-search]');await search.waitFor();await search.fill('QA157 unrelated');const add=p.locator('[data-order-add]').filter({hasText:'QA157 unrelated'}).first();await add.waitFor();const id=await add.getAttribute('data-order-add');const height=await add.evaluate(e=>e.getBoundingClientRect().height);await add.click();await p.locator('[data-order-add="'+id+'"].is-selected').waitFor();ck(await add.evaluate(e=>e.getBoundingClientRect().height)<=height+1,'card height stable after add');if(w===390){const dec=p.locator('[data-order-decrease="'+id+'"]');await dec.waitFor();await shot(p,'public-order-selected-'+w);await dec.click();await dec.waitFor({state:'detached'});ck(!(await add.getAttribute('class')).includes('is-selected'),'minus removed draft quantity')}else{await shot(p,'public-order-selected-'+w)}
+  await overflow(p);
+ }));
+}
+await group('Public real DB cached dashboard and signed reconnect',()=>withPage(pub,390,async p=>{
+ fixture('sync');await p.goto(pub+'/staff/');const dash=p.locator('[data-public-dashboard]');await dash.waitFor();
+ const values=()=>p.locator('.sc-dashboard-kpi div>strong').allTextContents();
+ const read=async()=>{const r=await p.request.get(pub+'/api/staff/read?model=reports');ck(r.status()===200,'authorized reports projection');return await r.json()};
+ const initial=await read();ck(initial.stale===false,'fresh signed reports before disconnect');const fresh=await values();ck(fresh.length===5&&fresh.every(x=>x!=='نامشخص'&&x!=='—'),'five known live values');await shot(p,'dashboard-live');
+ fixture('age');const aged=await read();ck(aged.stale===true&&aged.freshness?.reason==='local_heartbeat_stale','real DB freshness stale after simulated heartbeat loss');
+ await p.waitForFunction(()=>document.querySelector('[data-public-dashboard]')?.dataset.dashboardCached==='1',{},{timeout:35000});const cached=await values();ck(JSON.stringify(cached)===JSON.stringify(fresh),'cached KPI values preserved');ck((await dash.innerText()).includes('غیرزنده'),'cached data labeled');await shot(p,'dashboard-stale');
+ fixture('sync');await p.waitForFunction(()=>document.querySelector('[data-public-dashboard]')?.dataset.dashboardCached==='0',{},{timeout:35000});ck(JSON.stringify(await values())===JSON.stringify(fresh),'same values after signed recovery');await shot(p,'dashboard-reconnected');
+}));
+await b.close();console.log('A14_BROWSER_GROUP_FAILURES='+failures);process.exitCode=failures?1:0})().catch(e=>{console.error(e);process.exitCode=1});
