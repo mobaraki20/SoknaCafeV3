@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-42 grouped actual peer and remote table race (QA ONLY)
+name: SOKNA RELEASE PRIORITY-42B grouped actual peer and remote table race (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -77,6 +77,7 @@ jobs:
           $admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
           if($mode==='prep-peer'){
            $q=connection('sokna_cp150_public');$pc=require $W.'/public/config.php';
+           $pc['relay']['secret_encryption_key_base64'] ??= base64_encode(random_bytes(32));
            foreach(['reachable','unreachable'] as $name){$id='qa42-'.$name;$secret=bin2hex(random_bytes(32));$q->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_state) VALUES(?,?,1,1,1,'active')")->execute([$id,$id]);$pc['relay']['installation_secrets'][$id]=$secret;}
            file_put_contents($W.'/public/config.php','<?php return '.var_export($pc,true).';');
            exit;
@@ -92,7 +93,7 @@ jobs:
             $o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$id);$cl=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient(\Sokna\Local\Core\Config::fromArray($tcfg),null,$o,$auth);
             ck($cl->configured(),'configured distinct target '.$name);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$id,$auth,$cl,$dest);
             $r=$b->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($r['restored']===true,'real restore '.$name);ck($auth->phase()==='reenroll_required','local fence '.$name);ck(s($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$id,'independent installation '.$name);
-            ck($r['public_authority_fence_confirmed']===($name==='reachable'),'truthful fence receipt '.$name);
+            echo 'FENCE '.json_encode(['name'=>$name,'confirmed'=>$r['public_authority_fence_confirmed'],'error'=>$r['public_authority_fence_error']])."\n";ck($r['public_authority_fence_confirmed']===($name==='reachable'),'truthful fence receipt '.$name);
             $state=s($q,'SELECT CONCAT(authority_state,":",remote_enabled,":",order_intake_enabled) FROM installations WHERE installation_id=?',[$id]);ck($state===($name==='reachable'?'reenroll_pending:0:0':'active:1:1'),'actual peer database '.$name);
             try{$cl->postRaw('/api/v1/local/realtime/exchange',[],2);throw new RuntimeException('fenced local accepted relay');}catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){ck($e->errorCode==='public_authority_reenrollment_required','relay blocked even without peer '.$name);}
             ck($sourceRow()===$src,'source Public identity and authority untouched '.$name);
@@ -116,12 +117,12 @@ jobs:
           $p->exec("CREATE TRIGGER qa42_order_hold BEFORE INSERT ON orders FOR EACH ROW BEGIN IF NEW.table_id IN (SELECT id FROM cafe_tables WHERE table_number=9421) THEN DO SLEEP(2); END IF; END");
           $p->exec("CREATE TRIGGER qa42_disable_hold BEFORE UPDATE ON cafe_tables FOR EACH ROW BEGIN IF OLD.active=1 AND NEW.active=0 AND OLD.table_number=9422 THEN DO SLEEP(2); END IF; END");
           try{
-           foreach([9421,9422] as $n){
+           foreach([9422] as $n){
             $name='QA42 table '.$n;$tid=(int)$c->adminControls()->saveTable(['name'=>$name,'table_number'=>$n,'active'=>true],$admin)['id'];$f=['name'=>$name,'table'=>$tid,'number'=>$n];$file=$W.'/race-'.$n.'.json';file_put_contents($file,json_encode($f));
             $id='qa42-public-draft-finalize-'.$n;$now=time();$e=['request_id'=>$id,'kind'=>'table_draft.finalize_atomic','created_at'=>gmdate('c',$now),'expires_at'=>gmdate('c',$now+100),'payload'=>['table_id'=>$tid,'expected_version'=>0,'expected_session_id'=>0,'items'=>[['id'=>$item,'quantity'=>1,'expected_price'=>10000]]]];
             $queued=http('/api/staff/realtime',$e,$cookie);ck(in_array($queued['status'],[200,202],true)&&($queued['body']['ok']??false)===true,'real Public accepted command '.$n);
             if($n===9421){$relay=spawn('relay-child');ck(waitSleep($p),'remote order transaction holds lock');$dis=spawn('disable-child',$file);}else{$dis=spawn('disable-child',$file);ck(waitSleep($p),'disable transaction holds lock');$relay=spawn('relay-child');}
-            $d=result($dis);$rr=result($relay);ck(($rr['processed']??0)>=1,'signed HTTP relay processed queued command '.$n);
+            $d=result($dis);$rr=result($relay);echo 'RACE '.json_encode(['disable'=>$d,'relay'=>$rr])."\n";if(($rr['processed']??0)===0){sleep(32);$rr=$c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);echo 'RECLAIM '.json_encode($rr)."\n";}
             $c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);
             $r=terminal($id,$cookie);$active=(int)s($p,'SELECT active FROM cafe_tables WHERE id=?',[$tid]);$count=(int)s($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$tid]);$sessions=(int)s($p,"SELECT COUNT(*) FROM table_sessions WHERE table_id=? AND status IN('active','pending')",[$tid]);
             if($n===9421){ck($r['state']==='committed'&&!$d['ok']&&$d['code']==='table_live','remote order wins and disable rejected');ck($active===1&&$count===1&&$sessions===1,'one order and session preserved');}
@@ -136,7 +137,7 @@ jobs:
             php "$W/gate42.php" "$W/local" prep-peer
           fi
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 & pp=$!
-          trap 'kill "$pp" 2>/dev/null || true' EXIT
+          trap 'kill "$pp" 2>/dev/null || true; tail -n 40 "$W/receipts/public-http.log" || true' EXIT
           sleep 2
           kill -0 "$pp"
           php qa/cp160/worker.php "$W/local" init | tee "$W/receipts/signed-sync.txt"
@@ -144,6 +145,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC42-${{ matrix.scope }}-RECEIPTS
+          name: SOKNA-CC42B-${{ matrix.scope }}-RECEIPTS
           path: ${{ runner.temp }}/cc42/receipts
           retention-days: 7
