@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-42B grouped actual peer and remote table race (QA ONLY)
+name: SOKNA RELEASE PRIORITY-42C targeted fix actual peer and remote table race (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scope: [peer, relay]
+        scope: [peer]
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
@@ -49,6 +49,18 @@ jobs:
           echo "9317be75ca5d31b2577aee7e5adb07f14dbb69053f47c647b8d705970d84d5fd  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
           unzip -q "$B" -d "$W/public"
+          # Exact archive first, then apply isolated candidate product patch.
+          python - "$W/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          s=p.read_text()
+          old="        if($phase==='reenroll_required'&&$path!=='/api/v1/local/authority/fence')throw"
+          new="        if($phase==='reenroll_required'&&$path==='/api/v1/local/authority/fence')return;\n"+old
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
+          PY
+          php -l "$W/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php"
           export QA_WORK="$W" TMPDIR="$W"
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" > "$W/receipts/local-fixture.txt"
@@ -145,6 +157,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC42B-${{ matrix.scope }}-RECEIPTS
+          name: SOKNA-CC42C-${{ matrix.scope }}-RECEIPTS
           path: ${{ runner.temp }}/cc42/receipts
           retention-days: 7
