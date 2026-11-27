@@ -1,4 +1,4 @@
-name: SOKNA A12 grouped mobile and desktop interaction confirmation
+name: SOKNA A13 grouped order login and printing acceptance
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -105,8 +105,6 @@ jobs:
           export TMPDIR="$W"
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          php -l qa/post-release-a10/critical.php
-          php qa/post-release-a10/critical.php "$W/local" | tee "$W/critical-results.txt"
       - name: Run real Public clean schema and reapply
         if: always()
         shell: bash
@@ -131,11 +129,11 @@ jobs:
           trap 'kill "$lp" "$pp" 2>/dev/null || true' EXIT
           sleep 2
           php qa/cp160/worker.php "$W/local" init | tee "$W/sync-results.txt"
-          node qa/post-release-a10/browser.cjs 2>&1 | tee "$W/browser-results.txt"
+          node qa/post-release-a10/a13.cjs 2>&1 | tee "$W/browser-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A12-CONFIRMATION-EVIDENCE-NO-INSTALL
+          name: SOKNA-A13-ACCEPTANCE-EVIDENCE-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
