@@ -1,4 +1,4 @@
-name: SOKNA CASE-CLOSURE-32B remaining actual recovery browser acceptance (QA ONLY)
+name: SOKNA RELEASE PRIORITY-34 concurrent live table protection (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -1107,125 +1107,39 @@ jobs:
               assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
               print('PASS EXACT CASE-CLOSURE-32',host,n,actual)
           PYCODE
-      - name: Recovery UI, real encrypted stream, HTTP large upload and process interruption
+      - name: Essential actual MariaDB independent transaction races
         shell: bash
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/cp148-qa"
           export QA_WORK="$W" TMPDIR="$W"
-          cat > "$W/gate32.php" <<'SOKNA_QA_CC32_gate32_php'
+          cat > "$W/gate34.php" <<'SOKNA_QA_GATE34'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
           $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function reject($fn,$code){try{$fn();throw new RuntimeException('expected '.$code);}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);}}
-          $r=$c->recoveryWorkspace();$pass='synthetic-cc32-backup-password';$dir=$c->observability()->dataRoot().'/recovery/business';$fixture=$W.'/cc32-fixture.json';
-          if(($argv[2]??'seed')==='verify'){
-           $f=json_decode(file_get_contents($fixture),true,512,JSON_THROW_ON_ERROR);ck((int)$p->query('SELECT COUNT(*) FROM users')->fetchColumn()===$f['users'],'existing users unchanged');ck((int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn()===$f['orders'],'existing orders unchanged');ck(hash_file('sha256',$r->path($f['id']))===$f['sha256'],'original ciphertext unchanged');ck(glob($r->incomingDir().'/*.tmp')===[],'incoming scratch cleaned');echo "GROUP PASS SYS-L514 SYS-L545 unchanged business and clean incoming after inspection\n";exit;
-          }
-          $backup=$r->create($pass,(int)$admin['id']);$id=$backup['id'];$path=$r->path($id);$hash=hash_file('sha256',$path);ck($hash===$backup['sha256']&&filesize($path)===$backup['size_bytes'],'actual encrypted file identity');
-          $manifest=$r->inspect($id,$pass);$source=$manifest['source_installation_id'];ck($manifest['stream_verified']===true&&$manifest['target_ready']===false&&is_string($source)&&$source!=='','actual verified manifest and nonempty target not ready');
-          // A sidecar is deliberately inconsistent: it must never attest the encrypted content.
-          file_put_contents($dir.'/'.$id.'.recovery.json',json_encode(['source_installation_id'=>'untrusted-sidecar-cc32','stream_verified'=>true]));
-          $m=$r->backupPage('manual');$row=array_values(array_filter($m['rows'],fn($v)=>$v['id']===$id))[0];ck($row['verification']==='not_verified'&&$row['source_installation_id']===null,'history never trusts sidecar');
-          $raw=file_get_contents($path);file_put_contents($W.'/cc32-valid.skbf',$raw);$raw[strlen($raw)-2]=chr(ord($raw[strlen($raw)-2])^1);file_put_contents($W.'/cc32-corrupt.skbf',$raw);
-          file_put_contents($W.'/cc32-large.skbf',random_bytes(8*1024*1024));
-          $fake='business-cc32-symlink';if(symlink($path,$dir.'/'.$fake.'.skbf')){reject(fn()=>$r->path($fake),'backup_missing');ck(!in_array($fake,array_column($r->backupPage('manual')['rows'],'id'),true),'symlink omitted from history');}
-          $f=['id'=>$id,'source'=>$source,'sha256'=>$hash,'users'=>(int)$p->query('SELECT COUNT(*) FROM users')->fetchColumn(),'orders'=>(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn(),'large_sha'=>hash_file('sha256',$W.'/cc32-large.skbf')];file_put_contents($fixture,json_encode($f,JSON_THROW_ON_ERROR));echo "GROUP PASS SYS-L514 real encrypted backup and provenance\n";
-          SOKNA_QA_CC32_gate32_php
-          cat > "$W/gate32.cjs" <<'SOKNA_QA_CC32_gate32_cjs'
-          const fs=require('fs'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,local='http://127.0.0.1:18765',f=JSON.parse(fs.readFileSync(W+'/cc32-fixture.json'));const pass='synthetic-cc32-backup-password';let fail=0;
-          function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){fail++;console.log('GROUP FAIL '+n+' '+e.stack)}};
-          const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function wait(fn,n,ms=20000){let end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){ck(true,n);return;}}catch{}await sleep(100)}throw Error(n)}
-          async function auth(p,user){await p.goto(local+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!==user){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${user}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user);}
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:1280,height:1000},locale:'fa-IR'});p.setDefaultTimeout(20000);
-          try{await auth(p,'qa-target');await p.goto(local+'/system/');await p.locator('[data-tab="recovery"]').click();const manifest=p.locator('[data-backup-manifest]'),restore=p.locator('[data-backup-restore]'),inspect=p.locator('[data-backup-inspect]'),password=p.locator('[data-restore-pass]'),selected=p.locator('[data-restore-id]');
-          await wait(async()=>await p.locator(`[data-backup-select="${f.id}"]`).isVisible(),'actual manual history row');
-          await group('SYS-L514 real UI verified manifest and not-ready target',async()=>{
-          const row=p.locator(`[data-backup-id="${f.id}"]`);ck((await row.innerText()).includes('تأیید نشده'),'history unverified before password');await row.locator('[data-backup-select]').click();ck(await selected.inputValue()===f.id&&await password.inputValue()===''&&await restore.isDisabled(),'selection requires fresh password and inspection');await password.fill('wrong-synthetic-password');await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'wrong password visible failure');ck(await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'no origin leaked with wrong password');await password.fill(pass);await inspect.click();await wait(async()=>{const t=await manifest.innerText();return t.includes(f.source)&&t.includes(f.id)&&t.includes('مقصد آماده نیست')},'real decrypted source and target refusal visible');ck(!(await manifest.innerText()).includes('untrusted-sidecar-cc32')&&await restore.isDisabled(),'forged sidecar ignored, populated target blocked');await p.screenshot({path:W+'/cc32-manifest.png'});await password.fill('different-password');ck(!(await manifest.innerText()).includes(f.source)&&await restore.isDisabled(),'password change invalidates evidence');
-          });
-          async function upload(file){await p.locator('[data-recovery-upload] input[type=file]').setInputFiles(W+'/'+file);const resp=p.waitForResponse(r=>r.url().includes('/system/recovery-upload.php')&&r.request().method()==='POST');await p.locator('[data-recovery-upload] button[type=submit]').click();const rr=await resp,j=await rr.json();ck(rr.status()===200&&j.success&&j.backup.id.startsWith('uploaded-'),'actual upload '+file);await wait(async()=>await selected.inputValue()===j.backup.id&&!await password.isDisabled(),'new uploaded ID selected '+file);return j.backup;}
-          await group('SYS-L542 SYS-L545 actual large multipart and separate identities',async()=>{
-          let large=await upload('cc32-large.skbf');ck(large.size_bytes===8*1024*1024&&large.sha256===f.large_sha,'exact 8 MiB multipart content');await password.fill(pass);await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'large invalid payload is not a valid backup');ck(await restore.isDisabled(),'invalid payload cannot restore');
-          let x=await upload('cc32-valid.skbf'),y=await upload('cc32-valid.skbf');ck(x.id!==y.id&&x.sha256===f.sha256&&y.sha256===f.sha256,'same upload filename gets independent immutable IDs');await p.locator('details').filter({has:p.locator('[data-uploaded-backups]')}).locator('summary').click();await wait(async()=>await p.locator(`[data-backup-select="${x.id}"]`).isVisible()&&await p.locator(`[data-backup-select="${y.id}"]`).isVisible(),'uploaded history holds both independent IDs');await p.locator(`[data-backup-select="${x.id}"]`).click();ck(await selected.inputValue()===x.id&&await password.inputValue()==='','select previous upload by immutable ID');await password.fill(pass);await inspect.click();await wait(async()=>{const t=await manifest.innerText();return t.includes(f.source)&&t.includes(x.id)},'uploaded actual manifest confirmed');ck(await restore.isDisabled(),'existing target still blocks restore');await p.screenshot({path:W+'/cc32-uploaded.png'});
-          });
-          await group('SYS-L546 actual corrupted ciphertext and stale inspection navigation',async()=>{
-          let x=await upload('cc32-corrupt.skbf');await password.fill(pass);await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'tampered ciphertext rejected in real UI');ck(await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'tamper cannot reuse valid manifest');await p.screenshot({path:W+'/cc32-corrupt.png'});
-          await p.locator(`[data-backup-select="${f.id}"]`).click();await password.fill(pass);
-          // Delay only delivery of actual authenticated server response, then change tab.
-          let release;const barrier=new Promise(r=>release=r);let captured=false,delivered=false;const handler=async route=>{if(route.request().method()!=='POST'||!route.request().postData()?.includes('backup_inspect'))return route.continue();const actual=await route.fetch();captured=true;await barrier;await route.fulfill({response:actual});delivered=true};await p.route('**/system/api.php',handler);await inspect.click();await wait(async()=>captured,'actual inspection response intercepted after server completion');await p.locator('[data-tab="health"]').click();release();await wait(async()=>delivered,'delayed real response delivered');await p.unroute('**/system/api.php',handler);await p.locator('[data-tab="recovery"]').click();await wait(async()=>!await password.isDisabled(),'return to recovery after delayed actual response');ck(await selected.inputValue()===''&&await password.inputValue()===''&&await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'late verified response cannot rearm after leaving tab');
-          });
-          }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
-          SOKNA_QA_CC32_gate32_cjs
-          cat > "$W/crypto32.php" <<'SOKNA_QA_CC32_crypto32_php'
-          <?php
-          declare(strict_types=1);
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
-          $root=realpath($argv[1]??'');$work=realpath($argv[2]??'');if(!$root||!$work||!str_starts_with(basename($work),'sokna-cc32-crypto-'))exit(2);
-          require $root.'/RecoveryException.php';require $root.'/BusinessBackupService.php';
-          $r=new ReflectionClass(\Sokna\Local\Domain\Recovery\BusinessBackupService::class);$s=$r->newInstanceWithoutConstructor();$mode=$argv[3]??'';
-          $src=match($argv[4]??''){'small'=>$work.'/old-plain.bin','large'=>$work.'/large-plain.bin',default=>null};if(!$src)exit(2);
-          $dest=$work.'/business-cc32-protected.skbf';$pass='synthetic-cc32-crypto-only';
-          if($mode==='encrypt'){$r->getMethod('encryptFile')->invoke($s,$src,$dest,$pass);}
-          elseif($mode==='decrypt'){$out=$work.'/verified-plain.bin';if(is_file($out))unlink($out);$r->getMethod('decryptFile')->invoke($s,$dest,$out,$pass);if(hash_file('sha256',$out)!==hash_file('sha256',$src))exit(3);unlink($out);}
-          else exit(2);
-          SOKNA_QA_CC32_crypto32_php
-          cat > "$W/crypto32.py" <<'SOKNA_QA_CC32_crypto32_py'
-          import sys,os,subprocess,tempfile,time,pathlib,hashlib,platform
-          if os.environ.get('SOKNA_QA_DISPOSABLE')!='YES': raise SystemExit(2)
-          root=pathlib.Path(sys.argv[1]).resolve();helper=pathlib.Path(sys.argv[2]).resolve();sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-          def ck(ok,name):
-           if not ok: raise RuntimeError(name)
-           print('PASS '+name,flush=True)
-          with tempfile.TemporaryDirectory(prefix='sokna-cc32-crypto-') as wd:
-           w=pathlib.Path(wd);(w/'old-plain.bin').write_bytes(b'old verified synthetic plaintext\n'*1000)
-           with (w/'large-plain.bin').open('wb') as out:
-            block=os.urandom(1024*1024)
-            for i in range(128):out.write(block)
-           def command(mode,kind):return ['php',str(helper),str(root),str(w),mode,kind]
-           def run(mode,kind):subprocess.run(command(mode,kind),check=True,timeout=90)
-           run('encrypt','small');run('decrypt','small');dest=w/'business-cc32-protected.skbf';before=sha(dest);ck(dest.exists(),'initial actual encrypted backup verified '+platform.system())
-           p=subprocess.Popen(command('encrypt','large'))
-           try:
-            stop=time.monotonic()+30;part=None
-            while time.monotonic()<stop and p.poll() is None:
-             for x in w.glob('*.part'):
-              try:
-               if x.stat().st_size>=1024*1024:part=x;break
-              except FileNotFoundError:pass
-             if part:break
-             time.sleep(.001)
-            ck(part is not None and p.poll() is None,'observed real partial ciphertext during write')
-            p.kill();p.wait(timeout=15);ck(p.returncode!=0,'actual encryption process interrupted')
-           finally:
-            if p.poll() is None:p.kill();p.wait()
-           ck(sha(dest)==before,'previous verified ciphertext unchanged after process kill');run('decrypt','small');ck(True,'previous ciphertext still decrypts')
-           ck(len(list(w.glob('*.skbf')))==1,'only original committed backup visible')
-           run('encrypt','large');run('decrypt','large');ck(sha(dest)!=before,'retry publishes complete new ciphertext and decrypts exactly');ck(len(list(w.glob('*.skbf')))==1,'retry has one final backup only')
-           print('GROUP PASS SYS-L525 native atomic encryption process interruption '+platform.system(),flush=True)
-          SOKNA_QA_CC32_crypto32_py
-          mkdir -p "$W/cc32-windows-input"
-          cp "$W/local/src/Domain/Recovery/BusinessBackupService.php" "$W/local/src/Domain/Recovery/RecoveryException.php" "$W/crypto32.py" "$W/crypto32.php" "$W/cc32-windows-input/"
-          (cd "$W/cc32-windows-input"; sha256sum BusinessBackupService.php RecoveryException.php crypto32.py crypto32.php > SHA256SUMS.txt)
-          fail=0
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}
+          function act($mode,$f,$c,$admin,$tx=false){$items=[['id'=>$f['item'],'quantity'=>1,'expected_price'=>10000]];if($mode==='disable')return $c->adminControls()->saveTable(['id'=>$f['table'],'name'=>$f['name'],'table_number'=>$f['number'],'active'=>false],$admin);if($mode==='staff'){$d=['table_id'=>$f['table'],'expected_session_id'=>0,'request_token'=>'qa34-staff-'.$f['table'].'-123456789','items'=>$items];return $tx?$c->staffQuickOrders()->commitTx($d,$admin):$c->staffQuickOrders()->commit($d,$admin);}if($mode==='guest'){$d=['table_token'=>$f['token'],'device_token'=>'qa34-device-'.$f['table'].'-123456789','client_token'=>'qa34-guest-'.$f['table'].'-123456789','items'=>$items];return $tx?$c->guestOrders()->submitTx($d):$c->guestOrders()->submit($d);}throw new RuntimeException('invalid mode');}
+          if(($argv[2]??'')==='child'){$f=json_decode(file_get_contents($argv[4]),true,512,JSON_THROW_ON_ERROR);file_put_contents($argv[4].'.started',(string)$p->query('SELECT CONNECTION_ID()')->fetchColumn());try{$r=act($argv[3],$f,$c,$admin);echo json_encode(['ok'=>true,'result'=>$r],JSON_THROW_ON_ERROR);}catch(Throwable $e){echo json_encode(['ok'=>false,'code'=>$e->errorCode??'','message'=>$e->getMessage()],JSON_THROW_ON_ERROR);}exit;}
+          function spawn($mode,$f){global $W,$root;$fpath=$W.'/cc34-'.$mode.'-'.$f['table'].'.json';file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));$proc=proc_open([PHP_BINARY,__FILE__,$root,'child',$mode,$fpath],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($proc))throw new RuntimeException('spawn');fclose($pipes[0]);$end=microtime(true)+8;while(!is_file($fpath.'.started')&&microtime(true)<$end)usleep(25000);if(!is_file($fpath.'.started'))throw new RuntimeException('child not started');return [$proc,$pipes,(int)file_get_contents($fpath.'.started')];}
+          function result($child){[$proc,$pipes]=$child;$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$code=proc_close($proc);if($code!==0)throw new RuntimeException('child exit '.$code.' '.$err);return json_decode($out,true,512,JSON_THROW_ON_ERROR);}
+          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA34 essential menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA34 essential category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES('qa34-race',?,'QA34 race item',10000,1,1,'active',1,1,'hot_bar')")->execute([$cid]);$item=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$item]);$p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('orders_accepting.cafe','1'),('orders_accepting.bar','1'),('orders_accepting.kitchen','1'),('printing.quick.auto_preparation','0') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+          function tableFixture($n){global $c,$p,$admin,$item;$name='QA34 table '.$n;$id=(int)$c->adminControls()->saveTable(['name'=>$name,'table_number'=>$n,'active'=>true],$admin)['id'];return ['table'=>$id,'name'=>$name,'number'=>$n,'item'=>$item,'token'=>(string)scalar($p,'SELECT access_token FROM cafe_tables WHERE id=?',[$id])];}
+          $fail=0;foreach(['staff','guest'] as $i=>$mode){try{$f=tableFixture(9401+$i);$p->beginTransaction();try{$r=act($mode,$f,$c,$admin,true);ck(($r['success']??false)===true,'real '.$mode.' order prepared in transaction');$ch=spawn('disable',$f);usleep(300000);ck(proc_get_status($ch[0])['running'],'disable waits for actual '.$mode.' transaction');$p->commit();}catch(Throwable $e){if($p->inTransaction())$p->rollBack();throw $e;}$r=result($ch);ck(!$r['ok']&&$r['code']==='table_live','admin disable rejected after '.$mode.' order commits');ck((int)scalar($p,'SELECT active FROM cafe_tables WHERE id=?',[$f['table']])===1,'table remains active');ck((int)scalar($p,"SELECT COUNT(*) FROM table_sessions WHERE table_id=? AND status IN('active','pending')",[$f['table']])===1,'exactly one live session preserved');ck((int)scalar($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$f['table']])===1,'exactly one committed order preserved');echo "GROUP PASS ADM-L454 $mode first\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL ADM-L454 '.$mode.' first '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}
+          // Synthetic trigger creates a deterministic independent transaction barrier, not a product change.
+          $p->exec("CREATE TRIGGER qa34_hold_disable BEFORE UPDATE ON cafe_tables FOR EACH ROW BEGIN IF OLD.active=1 AND NEW.active=0 AND OLD.table_number BETWEEN 9411 AND 9412 THEN DO SLEEP(2); END IF; END");
+          try{foreach(['staff','guest'] as $i=>$mode){try{$f=tableFixture(9411+$i);$a=spawn('disable',$f);$end=microtime(true)+5;$seen=false;while(microtime(true)<$end){$s=(string)scalar($p,'SELECT STATE FROM information_schema.PROCESSLIST WHERE ID=?',[$a[2]]);if(stripos($s,'sleep')!==false){$seen=true;break;}usleep(30000);}ck($seen,'actual admin owns lock before '.$mode.' starts');$b=spawn($mode,$f);$ra=result($a);$rb=result($b);ck($ra['ok']===true,'admin disable committed first');ck(!$rb['ok']&&in_array($rb['code'],['invalid_table','invalid_qr'],true),'order rejected after inactive table');ck((int)scalar($p,'SELECT active FROM cafe_tables WHERE id=?',[$f['table']])===0,'inactive table stays inactive');ck((int)scalar($p,'SELECT COUNT(*) FROM table_sessions WHERE table_id=?',[$f['table']])===0,'no orphan session');ck((int)scalar($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$f['table']])===0,'no orphan order');echo "GROUP PASS ADM-L454 disable first $mode\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL ADM-L454 disable first '.$mode.' '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}}finally{$p->exec('DROP TRIGGER qa34_hold_disable');}
+          exit($fail?1:0);
+          SOKNA_QA_GATE34
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          php "$W/gate32.php" "$W/local" | tee "$W/cc32-db-results.txt" || fail=1
-          test -s "$W/cc32-fixture.json"
-          npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
-          PHP_CLI_SERVER_WORKERS=6 php -d upload_max_filesize=16M -d post_max_size=20M -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
-          trap 'kill "$lp" 2>/dev/null || true' EXIT
-          sleep 2
-          node "$W/gate32.cjs" | tee "$W/cc32-browser-results.txt" || fail=1
-          php "$W/gate32.php" "$W/local" verify | tee "$W/cc32-verify-results.txt" || fail=1
-          exit "$fail"
+          php "$W/gate34.php" "$W/local" | tee "$W/cc34-race-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC32B-GROUPED-ACCEPTANCE-QA-ONLY
+          name: SOKNA-CC34-PRIORITY-ACCEPTANCE-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
-            ${{ runner.temp }}/cp148-qa/cc32-*.png
           retention-days: 7
           if-no-files-found: warn
