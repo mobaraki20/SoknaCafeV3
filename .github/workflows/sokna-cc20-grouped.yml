@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-34 concurrent live table protection (QA ONLY)
+name: SOKNA RELEASE PRIORITY-35 exact update evidence and isolated business recovery (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -1107,39 +1107,326 @@ jobs:
               assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
               print('PASS EXACT CASE-CLOSURE-32',host,n,actual)
           PYCODE
-      - name: Essential actual MariaDB independent transaction races
+      - name: Apply exact CASE-CLOSURE-35 delta and verify complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          cat > "$W/cc35.patch" <<'SOKNA_QA_CC35_PATCH'
+          --- a/local/public/assets/system-diagnostics.js
+          +++ b/local/public/assets/system-diagnostics.js
+          @@ -89,8 +89,8 @@
+            const code=typeof probe?.error_code==='string'&&/^[a-zA-Z0-9_:-]{1,80}$/.test(probe.error_code)?` · علت: ${probe.error_code}`:'';
+            n.textContent=`${source==='live'?'نسخه زنده':source==='cached'?'آخرین نسخه ثبت‌شده در Local؛ نسخه زنده تأیید نشده':'نسخه تأییدنشده'} · ${reason} · زمان استعلام: ${checked}${code}`;
+           }
+          -function renderUpdates(){renderUpdatePartial(updatePartialErrors);const staged=$('[data-staged]'),ps=$('[data-public-staged]');staged.hidden=legacyLocalBlocked;const legacyForm=$('[data-update-upload]'),maintenanceForm=$('[data-maintenance-upload]'),legacyActions=$('[data-legacy-local-actions]');if(legacyForm)legacyForm.hidden=legacyLocalBlocked;if(maintenanceForm)maintenanceForm.hidden=!legacyLocalBlocked;if(legacyActions)legacyActions.hidden=legacyLocalBlocked;syncLocalUpdateFile();if(sectionError('updates')){$('[data-local-current-version]').textContent='—';$('[data-public-current-version]').textContent='—';renderPublicVersionEvidence('',publicLiveRefresh,false,true);staged.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');ps.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');controlsDisabled(['[data-activate]','[data-repair]','[data-rollback]','[data-public-activate]','[data-public-repair]','[data-public-rollback]','[data-public-emergency-code]'],true);controlsDisabled(['[data-update-upload] button','[data-update-upload] input'],legacyLocalBlocked);controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]','[data-maintenance-activate]'],true);setEmergencyLink($('[data-public-emergency-link]'),'');return}controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-public-update-upload] button','[data-public-update-upload] input'],false);const local=updates?.local||{},localVersion=shortVersion(local.current_version),recoveryRequired=local.recovery_mode?.required===true;versionBadge('[data-local-current-version]',local.current_version);const pendingMigrations=Number(local.staged?.database_preflight?.pending_count||0);if(recoveryRequired)eventFeedback('[data-local-update-feedback]','سامانه در حالت بازیابی به‌روزرسانی است. مسیرهای کاری موقتاً مسدود شده‌اند؛ بسته اصلاحی بعدی را همین‌جا انتخاب و نصب کن.','warning');staged.textContent=local.staged?.version?(local.staged?.status==='failed'?`نصب بسته ${shortVersion(local.staged.version)} ناموفق بوده و Stage برای تشخیص/بازیابی نگه داشته شده است.`:`بسته ${shortVersion(local.staged.version)} بررسی شده و آماده نصب است.${pendingMigrations>0?` ${L.integer(pendingMigrations)} تغییر ساختار داده نیز هنگام نصب اعمال می‌شود.`:''}`):'فایلی برای نصب آماده نشده است.';$('[data-activate]').disabled=!local.staged?.version||local.staged.version===local.current_version;$('[data-repair]').disabled=recoveryRequired||!local.staged?.version||local.staged.version!==local.current_version;const discard=$('[data-discard-staged]');if(discard)discard.disabled=!local.staged?.version;if(updatePartialErrors.update_center){staged.textContent='وضعیت بسته آماده‌شده تأیید نشده است.';controlsDisabled(['[data-activate]','[data-repair]','[data-discard-staged]'],true);}const rollbackSafety=local.rollback||{},rollbackReady=!recoveryRequired&&Boolean(local.lkg_recovery_id)&&rollbackSafety.allowed!==false;$('[data-rollback]').disabled=!rollbackReady||!!updatePartialErrors.update_center;const localRollbackState=$('[data-local-rollback-state]');if(localRollbackState){const hasPoint=Boolean(local.lkg_recovery_id),blocked=recoveryRequired||(hasPoint&&rollbackSafety.allowed===false);localRollbackState.querySelector('span').textContent=updatePartialErrors.update_center?'وضعیت نقطه بازگشت قابل تأیید نیست.':recoveryRequired?'دیتابیس ممکن است رو‌به‌جلو تغییر کرده باشد؛ بازگرداندن کد قدیمی عمداً مسدود است و بازیابی با بسته اصلاحی از همین صفحه انجام می‌شود.':blocked?'نقطهٔ بازگشت فایل موجود است، اما چون migration رو‌به‌جلو اجرا شده بازگردانی کد به نسخه قبلی ایمن نیست.':hasPoint?'یک نقطهٔ بازگشت سالم و قابل‌استفاده آماده است.':'هنوز نقطهٔ بازگشت سالمی وجود ندارد؛ هنگام نصب نسخهٔ بعدی به‌صورت خودکار ساخته می‌شود.';$('[data-rollback]').title=recoveryRequired?'در حالت بازیابی، rollback کد قدیمی مجاز نیست':blocked?'Rollback پس از migrationهای رو‌به‌جلو مسدود است':hasPoint?'بازگردانی به آخرین وضعیت سالم':'نقطهٔ بازگشت سالمی موجود نیست'}
+          -controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]'],!maintenanceVerifyReady);if(legacyLocalBlocked){staged.hidden=true;const activation=$('[data-maintenance-activate]');if(activation)activation.disabled=!(maintenanceReady&&/^[a-fA-F0-9]{32}$/.test(verifiedMaintenanceStage));controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-activate]','[data-repair]','[data-discard-staged]','[data-rollback]'],true);renderUnifiedUpdaterReadiness({ready:maintenanceReady,verification_ready:maintenanceVerifyReady,panel_bound:maintenanceReady,code:maintenanceReadinessCode});}
+          +function renderUpdates(){renderUpdatePartial(updatePartialErrors);const staged=$('[data-staged]'),ps=$('[data-public-staged]');staged.hidden=legacyLocalBlocked;const legacyForm=$('[data-update-upload]'),maintenanceForm=$('[data-maintenance-upload]'),legacyActions=$('[data-legacy-local-actions]');if(legacyForm)legacyForm.hidden=legacyLocalBlocked;if(maintenanceForm)maintenanceForm.hidden=!legacyLocalBlocked;if(legacyActions)legacyActions.hidden=legacyLocalBlocked;syncLocalUpdateFile();if(sectionError('updates')){$('[data-local-current-version]').textContent='—';$('[data-public-current-version]').textContent='—';renderPublicVersionEvidence('',publicLiveRefresh,false,true);staged.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');ps.textContent=sectionErrorText('updates','وضعیت به‌روزرسانی‌ها در دسترس نیست.');controlsDisabled(['[data-activate]','[data-repair]','[data-rollback]','[data-public-activate]','[data-public-repair]','[data-public-rollback]','[data-public-emergency-code]'],true);controlsDisabled(['[data-update-upload] button','[data-update-upload] input'],legacyLocalBlocked);controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]','[data-maintenance-activate]'],true);setEmergencyLink($('[data-public-emergency-link]'),'');return}controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-public-update-upload] button','[data-public-update-upload] input'],false);const local=updates?.local||{},localVersion=shortVersion(local.current_version),recoveryRequired=local.recovery_mode?.required===true;versionBadge('[data-local-current-version]',updatePartialErrors.update_center?'':local.current_version);const pendingMigrations=Number(local.staged?.database_preflight?.pending_count||0);if(recoveryRequired)eventFeedback('[data-local-update-feedback]','سامانه در حالت بازیابی به‌روزرسانی است. مسیرهای کاری موقتاً مسدود شده‌اند؛ بسته اصلاحی بعدی را همین‌جا انتخاب و نصب کن.','warning');staged.textContent=local.staged?.version?(local.staged?.status==='failed'?`نصب بسته ${shortVersion(local.staged.version)} ناموفق بوده و Stage برای تشخیص/بازیابی نگه داشته شده است.`:`بسته ${shortVersion(local.staged.version)} بررسی شده و آماده نصب است.${pendingMigrations>0?` ${L.integer(pendingMigrations)} تغییر ساختار داده نیز هنگام نصب اعمال می‌شود.`:''}`):'فایلی برای نصب آماده نشده است.';$('[data-activate]').disabled=!local.staged?.version||local.staged.version===local.current_version;$('[data-repair]').disabled=recoveryRequired||!local.staged?.version||local.staged.version!==local.current_version;const discard=$('[data-discard-staged]');if(discard)discard.disabled=!local.staged?.version;if(updatePartialErrors.update_center){staged.textContent='وضعیت بسته آماده‌شده تأیید نشده است.';controlsDisabled(['[data-activate]','[data-repair]','[data-discard-staged]'],true);}const rollbackSafety=local.rollback||{},rollbackReady=!recoveryRequired&&Boolean(local.lkg_recovery_id)&&rollbackSafety.allowed!==false;$('[data-rollback]').disabled=!rollbackReady||!!updatePartialErrors.update_center;const localRollbackState=$('[data-local-rollback-state]');if(localRollbackState){const hasPoint=Boolean(local.lkg_recovery_id),blocked=recoveryRequired||(hasPoint&&rollbackSafety.allowed===false);localRollbackState.querySelector('span').textContent=updatePartialErrors.update_center?'وضعیت نقطه بازگشت قابل تأیید نیست.':recoveryRequired?'دیتابیس ممکن است رو‌به‌جلو تغییر کرده باشد؛ بازگرداندن کد قدیمی عمداً مسدود است و بازیابی با بسته اصلاحی از همین صفحه انجام می‌شود.':blocked?'نقطهٔ بازگشت فایل موجود است، اما چون migration رو‌به‌جلو اجرا شده بازگردانی کد به نسخه قبلی ایمن نیست.':hasPoint?'یک نقطهٔ بازگشت سالم و قابل‌استفاده آماده است.':'هنوز نقطهٔ بازگشت سالمی وجود ندارد؛ هنگام نصب نسخهٔ بعدی به‌صورت خودکار ساخته می‌شود.';$('[data-rollback]').title=recoveryRequired?'در حالت بازیابی، rollback کد قدیمی مجاز نیست':blocked?'Rollback پس از migrationهای رو‌به‌جلو مسدود است':hasPoint?'بازگردانی به آخرین وضعیت سالم':'نقطهٔ بازگشت سالمی موجود نیست'}
+          +controlsDisabled(['[data-maintenance-upload] input','[data-maintenance-upload] button[type=submit]','[data-maintenance-upload] [data-file-trigger]'],!maintenanceVerifyReady);if(legacyLocalBlocked){staged.hidden=true;const activation=$('[data-maintenance-activate]');if(activation)activation.disabled=!(maintenanceReady&&stageDisplayReady()&&!trackedMaintenanceKey());controlsDisabled(['[data-update-upload] button','[data-update-upload] input','[data-activate]','[data-repair]','[data-discard-staged]','[data-rollback]'],true);renderUnifiedUpdaterReadiness({ready:maintenanceReady,verification_ready:maintenanceVerifyReady,panel_bound:maintenanceReady,code:maintenanceReadinessCode});if(stageDisplayReady()&&!trackedMaintenanceKey())maintenanceUploadMessage(stageIdentityText(maintenanceEvidence),'info');}
+           renderUpdateFailure(local.last_failure||null,recoveryRequired||local.staged?.status==='failed');
+           const pc=(updates?.components||[]).find(x=>x.id==='public-edge')||{},pr=publicLiveRefresh||{},ru=pr.routine_update||{},legacy=pr.update||{},active=String(ru.active_version||'').trim(),current=String(ru.current_version||'').trim(),tree=String(ru.managed_tree_sha256||'').trim(),expectedTree=String(ru.expected_managed_tree_sha256||'').trim(),publicLive=pr.status==='fresh'&&Number(ru.protocol)===2&&!!active&&!!current&&active===current&&ru.managed_tree_matches_expected===true&&!!tree&&tree===expectedTree,fence=ru.db_forward_fence&&typeof ru.db_forward_fence==='object',pending=!!ru.pending_verification||!!ru.activation_journal||ru.interrupted_activation===true,stagedVersion=String(ru.staged?.version||'').trim(),routineHasRecovery=!!String(ru.lkg_recovery_id||'').trim(),publicCanMutate=publicLive&&!pending,canInstall=publicCanMutate&&!!stagedVersion&&stagedVersion!==active,canRepair=publicCanMutate&&!fence&&!!stagedVersion&&stagedVersion===active,canRollback=publicCanMutate&&!fence&&routineHasRecovery;versionBadge('[data-public-current-version]',publicLive?active:pc.current_version);renderPublicVersionEvidence(pc.current_version,pr,publicLive);ps.textContent=!publicLive?(pr.status==='fresh'?'نسخه Public نیاز به بررسی دارد. انتخاب و بررسی فایل باز است؛ نصب فقط بعد از تأیید وضعیت زنده فعال می‌شود.':pr.status==='checking'?'در حال بررسی نسخه زنده وب عمومی… انتخاب فایل فعال است.':'وضعیت زنده Public فعلاً دریافت نشد. بررسی فایل را می‌توان دوباره انجام داد؛ نصب تا اتصال موفق فعال نمی‌شود.'):stagedVersion?`بسته ${shortVersion(stagedVersion)} در Public گزارش شده است.${pending?' یک عملیات قبلی هنوز نهایی نشده است.':''}`:'فایل جدیدی انتخاب کن تا به‌روزرسانی بعدی بررسی شود.';ps.hidden=publicLive&&!stagedVersion&&!pending;controlsDisabled(['[data-public-update-upload] button','[data-public-update-upload] input'],false);$('[data-public-activate]').disabled=!canInstall;$('[data-public-repair]').disabled=!canRepair;$('[data-public-rollback]').disabled=!canRollback;const publicRollbackState=$('[data-public-rollback-state]');if(publicRollbackState){const message=!publicLive?'هویت زنده Public قابل تأیید نیست؛ بازگشت و نصب مسدود است.':fence?'به‌علت فنس دیتابیس Forward-only، بازگشت کد قدیمی مجاز نیست.':pending?'چرخه نصب Public ناتمام است؛ بازگشت باید از موتور مالک بررسی شود.':routineHasRecovery?'نقطه بازیابی Routine شناسایی شده است.':'نقطه بازگشت معتبر Routine یافت نشد؛ سابقه قدیمی Emergency کافی نیست.';publicRollbackState.querySelector('span').textContent=message;$('[data-public-rollback]').title=message;}const publicBase=snap?.components?.public_edge?.base_url||snap?.components?.public_edge?.base_origin||'',link=$('[data-public-emergency-link]');setEmergencyLink(link,publicBase?publicBase.replace(/\/$/,'')+'/emergency.php':'')}
+           function renderAutomaticBackupStatus(){
+          @@ -148,6 +148,7 @@
+           // browser refresh. Never infer success from a disconnected POST.
+           const maintenanceTrackKey='sokna-maintenance-pending-v1';
+           const maintenanceSourceKey='sokna-maintenance-pending-source-v1';
+          +const maintenanceTargetKey='sokna-maintenance-pending-target-v1';
+           let maintenanceProgressPoll=null;
+           function trackedMaintenanceKey(){try{const k=sessionStorage.getItem(maintenanceTrackKey)||'';return /^[a-zA-Z0-9._:-]{16,128}$/.test(k)?k:''}catch{return ''}}
+           function rememberMaintenanceKey(key){if(!/^[a-zA-Z0-9._:-]{16,128}$/.test(key))return;try{sessionStorage.setItem(maintenanceTrackKey,key)}catch{}void refreshMaintenanceProgress()}
+          @@ -176,12 +177,12 @@
+                // A committed journal alone is not live installation proof. Clear the
+                // completed request only after a fresh normal snapshot proves a changed
+                // running release and the signed host/install readiness gates pass.
+          -     let sourceVersion='';try{sourceVersion=sessionStorage.getItem(maintenanceSourceKey)||''}catch{}
+          -     if(sourceVersion){
+          +     let target=null;try{target=JSON.parse(sessionStorage.getItem(maintenanceTargetKey)||'null')}catch{}
+          +     if(validMaintenanceTarget(target)){
+                  const fresh=await request(`${api}?section=updates`);
+                  const active=String(fresh.update_center?.local?.current_version||'').trim();
+          -       if(active&&active!==sourceVersion&&fresh.maintenance_updater?.ready===true&&fresh.maintenance_panel_bound===true){
+          -         try{sessionStorage.removeItem(maintenanceTrackKey);sessionStorage.removeItem(maintenanceSourceKey);sessionStorage.removeItem('sokna-maintenance-v4-stage-id')}catch{}
+          +       if(trackedMaintenanceKey()===key&&maintenanceCommitMatches(fresh,target)){ 
+          +         try{sessionStorage.removeItem(maintenanceTrackKey);sessionStorage.removeItem(maintenanceSourceKey);sessionStorage.removeItem('sokna-maintenance-v4-stage-id');sessionStorage.removeItem(maintenanceTargetKey);sessionStorage.removeItem(maintenanceStageEvidenceKey)}catch{}
+                    toast(`نسخهٔ فعال ${shortVersion(active)} تأیید شد.`,'success','به‌روزرسانی');location.reload();
+                  }
+                }
+          @@ -195,7 +196,7 @@
+                if(op.safe_to_start_new_attempt===true){
+                  const fresh=await request(`${api}?section=updates`);
+                  if(fresh.maintenance_updater?.ready===true&&fresh.maintenance_panel_bound===true&&trackedMaintenanceKey()===key){
+          -         try{sessionStorage.removeItem(maintenanceTrackKey);sessionStorage.removeItem(maintenanceSourceKey);sessionStorage.removeItem(maintenanceStageStoreKey)}catch{}
+          +         try{sessionStorage.removeItem(maintenanceTrackKey);sessionStorage.removeItem(maintenanceSourceKey);sessionStorage.removeItem(maintenanceStageStoreKey);sessionStorage.removeItem(maintenanceTargetKey);sessionStorage.removeItem(maintenanceStageEvidenceKey)}catch{}
+                    verifiedMaintenanceStage='';
+                    await loadUpdates();
+                    message.textContent='تلاش قبلی پیش از تغییر نسخه متوقف شد؛ فایل را دوباره بررسی کن.';
+          @@ -229,7 +230,16 @@
+           const maintenanceStageStoreKey='sokna-maintenance-v4-stage-id';
+           function restoreMaintenanceStage(){try{const id=sessionStorage.getItem(maintenanceStageStoreKey)||'';return /^[a-fA-F0-9]{32}$/.test(id)?id:''}catch{return ''}}
+           function persistMaintenanceStage(id){try{if(/^[a-fA-F0-9]{32}$/.test(id))sessionStorage.setItem(maintenanceStageStoreKey,id);else sessionStorage.removeItem(maintenanceStageStoreKey)}catch{}}
+          +const maintenanceStageEvidenceKey='sokna-maintenance-v4-stage-evidence-v1';
+          +function validMaintenanceTarget(t){return !!t&&typeof t.version==='string'&&/^[a-zA-Z0-9._+:-]{1,160}$/.test(t.version)&&/^[a-f0-9]{64}$/.test(t.tree||'')&&/^[a-f0-9]{64}$/.test(t.sha||'')&&/^[a-zA-Z0-9._:-]{1,160}$/.test(t.release||'')&&/^[a-fA-F0-9]{32}$/.test(t.id||'');}
+          +function readMaintenanceEvidence(){try{const t=JSON.parse(sessionStorage.getItem(maintenanceStageEvidenceKey)||'null');return validMaintenanceTarget(t)&&t.id===restoreMaintenanceStage()?t:null}catch{return null}}
+          +function setMaintenanceEvidence(t){try{if(validMaintenanceTarget(t))sessionStorage.setItem(maintenanceStageEvidenceKey,JSON.stringify(t));else sessionStorage.removeItem(maintenanceStageEvidenceKey)}catch{}}
+          +function maintenanceCommitMatches(fresh,target){const local=fresh?.update_center?.local||{};return validMaintenanceTarget(target)&&!fresh.nonfatal_errors?.core&&!fresh.nonfatal_errors?.update_center&&fresh.maintenance_updater?.ready===true&&fresh.maintenance_panel_bound===true&&local.current_version===target.version&&local.active_version===target.version&&local.managed_tree_sha256===target.tree&&local.recovery_mode?.required===false&&!local.activation_journal;}
+           let verifiedMaintenanceStage=restoreMaintenanceStage();
+          +let maintenanceEvidence=readMaintenanceEvidence();
+          +function stageDisplayReady(){return validMaintenanceTarget(maintenanceEvidence)&&maintenanceEvidence.id===verifiedMaintenanceStage;}
+          +function stageIdentityText(t){return `نسخه: ${t.version} · شناسه انتشار: ${t.release} · SHA-256: ${t.sha}`;}
+          +
+           const hexBytes=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+           // SHA-256 for LAN HTTP origins where crypto.subtle is unavailable. Same bytes
+           // and digest as WebCrypto; HMAC/credentials remain server-side only.
+          @@ -329,7 +339,9 @@
+              policy.qualification?.real_windows!==true||policy.qualification?.real_mariadb!==true;
+             if(bad)return reject('این بسته فقط آزمون/سورس است یا تأیید نصب ندارد. بررسی فایل به معنی اجازه نصب نیست؛ این فایل را بارگذاری نکن.');
+             if(policy.release_type!=='local_only')return reject('این فایل به‌روزرسانی مستقل Local نیست.');
+          -  return {ok:true,policyChecked:true};
+          +  const target=policy.targets?.local,version=String(target?.version||''),tree=String(target?.managed_tree_sha256||''),release=String(policy.release_set_id||'');
+          +  if(!/^[a-zA-Z0-9._+:-]{1,160}$/.test(version)||!/^[a-f0-9]{64}$/.test(tree)||!/^[a-zA-Z0-9._:-]{1,160}$/.test(release))return reject('هویت نسخه مقصد در مانفیست معتبر نیست.');
+          +  return {ok:true,policyChecked:true,version,tree,release};
+            }catch{
+             // Browser ZIP inspection is advisory; never infer installation readiness.
+             return {ok:true,policyChecked:false};
+          @@ -345,13 +357,13 @@
+            if(!maintenanceVerifyReady){maintenanceUploadMessage('بررسی فایل در Maintenance هنوز آماده نیست.','warning');return}
+            if(!file||file.size<128||file.size>268435456){maintenanceUploadMessage('فایل ZIP یا حجم بسته معتبر نیست.','warning');return}
+            // HTTP LAN is supported using the pure JS SHA-256 fallback.
+          - button.disabled=true;verifiedMaintenanceStage='';persistMaintenanceStage('');$('[data-maintenance-activate]').disabled=true;
+          + button.disabled=true;verifiedMaintenanceStage='';persistMaintenanceStage('');maintenanceEvidence=null;setMaintenanceEvidence(null);$('[data-maintenance-activate]').disabled=true;
+            try{
+              maintenanceUploadMessage('در حال بررسی فایل…');
+              const arrayBuffer=await file.arrayBuffer(),data=new Uint8Array(arrayBuffer);
+              const early=await inspectMaintenanceReleaseFile(data);
+              if(!early.ok)throw new Error(early.message);
+          -   if(!early.policyChecked)maintenanceUploadMessage('ساختار فایل اولیه بررسی شد؛ تأیید نصب فقط با Maintenance انجام می‌شود.');
+          +   if(!early.policyChecked)throw new Error('خواندن هویت نسخه از فایل ممکن نبود؛ از مرورگر به‌روز استفاده کن. هیچ نصب جدیدی شروع نشده است.');
+              const sha=await sha256ForMaintenance(arrayBuffer);
+              const uploadId=newMaintenanceId();let last=null;
+              for(let offset=0;offset<data.length;offset+=131072){
+          @@ -376,18 +388,21 @@
+                  idempotency_key:'stage-'+newMaintenanceId()});
+              if(stage.operator_stage_verified!==true||!/^[a-fA-F0-9]{32}$/.test(stage.stage_operation_id||''))
+                throw new Error('مدرک Stage دریافت نشد.');
+          -    verifiedMaintenanceStage=stage.stage_operation_id;persistMaintenanceStage(verifiedMaintenanceStage);
+          +    const proof=stage.stage_identity||{};
+          +    if(proof.stage_operation_id!==stage.stage_operation_id||proof.package_sha256!==sha||proof.release_set_id!==early.release||!/^[a-f0-9]{64}$/.test(proof.manifest_sha256||''))throw new Error('هویت بسته آماده‌شده با فایل انتخابی تطبیق ندارد.');
+          +    maintenanceEvidence={id:stage.stage_operation_id,version:early.version,tree:early.tree,sha,release:early.release};
+          +    verifiedMaintenanceStage=stage.stage_operation_id;persistMaintenanceStage(verifiedMaintenanceStage);setMaintenanceEvidence(maintenanceEvidence);
+               // Preflight can perform an operator-uploaded exact physical identity rebind. Previous
+               // capabilities are stale: only a fresh server-side signed Supervisor
+               // readback may enable Activate after this exact signed Stage.
+               maintenanceReady=false; // Never reuse pre-rebind readiness.
+               const fresh=await request(`${api}?section=updates`);
+          -    maintenanceReady=fresh.maintenance_updater?.ready===true&&fresh.maintenance_panel_bound===true;
+          -    maintenanceVerifyReady=fresh.maintenance_updater?.verification_ready===true&&fresh.maintenance_verification_bound===true;
+          +    maintenanceReady=fresh.maintenance_updater?.ready===true&&fresh.maintenance_panel_bound===true&&!fresh.nonfatal_errors?.core&&!fresh.nonfatal_errors?.update_center&&!trackedMaintenanceKey();
+          +    maintenanceVerifyReady=fresh.maintenance_updater?.verification_ready===true&&fresh.maintenance_verification_bound===true&&!fresh.nonfatal_errors?.core&&!fresh.nonfatal_errors?.update_center;
+               renderUnifiedUpdaterReadiness({...fresh.maintenance_updater,panel_bound:fresh.maintenance_panel_bound===true});
+               $('[data-maintenance-activate]').disabled=!maintenanceReady;
+               maintenanceUploadMessage(maintenanceReady
+          -      ?'فایل تأیید شد؛ «نصب به‌روزرسانی» را بزن.'
+          +      ?`فایل تأیید شد؛ «نصب به‌روزرسانی» را بزن. ${stageIdentityText(maintenanceEvidence)}`
+                 :'فایل آماده شد؛ آمادگی سرویس برای نصب هنوز تأیید نشده است.','info');
+             }catch(error){$('[data-maintenance-activate]').disabled=true;
+               // A successful Stage remains durable even if the capability readback fails.
+          @@ -403,11 +418,13 @@
+            // DOM currentTarget is cleared when dispatch ends. Keep the button before
+            // awaiting the dialog; otherwise confirmation fails before sending the POST.
+            const button=e.currentTarget;
+          - if(!maintenanceReady||!/^[a-fA-F0-9]{32}$/.test(verifiedMaintenanceStage)){maintenanceUploadMessage('ابتدا فایل را بررسی کن.','warning');return}
+          - if(!await SoknaUI.confirm('نصب نسخه Local','این عملیات ممکن است Apache را موقتاً متوقف کند. ادامه می‌دهی؟'))return;
+          - const stageId=verifiedMaintenanceStage,idem='activate-'+newMaintenanceId();
+          + if(!maintenanceReady||!stageDisplayReady()||trackedMaintenanceKey()){maintenanceUploadMessage('ابتدا هویت دقیق فایل را بررسی کن.','warning');return}
+          + const target=maintenanceEvidence,stageId=verifiedMaintenanceStage;
+          + if(!await SoknaUI.confirm('نصب نسخه Local',`${stageIdentityText(target)}. این عملیات ممکن است Apache را موقتاً متوقف کند. ادامه می‌دهی؟`))return;
+          + if(!maintenanceReady||!stageDisplayReady()||maintenanceEvidence!==target||stageId!==verifiedMaintenanceStage||trackedMaintenanceKey())return;
+          + const idem='activate-'+newMaintenanceId();
+            button.disabled=true;maintenanceReady=false;
+          - try{sessionStorage.setItem(maintenanceSourceKey,String(updates?.local?.current_version||''))}catch{}
+          + try{sessionStorage.setItem(maintenanceSourceKey,String(updates?.local?.current_version||''));sessionStorage.setItem(maintenanceTargetKey,JSON.stringify(target))}catch{}
+            rememberMaintenanceKey(idem); // Durable identity BEFORE the potentially disruptive POST.
+            try{
+              const result=await post({action:'maintenance_local_activate',stage_operation_id:stageId,idempotency_key:idem});
+          @@ -496,8 +513,8 @@
+             if(generation!==publicProbeGeneration)return;
+             updates=j.update_center;updatePartialErrors=j.nonfatal_errors&&typeof j.nonfatal_errors==='object'?j.nonfatal_errors:{};
+             legacyLocalBlocked=j.legacy_local_blocked!==false;
+          -  maintenanceReady=j.maintenance_updater?.ready===true&&j.maintenance_panel_bound===true&&!trackedMaintenanceKey();
+          -  maintenanceVerifyReady=j.maintenance_updater?.verification_ready===true&&j.maintenance_verification_bound===true;
+          +  maintenanceReady=j.maintenance_updater?.ready===true&&j.maintenance_panel_bound===true&&!updatePartialErrors.core&&!updatePartialErrors.update_center&&!trackedMaintenanceKey();
+          +  maintenanceVerifyReady=j.maintenance_updater?.verification_ready===true&&j.maintenance_verification_bound===true&&!updatePartialErrors.core&&!updatePartialErrors.update_center;
+             renderUnifiedUpdaterReadiness({...j.maintenance_updater,panel_bound:j.maintenance_panel_bound===true});
+             if(j.snapshot?.components)snap.components={...(snap.components||{}),...j.snapshot.components};
+             sectionErrors.updates=null;renderUpdates();
+          --- a/local/public/system/api.php
+          +++ b/local/public/system/api.php
+          @@ -56,7 +56,8 @@
+                       if($center['error']!==null)$errors['update_center']=$center['error'];
+                       $capability=$core->maintenanceSupervisor()->updateCapabilities();
+                       $slotMode=($center['value']['local']['legacy_local_blocked']??true)===true;
+          -            $verificationBound=$slotMode&&($capability['verification_ready']??false)===true;
+          +            $localSnapshotKnown=$coreHealth['error']===null&&$center['error']===null;
+          +            $verificationBound=$slotMode&&$localSnapshotKnown&&($capability['verification_ready']??false)===true;
+                       $panelBound=$slotMode&&($capability['ready']??false)===true&&$verificationBound;
+                       WebAction::json(['success'=>true,'snapshot'=>$health,'update_center'=>$center['value'],
+                           'maintenance_updater'=>$capability,'legacy_local_blocked'=>$slotMode,
+          @@ -189,7 +190,9 @@
+                   $id=(string)($receipt['operation_id']??'');
+                   if(preg_match('/^[a-fA-F0-9]{32}$/D',$id)!==1)
+                       WebAction::json(['success'=>false,'code'=>'STAGE_RECEIPT_UNPROVEN'],409);
+          -        WebAction::json(['success'=>true,'stage_operation_id'=>$id,'operator_stage_verified'=>true]);
+          +        $identity=\Sokna\Local\Domain\System\MaintenanceSupportEvidence::stageIdentity($result,(string)($pr['package_ref']??''),'user:'.$actorId);
+          +        if($identity===null)WebAction::json(['success'=>false,'code'=>'STAGE_IDENTITY_UNPROVEN','message'=>'هویت دقیق بسته آماده‌شده قابل تأیید نیست؛ نصب را شروع نکن.'],409);
+          +        WebAction::json(['success'=>true,'stage_operation_id'=>$id,'operator_stage_verified'=>true,'stage_identity'=>$identity]);
+               }
+               if($action==='maintenance_local_activate'){
+                   if((string)($user['role']??'')!=='admin')WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'فقط مدیر اجازه نصب Local دارد.'],403);
+          --- a/local/src/Domain/System/MaintenanceSupportEvidence.php
+          +++ b/local/src/Domain/System/MaintenanceSupportEvidence.php
+          @@ -13,6 +13,29 @@
+            */
+           final class MaintenanceSupportEvidence
+           {
+          +    /** Display evidence only; never authorizes or replaces the engine's gates. */
+          +    public static function stageIdentity(array $result,string $packageRef,string $actor): ?array
+          +    {
+          +        $data=$result['data']??null;
+          +        if(($result['ok']??false)!==true||!is_array($data)||
+          +            !preg_match('/^[a-f0-9]{64}\.zip$/D',$packageRef))return null;
+          +        $op=$data['operation']??null;$receipt=$data['receipt']??null;
+          +        if(!is_array($op)||!is_array($receipt)||
+          +            ($op['operation_type']??null)!=='update.local-stage'||($op['state']??null)!=='staged'||
+          +            ($op['operator_id']??null)!==$actor||($op['package_ref']??null)!==$packageRef||
+          +            !preg_match('/^[a-fA-F0-9]{32}$/D',(string)($op['operation_id']??''))||
+          +            ($receipt['format']??null)!=='sokna-maintenance-staged-release-v1'||($receipt['schema_version']??null)!==1||
+          +            ($receipt['operator_authorized']??null)!==true||($receipt['signature_verified']??null)!==false||
+          +            ($receipt['artifact_integrity_verified']??null)!==true||($receipt['preflight_identity_match']??null)!==true||
+          +            ($receipt['activation_performed']??null)!==false||($receipt['database_mutation_performed']??null)!==false||
+          +            ($receipt['package_sha256']??null)!==substr($packageRef,0,64)||
+          +            !preg_match('/^[a-f0-9]{64}$/D',(string)($receipt['manifest_sha256']??''))||
+          +            !preg_match('/^[a-zA-Z0-9._:-]{1,160}$/D',(string)($receipt['release_set_id']??''))||
+          +            !is_int($receipt['sequence']??null)||$receipt['sequence']<=0)return null;
+          +        return ['stage_operation_id'=>$op['operation_id'],'package_sha256'=>$receipt['package_sha256'],
+          +            'manifest_sha256'=>$receipt['manifest_sha256'],'release_set_id'=>$receipt['release_set_id'],'sequence'=>$receipt['sequence']];
+          +    }
+          +
+               public static function capture(MaintenanceSupervisorClient $client): array
+               {
+                   $started=microtime(true);
+          SOKNA_QA_CC35_PATCH
+          (cd "$W"; git apply --check cc35.patch; git apply cc35.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc35-source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]); H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local': '0fe2896595b8cb0964a6797bfea64bee17c3271c605559481259dc27109ecf57', 'public': '21815114deed0c12042750de55e1e8c3add5d3468081b5e1031a0ca0cd38d09c'}
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-35',host,n,actual)
+          PYCODE
+      - name: Essential recovery and verified update display acceptance
         shell: bash
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/cp148-qa"
           export QA_WORK="$W" TMPDIR="$W"
-          cat > "$W/gate34.php" <<'SOKNA_QA_GATE34'
+          cat > "$W/gate35.php" <<'SOKNA_QA_gate35_php'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
+          $root=realpath($argv[1]);require $root.'/bootstrap.php';$f=\Sokna\Local\Domain\System\MaintenanceSupportEvidence::class;
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
+          $sha=str_repeat('a',64);$id=str_repeat('b',32);$actor='user:17';$ref=$sha.'.zip';
+          // Contract fields read from pinned native ReleaseSetVerifierStager and Stage coordinator; not a native execution receipt.
+          $r=['ok'=>true,'data'=>['operation'=>['operation_id'=>$id,'operator_id'=>$actor,'operation_type'=>'update.local-stage','state'=>'staged','package_ref'=>$ref], 'receipt'=>['format'=>'sokna-maintenance-staged-release-v1','schema_version'=>1,'release_set_id'=>'sokna-release-qa35','sequence'=>202611270001,'manifest_sha256'=>str_repeat('c',64),'package_sha256'=>$sha,'operator_authorized'=>true,'signature_verified'=>false,'artifact_integrity_verified'=>true,'preflight_identity_match'=>true,'activation_performed'=>false,'database_mutation_performed'=>false,'stage_root'=>'private-not-exported']]];
+          $proof=$f::stageIdentity($r,$ref,$actor);ck($proof===['stage_operation_id'=>$id,'package_sha256'=>$sha,'manifest_sha256'=>str_repeat('c',64),'release_set_id'=>'sokna-release-qa35','sequence'=>202611270001],'exact stage evidence projection and no private paths');
+          foreach(['format'=>'wrong','schema_version'=>2,'release_set_id'=>'../bad','sequence'=>0,'manifest_sha256'=>'abc','package_sha256'=>str_repeat('d',64),'operator_authorized'=>false,'signature_verified'=>true,'artifact_integrity_verified'=>false,'preflight_identity_match'=>false,'activation_performed'=>true,'database_mutation_performed'=>true] as $k=>$v){$bad=$r;$bad['data']['receipt'][$k]=$v;ck($f::stageIdentity($bad,$ref,$actor)===null,'reject stage receipt '.$k);}
+          foreach(['operation_id'=>'bad','operator_id'=>'user:99','operation_type'=>'update.local-package-preflight','state'=>'running','package_ref'=>str_repeat('d',64).'.zip'] as $k=>$v){$bad=$r;$bad['data']['operation'][$k]=$v;ck($f::stageIdentity($bad,$ref,$actor)===null,'reject mismatched operation '.$k);}
+          $bad=$r;unset($bad['data']['receipt']);ck($f::stageIdentity($bad,$ref,$actor)===null,'reject missing stage receipt');$bad=$r;$bad['ok']=false;ck($f::stageIdentity($bad,$ref,$actor)===null,'reject unauthenticated result');
+          echo "GROUP PASS SYS-L520 exact native receipt contract projection (fixture, not actual install)\n";
+          SOKNA_QA_gate35_php
+          cat > "$W/restore35.php" <<'SOKNA_QA_restore35_php'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
           $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
           function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}
-          function act($mode,$f,$c,$admin,$tx=false){$items=[['id'=>$f['item'],'quantity'=>1,'expected_price'=>10000]];if($mode==='disable')return $c->adminControls()->saveTable(['id'=>$f['table'],'name'=>$f['name'],'table_number'=>$f['number'],'active'=>false],$admin);if($mode==='staff'){$d=['table_id'=>$f['table'],'expected_session_id'=>0,'request_token'=>'qa34-staff-'.$f['table'].'-123456789','items'=>$items];return $tx?$c->staffQuickOrders()->commitTx($d,$admin):$c->staffQuickOrders()->commit($d,$admin);}if($mode==='guest'){$d=['table_token'=>$f['token'],'device_token'=>'qa34-device-'.$f['table'].'-123456789','client_token'=>'qa34-guest-'.$f['table'].'-123456789','items'=>$items];return $tx?$c->guestOrders()->submitTx($d):$c->guestOrders()->submit($d);}throw new RuntimeException('invalid mode');}
-          if(($argv[2]??'')==='child'){$f=json_decode(file_get_contents($argv[4]),true,512,JSON_THROW_ON_ERROR);file_put_contents($argv[4].'.started',(string)$p->query('SELECT CONNECTION_ID()')->fetchColumn());try{$r=act($argv[3],$f,$c,$admin);echo json_encode(['ok'=>true,'result'=>$r],JSON_THROW_ON_ERROR);}catch(Throwable $e){echo json_encode(['ok'=>false,'code'=>$e->errorCode??'','message'=>$e->getMessage()],JSON_THROW_ON_ERROR);}exit;}
-          function spawn($mode,$f){global $W,$root;$fpath=$W.'/cc34-'.$mode.'-'.$f['table'].'.json';file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));$proc=proc_open([PHP_BINARY,__FILE__,$root,'child',$mode,$fpath],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($proc))throw new RuntimeException('spawn');fclose($pipes[0]);$end=microtime(true)+8;while(!is_file($fpath.'.started')&&microtime(true)<$end)usleep(25000);if(!is_file($fpath.'.started'))throw new RuntimeException('child not started');return [$proc,$pipes,(int)file_get_contents($fpath.'.started')];}
-          function result($child){[$proc,$pipes]=$child;$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$code=proc_close($proc);if($code!==0)throw new RuntimeException('child exit '.$code.' '.$err);return json_decode($out,true,512,JSON_THROW_ON_ERROR);}
-          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA34 essential menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA34 essential category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES('qa34-race',?,'QA34 race item',10000,1,1,'active',1,1,'hot_bar')")->execute([$cid]);$item=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$item]);$p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('orders_accepting.cafe','1'),('orders_accepting.bar','1'),('orders_accepting.kitchen','1'),('printing.quick.auto_preparation','0') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
-          function tableFixture($n){global $c,$p,$admin,$item;$name='QA34 table '.$n;$id=(int)$c->adminControls()->saveTable(['name'=>$name,'table_number'=>$n,'active'=>true],$admin)['id'];return ['table'=>$id,'name'=>$name,'number'=>$n,'item'=>$item,'token'=>(string)scalar($p,'SELECT access_token FROM cafe_tables WHERE id=?',[$id])];}
-          $fail=0;foreach(['staff','guest'] as $i=>$mode){try{$f=tableFixture(9401+$i);$p->beginTransaction();try{$r=act($mode,$f,$c,$admin,true);ck(($r['success']??false)===true,'real '.$mode.' order prepared in transaction');$ch=spawn('disable',$f);usleep(300000);ck(proc_get_status($ch[0])['running'],'disable waits for actual '.$mode.' transaction');$p->commit();}catch(Throwable $e){if($p->inTransaction())$p->rollBack();throw $e;}$r=result($ch);ck(!$r['ok']&&$r['code']==='table_live','admin disable rejected after '.$mode.' order commits');ck((int)scalar($p,'SELECT active FROM cafe_tables WHERE id=?',[$f['table']])===1,'table remains active');ck((int)scalar($p,"SELECT COUNT(*) FROM table_sessions WHERE table_id=? AND status IN('active','pending')",[$f['table']])===1,'exactly one live session preserved');ck((int)scalar($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$f['table']])===1,'exactly one committed order preserved');echo "GROUP PASS ADM-L454 $mode first\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL ADM-L454 '.$mode.' first '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}
-          // Synthetic trigger creates a deterministic independent transaction barrier, not a product change.
-          $p->exec("CREATE TRIGGER qa34_hold_disable BEFORE UPDATE ON cafe_tables FOR EACH ROW BEGIN IF OLD.active=1 AND NEW.active=0 AND OLD.table_number BETWEEN 9411 AND 9412 THEN DO SLEEP(2); END IF; END");
-          try{foreach(['staff','guest'] as $i=>$mode){try{$f=tableFixture(9411+$i);$a=spawn('disable',$f);$end=microtime(true)+5;$seen=false;while(microtime(true)<$end){$s=(string)scalar($p,'SELECT STATE FROM information_schema.PROCESSLIST WHERE ID=?',[$a[2]]);if(stripos($s,'sleep')!==false){$seen=true;break;}usleep(30000);}ck($seen,'actual admin owns lock before '.$mode.' starts');$b=spawn($mode,$f);$ra=result($a);$rb=result($b);ck($ra['ok']===true,'admin disable committed first');ck(!$rb['ok']&&in_array($rb['code'],['invalid_table','invalid_qr'],true),'order rejected after inactive table');ck((int)scalar($p,'SELECT active FROM cafe_tables WHERE id=?',[$f['table']])===0,'inactive table stays inactive');ck((int)scalar($p,'SELECT COUNT(*) FROM table_sessions WHERE table_id=?',[$f['table']])===0,'no orphan session');ck((int)scalar($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$f['table']])===0,'no orphan order');echo "GROUP PASS ADM-L454 disable first $mode\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL ADM-L454 disable first '.$mode.' '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}}finally{$p->exec('DROP TRIGGER qa34_hold_disable');}
-          exit($fail?1:0);
-          SOKNA_QA_GATE34
+          $mode=$argv[2]??'seed';$pass='synthetic-cc35-backup-password';$path=$W.'/cc35-business.skbf';$fpath=$W.'/cc35-restore-fixture.json';
+          function digest(PDO $p,string $t){$order=$t==='guest_media_derivatives'?'media_id,variant_key':'id';$rows=$p->query('SELECT * FROM `'.$t.'` ORDER BY '.$order)->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$row)foreach($row as &$v)if($v!==null)$v=(string)$v;unset($v,$row);return ['count'=>count($rows),'sha256'=>hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR))];}
+          if($mode==='seed'){
+           $img=imagecreatetruecolor(400,300);imagefill($img,0,0,imagecolorallocate($img,48,141,103));imagepng($img,$W.'/cc35-image.png');imagedestroy($img);
+           $g=$c->guestContent();$upload=$g->importUpload($W.'/cc35-image.png','cc35-image.png','QA35 actual restore media',$admin);$key=$upload['media_key'];$m=$g->localPreview($key,$admin);ck(is_file($m['path']),'source actual image file');
+           $mediaRoot=rtrim($cfg['app']['data_dir'],'/\\').'/guest-media/';$rel=substr($m['path'],strlen($mediaRoot));ck(str_starts_with($m['path'],$mediaRoot)&&$rel!=='','source image within managed root');
+           $tables=['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','guest_media_assets','guest_media_derivatives'];$f=['source'=>$cfg['installation']['id'],'media_key'=>$key,'rel'=>$rel,'media_sha'=>hash_file('sha256',$m['path']),'tables'=>[]];
+           foreach($tables as $t)$f['tables'][$t]=digest($p,$t);ck($f['tables']['settlement_records']['count']>0&&$f['tables']['orders']['count']>0,'nonempty original financial and order documents');
+           $r=$c->businessBackup()->createEncrypted($path,$pass,(int)$admin['id']);$f['sha']=hash_file('sha256',$path);ck($r['sha256']===$f['sha'],'actual encrypted business backup');file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));exit;
+          }
+          $f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);ck(hash_file('sha256',$path)===$f['sha'],'original encrypted bytes unchanged');
+          // Exactly isolated DB cloned schema in disposable CI only; no external endpoint configured.
+          // Copy only actual schema and migration ledger, never source business rows.
+          $p->exec('CREATE DATABASE sokna_cc35_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          $t=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cc35_restore;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+          $t->exec('SET FOREIGN_KEY_CHECKS=0');foreach($p->query('SHOW FULL TABLES WHERE Table_type=\'BASE TABLE\'')->fetchAll(PDO::FETCH_NUM) as $row){$name=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$name))throw new RuntimeException('unexpected table');$ddl=$p->query('SHOW CREATE TABLE `'.$name.'`')->fetch(PDO::FETCH_NUM)[1];$t->exec($ddl);}
+          foreach(['schema_migrations','schema_migration_statements'] as $name){$rows=$p->query('SELECT * FROM `'.$name.'`')->fetchAll(PDO::FETCH_ASSOC);foreach($rows as $row){$cols=array_keys($row);$t->prepare('INSERT INTO `'.$name.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}}$t->exec('SET FOREIGN_KEY_CHECKS=1');
+          ck($t->query('SELECT DATABASE()')->fetchColumn()==='sokna_cc35_restore'&&$t->query('SELECT COUNT(*) FROM users')->fetchColumn()==0,'separate empty target database');
+          $destId='qa35-target-independent';$dest=$W.'/cc35-dest-data';if(!is_dir($dest))mkdir($dest,0700,true);$o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$destId);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$destId,$auth,null,$dest);
+          $manifest=$b->inspectEncrypted($path,$pass);ck($manifest['stream_verified']===true&&$manifest['target_ready']===true&&$manifest['target_kind']==='empty'&&$manifest['source_installation_id']===$f['source'],'actual target inspection ready, source identity verified');
+          $r=$b->restoreEncryptedToEmptyTarget($path,$pass,0);ck($r['restored']===true&&$r['source_installation_id']===$f['source']&&$r['media_included']===true,'real encrypted restore completed');ck($r['public_authority_fence_confirmed']===false&&$r['public_authority_fence_error']==='public_not_configured','no false peer confirmation when Public not configured');ck($auth->phase()==='reenroll_required','target authority fenced independently');ck(scalar($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$destId,'destination machine identity preserved');
+          foreach($f['tables'] as $table=>$digest){ck(digest($t,$table)===$digest,'restored immutable rows '.$table);ck(digest($p,$table)===$digest,'source unchanged '.$table);}
+          $img=$dest.'/guest-media/'.$f['rel'];ck(is_file($img)&&hash_file('sha256',$img)===$f['media_sha'],'restored actual media exact bytes');
+          foreach(['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $table)ck((int)scalar($t,'SELECT COUNT(*) FROM `'.$table.'`')===0,'no old transport state '.$table);
+          try{$b->restoreEncryptedToEmptyTarget($path,$pass,0);throw new RuntimeException('unexpected second restore');}catch(Throwable $e){ck(($e->errorCode??'')==='target_not_empty','second restore blocked on populated destination');}
+          ck(hash_file('sha256',$img)===$f['media_sha'],'rejected repeat preserves media');echo "GROUP PASS SYS-L524 SYS-L545 SYS-L546 GUEST-L346 HALL-20261126-DISCOUNT-UI-02 actual empty target financial/media restore and authority isolation\n";
+          SOKNA_QA_restore35_php
+          cat > "$W/gate35.cjs" <<'SOKNA_QA_gate35_cjs'
+          const fs=require('fs'),crypto=require('crypto'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
+          const W=process.env.QA_WORK,base='http://127.0.0.1:18765',f=JSON.parse(fs.readFileSync(W+'/cc35-package-fixture.json'));
+          const stageId='b'.repeat(32),preId='a'.repeat(32),opId='d'.repeat(32),key='activate-cc35-fixture-only-1234';
+          let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){fail++;console.log('GROUP FAIL '+n+' '+e.stack)}};
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function wait(fn,n,ms=12000){let end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){ck(true,n);return;}}catch{}await sleep(100)}throw Error(n)}
+          async function auth(p){await p.goto(base+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!=='qa-target'){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="qa-target"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'real administrator login');}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:1280,height:1000},locale:'fa-IR'});p.setDefaultTimeout(15000);let actual=null,error='',stageMismatch=false,activeVersion='3.0.0-previous-qa',activeTree='9'.repeat(64),posts=[],committed=false,received=Buffer.alloc(0);try{await auth(p);
+          // Read actual authenticated PHP GET and preserve all unrelated data. Only the absent Windows service and fault responses are simulated. No actual installation POST is forwarded.
+          actual=await p.evaluate(async()=>await (await fetch('/system/api.php?section=updates')).json());ck(actual.success===true&&actual.update_center?.local,'actual authenticated update API before fixture');
+          function state(){const r=structuredClone(actual);r.legacy_local_blocked=true;r.maintenance_updater={ready:true,verification_ready:true,code:'OK'};r.maintenance_panel_bound=true;r.maintenance_verification_bound=true;r.nonfatal_errors=error?{[error]:{message:'QA35 independent injected unavailable'}}:{};r.update_center.local={...r.update_center.local,current_version:activeVersion,active_version:activeVersion,managed_tree_sha256:activeTree,recovery_mode:{required:false},activation_journal:null,legacy_local_blocked:true};return r;}
+          await p.route('**/system/api.php*',async route=>{const req=route.request(),u=new URL(req.url()),section=u.searchParams.get('section');const json=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});if(req.method()==='GET'){if(section==='updates')return json(state());if(section==='updates_public_probe')return json({success:true,public_update_refresh:{status:'failed',error_code:'QA35_PUBLIC_OUTAGE'}});if(section==='maintenance_operation')return json({success:true,maintenance_operation:{operation_id:opId,state:committed?'committed':'running',terminal:committed}});return route.continue();}const d=req.postDataJSON();posts.push(d.action);if(d.action==='maintenance_inbox_chunk'){if(d.offset===0)received=Buffer.alloc(0);received=Buffer.concat([received,Buffer.from(d.chunk_base64,'base64')]);return json({success:true,upload:{received_bytes:received.length,complete:received.length===d.total_bytes,content_sha256_verified:crypto.createHash('sha256').update(received).digest('hex')===f.sha,release_signature_verified:false,package_ref:f.sha+'.zip'}});}if(d.action==='maintenance_local_preflight')return json({success:true,operator_preflight_verified:true,preflight_operation_id:preId});if(d.action==='maintenance_local_stage')return json({success:true,operator_stage_verified:true,stage_operation_id:stageId,stage_identity:{stage_operation_id:stageId,package_sha256:stageMismatch?'e'.repeat(64):f.sha,manifest_sha256:f.manifest_sha,release_set_id:f.release,sequence:202611270001}});if(d.action==='maintenance_local_activate')return json({success:true,accepted:true,activation_committed:false,operation_id:opId});return route.fulfill({status:403,body:'QA unexpected mutation blocked'});});
+          const activate=p.locator('[data-maintenance-activate]'),submit=p.locator('[data-maintenance-upload] button[type=submit]'),message=p.locator('[data-maintenance-upload-message]'),progress=p.locator('[data-maintenance-progress-message]');
+          async function reload(){await p.goto(base+'/system/?tab=updates');await wait(async()=>await p.locator('[data-maintenance-upload]').isVisible()&&!(await p.locator('[data-system-workspace]').getAttribute('aria-busy')),'functional panel loaded');}
+          await group('SYS-L519 independent unavailable snapshots and safe Local/Public isolation',async()=>{error='update_center';await reload();await wait(async()=>await p.locator('[data-updates-partial]').isVisible(),'partial center shown');ck(await submit.isDisabled()&&await activate.isDisabled(),'center failure cannot enable local stage or activate');error='core';await reload();await wait(async()=>await p.locator('[data-updates-partial]').isVisible(),'partial core shown');ck(await submit.isDisabled()&&await activate.isDisabled(),'core failure cannot enable local mutation');error='public_cached';await reload();await wait(async()=>!await submit.isDisabled(),'independent Public cache failure does not block Local file check');ck(await p.locator('[data-public-activate]').isDisabled(),'unknown Public cannot activate');error='';});
+          await group('SYS-L520 actual browser ZIP hash and target evidence (Windows response fixture)',async()=>{await reload();await wait(async()=>!await submit.isDisabled(),'ready synthetic Windows state');const input=p.locator('[data-maintenance-upload] input[type=file]');stageMismatch=true;await input.setInputFiles(W+'/cc35-fixture.zip');await submit.click();await wait(async()=>await message.innerText().then(x=>x.includes('تطبیق ندارد')),'mismatched exact hash rejected');ck(await activate.isDisabled(),'wrong stage cannot activate');stageMismatch=false;await input.setInputFiles(W+'/cc35-fixture.zip');await submit.click();await wait(async()=>!await activate.isDisabled(),'matching exact stage enables confirm');ck((await message.innerText()).includes(f.version)&&(await message.innerText()).includes(f.sha),'actual staged version and SHA displayed');ck(crypto.createHash('sha256').update(received).digest('hex')===f.sha,'browser sent exact fixture ZIP bytes');await p.screenshot({path:W+'/cc35-stage.png'});await reload();await wait(async()=>!await activate.isDisabled()&&(await message.innerText()).includes(f.sha),'same exact target survives page reload');await p.evaluate(()=>{window.SoknaUI.confirm=async(title,text)=>{sessionStorage.setItem('qa35-confirm',text);return false}});await activate.click();await wait(async()=>await p.evaluate(()=>!!sessionStorage.getItem('qa35-confirm')),'explicit cancel confirm captured');const txt=await p.evaluate(()=>sessionStorage.getItem('qa35-confirm'));ck(txt.includes(f.version)&&txt.includes(f.sha)&&!posts.includes('maintenance_local_activate'),'confirm exact target and cancel means zero activation');});
+          await group('SYS-L520 SYS-L521 committed response cannot prove wrong live version or tree',async()=>{await p.evaluate(({key,f,stageId})=>{sessionStorage.setItem('sokna-maintenance-pending-v1',key);sessionStorage.setItem('sokna-maintenance-pending-target-v1',JSON.stringify({id:stageId,version:f.version,tree:f.tree,sha:f.sha,release:f.release}));},{key,f,stageId});committed=true;activeVersion='3.0.0-unrelated-qa';activeTree=f.tree;await reload();await wait(async()=>await progress.innerText().then(x=>x.includes('ثبت نهایی')),'committed result observed');await sleep(400);ck(await p.evaluate(()=>!!sessionStorage.getItem('sokna-maintenance-pending-v1')),'different installed version not sufficient');activeVersion=f.version;activeTree='e'.repeat(64);await p.locator('[data-maintenance-progress-refresh]').click();await sleep(500);ck(await p.evaluate(()=>!!sessionStorage.getItem('sokna-maintenance-pending-v1')),'correct version wrong tree retains pending');error='update_center';activeTree=f.tree;await p.locator('[data-maintenance-progress-refresh]').click();await sleep(500);ck(await p.evaluate(()=>!!sessionStorage.getItem('sokna-maintenance-pending-v1')),'partial readback retains pending even with matching target');error='';await p.locator('[data-maintenance-progress-refresh]').click();await wait(async()=>!(await p.evaluate(()=>sessionStorage.getItem('sokna-maintenance-pending-v1'))),'matching version/tree and healthy readback clears pending');ck(!posts.includes('maintenance_local_activate'),'polling did not send install POST');});
+          }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
+          SOKNA_QA_gate35_cjs
+          python3 - "$W" <<'PYCODE'
+          import pathlib,sys,zipfile,json,hashlib
+          w=pathlib.Path(sys.argv[1]);f=w/'cc35-fixture.zip'
+          # Synthetic ZIP ONLY; no native installer or operational package. PHP actual endpoint mutations intercepted in browser test.
+          manifest={'for_install':True,'production_pass':True,'status':'CONTROLLED_FIXTURE','release_type':'local_only','release_set_id':'sokna-release-qa35','qualification':{'real_windows':True,'real_mariadb':True},'targets':{'local':{'version':'3.0.0-qa35-target','managed_tree_sha256':'c'*64}}}
+          raw=json.dumps(manifest).encode()
+          with zipfile.ZipFile(f,'w',zipfile.ZIP_DEFLATED) as z:
+              z.writestr('release-set.json',raw);z.writestr('artifacts/local/web.zip',b'fixture not installable')
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          (w/'cc35-package-fixture.json').write_text(json.dumps({'sha':H(f.read_bytes()),'manifest_sha':H(raw),'version':manifest['targets']['local']['version'],'tree':'c'*64,'release':manifest['release_set_id']}))
+          PYCODE
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          php "$W/gate34.php" "$W/local" | tee "$W/cc34-race-results.txt"
+          fail=0
+          php "$W/gate35.php" "$W/local" | tee "$W/cc35-receipt-results.txt" || fail=1
+          (php "$W/restore35.php" "$W/local" seed && php "$W/restore35.php" "$W/local" restore) | tee "$W/cc35-recovery-results.txt" || fail=1
+          npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
+          trap 'kill "$lp" 2>/dev/null || true' EXIT
+          sleep 2
+          node "$W/gate35.cjs" | tee "$W/cc35-browser-results.txt" || fail=1
+          exit "$fail"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC34-PRIORITY-ACCEPTANCE-QA-ONLY
+          name: SOKNA-CC35-PRIORITY-ACCEPTANCE-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
+            ${{ runner.temp }}/cp148-qa/cc35-*.png
           retention-days: 7
           if-no-files-found: warn
