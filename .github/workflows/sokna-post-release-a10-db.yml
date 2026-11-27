@@ -1,0 +1,126 @@
+name: SOKNA A10 consolidated exact source MariaDB (QA ONLY)
+on:
+  push:
+    branches: [qa/post-release-a10-20261128]
+    paths: [.github/workflows/sokna-post-release-a10-db.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Reconstruct exact CP160 baseline then current 42-file cumulative delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          mkdir -p "$W"
+          python3 qa/cp148/prepare-source.py "$W" "$RUNNER_TEMP/cp148-input" | tee "$W/source-results.txt"
+          python3 qa/cp150/apply-cp150.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp151/apply-cp151.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152/apply-cp152.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152b/apply-cp152b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152c/apply-cp152c.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152d/apply-cp152d.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp153/apply-cp153.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp154/apply-cp154.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp155/apply-cp155.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp156/apply-cp156.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp157/apply-cp157.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp157b/apply-cp157b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp158/apply-cp158.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp159/apply-cp159.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp159b/apply-cp159b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp160/apply-cp160.py "$W" | tee -a "$W/source-results.txt"
+          base64 -d qa/func-pass02/overlay.b64 > "$W/overlay.patch.gz"
+          echo 'ff19835c97d8f5c7d1dbd0fb625f7b7717d26e2a9b5f9c84803ae990cef0f1c4  '"$W/overlay.patch.gz" | sha256sum -c -
+          gzip -dc "$W/overlay.patch.gz" > "$W/overlay.patch"
+          (cd "$W"; git apply --check overlay.patch; git apply overlay.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(625,'0d946221bea6cfc1df61faf91b562f568a43caf09a5e44291baa5a87eee8f977'),'public':(258,'5cf7bcd726b3c22d37269341702cbf99ef0c8ce174fcbeef2d29e1760a7eaf20')}
+          for host,(n,sha) in expected.items():
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==sha,(host,len(paths),actual)
+              print('PASS EXACT FUNC-PASS-02',host,n,actual)
+          PY
+      - name: Reconstruct and verify exact cumulative A10
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/overlay.b64 > "$W/a10.patch.gz"
+          echo '7424040b9f79675e084481498f99b8b42a6a7df8446cb6e5aca4ac029e94525d  '"$W/a10.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a10.patch.gz" > "$W/a10.patch"
+          (cd "$W"; git apply --check a10.patch; git apply a10.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(625,'ae7521e4535428d5fc2d5e995c5477a30ef91baf05def3df61d4b7fa061d88e5'),'public':(258,'635c4412c32dd00884c10bef2a6d844a14db1ca5091a3ba67c6c504c9febe4c1')}
+          for host,(n,sha) in expected.items():
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==sha,(host,len(paths),actual)
+              print('PASS EXACT A10',host,n,actual)
+          PY
+      - name: Run real Local clean install and A10 grouped critical DB acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          export TMPDIR="$W"
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
+          php -l qa/post-release-a10/critical.php
+          php qa/post-release-a10/critical.php "$W/local" | tee "$W/critical-results.txt"
+      - name: Run real Public clean schema and reapply
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          test -f "$W/cp144-fixture.json"
+          export TMPDIR="$W"
+          php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-results.txt"
+          php -r 'require $argv[1]."/bootstrap.php";$cfg=require $argv[1]."/config.php";if(($cfg["db"]["host"]??"")!=="127.0.0.1"||($cfg["db"]["name"]??"")!=="sokna_cp150_public")exit(2);$core=sokna_public_bootstrap($cfg);$m=$core->migrations();if($m->pendingVersions()!==[]||$m->migrate()!==[]||$m->migrate()!==[])exit(3);echo "PASS Public clean schema and twice reapply no-op\n";' "$W/public" | tee -a "$W/public-results.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A10-REAL-DB-GATE-EVIDENCE-NO-INSTALL
+          path: ${{ runner.temp }}/cp148-qa/*-results.txt
+          retention-days: 7
+          if-no-files-found: warn
