@@ -1,4 +1,4 @@
-name: SOKNA A10 consolidated exact source MariaDB (QA ONLY)
+name: SOKNA A10 consolidated exact source MariaDB (QA ONLY, fixture date corrected)
 on:
   push:
     branches: [qa/post-release-a10-20261128]

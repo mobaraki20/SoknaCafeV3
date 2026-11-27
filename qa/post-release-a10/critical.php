@@ -58,6 +58,6 @@ group('A18 expense real create/reverse',function()use($p,$c,$actor){
  $a=['category_key'=>$cat,'amount'=>123456,'description'=>'QA A10 expense','occurred_at'=>$c->time()->civilDate().' 12:00:00','source_request_id'=>'qa-a10-expense'];
  $e=$c->expenses();$x=$e->create($a,$actor);$y=$e->create($a,$actor);ck($x['id']===$y['id']&&($y['idempotent']??false),'expense create replay');
  $r=$e->reverse((int)$x['id'],'QA reversal','qa-a10-expense-reverse',$actor);ck((int)$r['id']>0,'expense reversal');
- ck((int)one($p,'SELECT SUM(amount) FROM expenses WHERE id=? OR reverses_expense_id=?',[$x['id'],$x['id']])===0,'net expense zero');
+ ck((int)one($p,'SELECT SUM(CASE WHEN status=\'reversal\' THEN -amount ELSE amount END) FROM expenses WHERE id=? OR reverses_expense_id=?',[$x['id'],$x['id']])===0,'net expense zero');
 });
 echo 'A10_GROUP_FAILURES='.$fail.PHP_EOL;exit($fail?1:0);
