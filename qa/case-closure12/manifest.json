@@ -1,0 +1,24 @@
+{
+  "source_sha256": "5173c37933465c3dc3d1213ab79ff69a1453cb32385573baf2b2661102b56b59",
+  "previous_sha256": "a586e6674c2c9e20e804a987f24c4b41d87fdca7d35c0ba3146355335896490f",
+  "changed": [
+    "local/public/assets/staff-app/preparation-workspace.js",
+    "local/public/assets/staff-consumption-workspace.js",
+    "local/src/Domain/StaffConsumption/StaffBenefitCalculationService.php",
+    "local/src/Domain/StaffConsumption/StaffConsumptionPostingService.php",
+    "local/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php",
+    "public/assets/staff-app/preparation-workspace.js"
+  ],
+  "trees": {
+    "local": "251028c6189f071e92e5c3144bee3fcedd800704bc700eb8905af3ee937c7aed",
+    "public": "344b6bae9202d11caadd3cb046021deac89feecf062b9538c9ada607ef2d4277"
+  },
+  "files": {
+    "local/public/assets/staff-app/preparation-workspace.js": "70f6cb0a2ab968af53026fe6579777896b8591338cd5ca704bbe6f65ea46d7e9",
+    "local/public/assets/staff-consumption-workspace.js": "1a23fb2350062382f6ada98bf31ba509c381e8fc8fe91f5c6c29b18a28ca0d2a",
+    "local/src/Domain/StaffConsumption/StaffBenefitCalculationService.php": "20b9b8012c9e67386967e0ec2652ec7745bdf01cc00f89cb299ac397bd7d22d0",
+    "local/src/Domain/StaffConsumption/StaffConsumptionPostingService.php": "f6076829b694499157915612c8fb96a94a5405b7a2434e25d62888730dd7aa92",
+    "local/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php": "c385e3eea578939dcf2fa7dc953c088655ae9f039328a5066af12e5e75e180c0",
+    "public/assets/staff-app/preparation-workspace.js": "feb1b32741223c6e73a46e97ee71783f1aa93bdd35e79543fed18f75b35e2045"
+  }
+}
