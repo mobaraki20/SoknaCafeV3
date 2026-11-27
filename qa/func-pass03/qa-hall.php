@@ -7,8 +7,8 @@ $c=sokna_local_bootstrap($cfg);$p=$c->database();$fpath=dirname($root).'/cp144-f
 function ck($x,$n){if(!$x)throw new RuntimeException($n);echo "PASS $n\n";}
 $mode=$argv[2]??'prepare';
 if($mode==='sync'){
- $models=$c->publicProjectionBuilder()->remoteModelsFor(['operations']);$r=$c->publicEdgeSyncClient()->postRaw('/api/v1/local/read-models',['models'=>$models],5);
- ck(($r['status']??0)===200&&((int)($r['body']['synced']??0)+(int)($r['body']['unchanged']??0))===1,'actual signed operations sync');
+ $publisher=$c->publicEdgePublisher();$seq=$publisher->seedProjectionInvalidations(['operations'],'qa.hall.v2');ck($seq>0,'seed real operations invalidation');
+ $r=$publisher->syncProjectionModelsV2(250,4,10,null,['operations']);ck(($r['success']??false)===true&&($r['models']['operations']['ok']??false)===true&&($r['models']['operations']['ack_sequence']??0)>=$seq,'actual signed operations v2 ACK');
  $h=$c->publicEdgePublisher()->syncHeartbeat(5);ck(($h['success']??false)===true,'actual signed heartbeat');exit;
 }
 $pw=password_hash('synthetic-member-only',PASSWORD_DEFAULT);

@@ -1,4 +1,4 @@
-name: SOKNA FUNC-PASS-03 Hall finance acceptance (QA ONLY)
+name: SOKNA FUNC-PASS-03 Public cashier V2 acceptance (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-FUNC-PASS03-HALL-REAL-DB-BROWSER-QA-ONLY
+          name: SOKNA-FUNC-PASS03-PUBLIC-V2-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/hall-*.png
