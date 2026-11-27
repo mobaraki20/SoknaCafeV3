@@ -1,4 +1,4 @@
-name: SOKNA 52B empty restore durable reconciliation - real synthetic DB outcomes
+name: SOKNA 52C empty restore durable reconciliation - real synthetic DB outcomes
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -227,7 +227,15 @@ jobs:
           for mode in rolledback committed; do mkdir -p "$W/target-$mode"; cp -a "$W/local" "$W/target-$mode/local"; done
           export QA_WORK="$W" TMPDIR="$W"
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/fixture.txt"
+          python3 - "$W" <<'FIXTURE52'
+          import pathlib,sys
+          p=pathlib.Path('qa/cp160/fixture.php').read_text()
+          a=p.index('// Independent QA-only rows')
+          b=p.index('$iid=(string)',a)
+          p=p[:a]+'$reportDay=$today;\n'+p[b:]
+          (pathlib.Path(sys.argv[1])/'restore-fixture.php').write_text(p)
+          FIXTURE52
+          php "$W/restore-fixture.php" "$W/local" > "$W/receipts/fixture.txt"
           cat > "$W/gate50.php" <<'PHP50'
           <?php
           declare(strict_types=1);
@@ -369,6 +377,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC52B-EMPTY-RESTORE-RECEIPTS
+          name: SOKNA-CC52C-EMPTY-RESTORE-RECEIPTS
           path: ${{ runner.temp }}/cc50/receipts
           retention-days: 30
