@@ -1,4 +1,4 @@
-name: SOKNA 52C empty restore durable reconciliation - real synthetic DB outcomes
+name: SOKNA 54 Cafe Local exact R307 controlled operator delivery
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,43 +7,35 @@ permissions:
   contents: read
   actions: read
 jobs:
-  recovery:
+  build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    services:
-      mariadb:
-        image: mariadb:11.4
-        env:
-          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
-          MARIADB_ROOT_HOST: '%'
-        ports: [3306:3306]
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s --health-timeout=5s --health-retries=20
-    env:
-      QA_DB_PASSWORD: synthetic-cp116-ci-only
-      SOKNA_QA_DISPOSABLE: YES
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          ref: 6983e9d52435a746325f60ace428b8548bcc8fc0
-          persist-credentials: false
+          python-version: '3.13.5'
       - uses: actions/download-artifact@v4
         with:
           run-id: 46056788008
           name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Test targeted private-media reconciliation candidate using disposable MariaDB
-        shell: bash
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 46064469872
+          name: SOKNA-CC52C-EMPTY-RESTORE-RECEIPTS
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/recovery
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior
+      - name: Reconstruct accepted exact 231gk and controlled Cafe candidate
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc50"; mkdir -p "$W/local" "$W/receipts"
-          A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
-          unzip -q "$A" -d "$W/local"
-          echo "2b96064e1ba7f1c08a34d1152a7eb9c1dd154fd7bafe1e6b47404f1c4c0bedf5  $W/local/src/Domain/Recovery/BusinessBackupService.php" | sha256sum -c -
-          cat > "$W/seed-quarantine.patch" <<'PATCH50'
+          cat > "$RUNNER_TEMP/p50.patch" <<'PATCH50'
           --- a/local/src/Domain/Recovery/BusinessBackupService.php
           +++ b/local/src/Domain/Recovery/BusinessBackupService.php
           @@ -554,8 +554,9 @@
@@ -103,9 +95,7 @@ jobs:
                    }finally{if(is_resource($mediaLock))fclose($mediaLock);fclose($lock);}
                }
           PATCH50
-          (cd "$W"; git apply --check seed-quarantine.patch; git apply seed-quarantine.patch)
-          echo "3fe943b05bc2ce62eda2e85e25f4c2e0824587a97687563baf187ba9d5a20455  $W/local/src/Domain/Recovery/BusinessBackupService.php" | sha256sum -c -
-          cat > "$W/empty-restore.patch" <<'PATCH52'
+          cat > "$RUNNER_TEMP/p52.patch" <<'PATCH52'
           --- a/local/src/Domain/Recovery/BusinessBackupService.php
           +++ b/local/src/Domain/Recovery/BusinessBackupService.php
           @@ -215,7 +215,7 @@
@@ -221,162 +211,168 @@ jobs:
                    }finally{if(is_resource($mediaLock))fclose($mediaLock);fclose($lock);}
                }
           PATCH52
-          (cd "$W"; git apply --check empty-restore.patch; git apply empty-restore.patch)
-          echo "c2029d1fe5bb8ef11fd3becb3e08537e5c43b25e38d741d11e8f00b6a01e7420  $W/local/src/Domain/Recovery/BusinessBackupService.php" | sha256sum -c -
-          php -l "$W/local/src/Domain/Recovery/BusinessBackupService.php"
-          for mode in rolledback committed; do mkdir -p "$W/target-$mode"; cp -a "$W/local" "$W/target-$mode/local"; done
-          export QA_WORK="$W" TMPDIR="$W"
-          php qa/cp148/preflight.php
-          python3 - "$W" <<'FIXTURE52'
-          import pathlib,sys
-          p=pathlib.Path('qa/cp160/fixture.php').read_text()
-          a=p.index('// Independent QA-only rows')
-          b=p.index('$iid=(string)',a)
-          p=p[:a]+'$reportDay=$today;\n'+p[b:]
-          (pathlib.Path(sys.argv[1])/'restore-fixture.php').write_text(p)
-          FIXTURE52
-          php "$W/restore-fixture.php" "$W/local" > "$W/receipts/fixture.txt"
-          cat > "$W/gate50.php" <<'PHP50'
-          <?php
-          declare(strict_types=1);
-          use Sokna\Local\Domain\Recovery\BusinessBackupService;
-          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
-          use Sokna\Local\Domain\Recovery\RecoveryException;
-          use Sokna\Local\Core\Observability;
-          use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          $W=realpath($argv[1]);require $W.'/local/bootstrap.php';$cfg=require $W.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $core=sokna_local_bootstrap($cfg);$p=$core->database();
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
-          function reject(callable $fn,array $codes,string $label){try{$fn();}catch(RecoveryException $e){ck(in_array($e->errorCode,$codes,true),$label.' '.$e->errorCode);return;}throw new RuntimeException('unexpected success '.$label);}
-          class UncertainResponsePDO extends PDO {
-           public string $scenario='';
-           public function commit():bool {
-            if($this->scenario==='')return parent::commit();
-            $mode=$this->scenario;$this->scenario='';
-            // The actual DB ends its transaction. The synthetic caller receives an
-            // exception instead of the usual response, to exercise both uncertain outcomes.
-            $ok=$mode==='committed'?parent::commit():parent::rollBack();
-            if(!$ok)throw new RuntimeException('fixture database outcome failed');
-            throw new RuntimeException('synthetic acknowledgement unavailable');
-           }
-          }
-          $backup=$W.'/synthetic-backup.skbf';$pass='synthetic-recovery49-password';$source=$cfg['app']['data_dir'];file_put_contents($source.'/guest-media/qa49-source-only.bin','synthetic media distinction');
-          $sourceMedia=MediaSnapshotCodec::scan($source);$r=$core->businessBackup()->createEncrypted($backup,$pass,0);$hash=hash_file('sha256',$backup);ck($hash===$r['sha256'],'real encrypted backup SHA');
-          $orders=(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn();ck($orders>0,'nonempty synthetic source');
-          foreach(['rolledback','committed'] as $mode){
-           $name='sokna_cc49_'.$mode;$target=$W.'/target-'.$mode;$dest=$target.'/data';
-           $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$target.'/local');
-           $setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>$name,'user'=>'root','pass'=>getenv('QA_DB_PASSWORD')],'create_database'=>true,'admin_user'=>'qa-seed49','admin_password'=>'synthetic-seed-only-password','cafe_name'=>'QA49','table_count'=>3]);
-           $tcfg=require $target.'/config.php';$iid=$tcfg['installation']['id'];$receipt=$dest.'/recovery-fresh-seed-v1.json';$proof=file_get_contents($receipt);$original=MediaSnapshotCodec::scan($dest);ck($proof!==false&&count($original)>0&&$original!==$sourceMedia,'actual pristine seed and different source media '.$mode);
-           $t=new UncertainResponsePDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
-           $t->exec("SET time_zone = '+03:30'");
-           $auth=new PublicAuthorityStateService($t,$iid);$b=new BusinessBackupService($t,new Observability($dest),$iid,$auth,null,$dest);
-           $i=$b->inspectEncrypted($backup,$pass);if(!$i['target_ready'])echo 'TARGET ISSUE '.json_encode($i['target_issue'],JSON_UNESCAPED_UNICODE).PHP_EOL;ck(($i['target_kind']??'')==='verified_fresh_seed'&&$i['target_ready']===true,'real seed proof accepted '.$mode);
-           $t->scenario=$mode;
-           try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('fixture expected exception');}catch(RuntimeException $e){ck($e->getMessage()==='synthetic acknowledgement unavailable','actual transaction ended without success response '.$mode);}
-           $used=glob($receipt.'.used-*');ck(count($used)===1&&!is_file($receipt)&&file_get_contents($used[0])===$proof,'original proof remains consumed '.$mode);
-           $op=substr($used[0],-16);ck(preg_match('/^[a-f0-9]{16}$/D',$op)===1,'operation identity '.$mode);
-           $hold=$dest.'/recovery-seed-hold-'.$op;$quarantine=$dest.'/recovery-promoted-hold-'.$op;
-           ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($hold)===$original,'both trees exact before reconciliation '.$mode);
-           ck((int)$t->query('SELECT COUNT(*) FROM orders')->fetchColumn()===($mode==='committed'?$orders:0),'actual DB outcome '.$mode);
-           reject(fn()=>$b->restoreEncryptedToEmptyTarget($backup,$pass,0),['restore_interrupted'],'direct retry denied '.$mode);
-           if($mode==='rolledback'){
-            $result=$b->reconcileInterruptedSeedOffline();
-            ck($result['reconciled']===true&&$result['target_matches_original_seed']===true&&$result['promoted_media_preserved']===true&&$result['retry_requires_new_confirmation']===true,'safe offline reconciliation with explicit retry confirmation');
-            ck(MediaSnapshotCodec::scan($dest)===$original&&MediaSnapshotCodec::scan($quarantine)===$sourceMedia,'exact original restored and promoted bytes preserved');
-            ck(file_get_contents($receipt)===$proof&&!file_exists($used[0]),'exact original proof rearmed');
-            $i=$b->inspectEncrypted($backup,$pass);ck($i['target_ready']===true,'explicit new inspection permitted');
-            $rr=$b->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($rr['restored']===true&&$auth->phase()==='reenroll_required','new confirmed actual restore');
-            ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($quarantine)===$sourceMedia,'new restore and protected quarantine exact');
-           }else{
-            reject(fn()=>$b->reconcileInterruptedSeedOffline(),['target_not_empty','restore_interrupted'],'committed target reconciliation refused');
-            ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($hold)===$original&&!file_exists($quarantine)&&file_get_contents($used[0])===$proof,'committed result and original tree retained untouched');
-            ck($auth->phase()==='reenroll_required','committed Local remains fenced');
-           }
-           ck(hash_file('sha256',$backup)===$hash&&MediaSnapshotCodec::scan($source)===$sourceMedia&&(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn()===$orders,'source and encrypted backup unchanged '.$mode);
-          }
-          echo "GROUP PASS seeded restore reconciliation after uncertain response, real DB outcomes\n";
-          PHP50
-          php -l "$W/gate50.php"
-          cat > "$W/gate52.php" <<'PHP52'
-          <?php
-          declare(strict_types=1);
-          use Sokna\Local\Domain\Recovery\BusinessBackupService;
-          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
-          use Sokna\Local\Domain\Recovery\RecoveryException;
-          use Sokna\Local\Core\Observability;
-          use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          $W=realpath($argv[1]);require $W.'/local/bootstrap.php';$cfg=require $W.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $core=sokna_local_bootstrap($cfg);$p=$core->database();
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
-          function reject(callable $fn,array $codes,string $label){try{$fn();}catch(RecoveryException $e){ck(in_array($e->errorCode,$codes,true),$label.' '.$e->errorCode);return;}throw new RuntimeException('unexpected success '.$label);}
-          class LostAckPDO extends PDO {
-           public string $scenario='';
-           public function commit():bool {
-            if($this->scenario==='')return parent::commit();
-            $mode=$this->scenario;$this->scenario='';
-            if($mode==='before')throw new RuntimeException('synthetic acknowledgement unavailable');
-            $ok=$mode==='committed'?parent::commit():parent::rollBack();
-            if(!$ok)throw new RuntimeException('fixture database outcome failed');
-            throw new RuntimeException('synthetic acknowledgement unavailable');
-           }
-          }
-          $backup=$W.'/synthetic-empty-backup.skbf';$pass='synthetic-recovery49-password';$source=$cfg['app']['data_dir'];file_put_contents($source.'/guest-media/qa52-source-only.bin','synthetic media distinction');
-          $sourceMedia=MediaSnapshotCodec::scan($source);$r=$core->businessBackup()->createEncrypted($backup,$pass,0);$hash=hash_file('sha256',$backup);ck($hash===$r['sha256'],'real encrypted backup SHA');
-          $orders=(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn();ck($orders>0,'nonempty synthetic source');
-          foreach(['rolledback','committed','before'] as $mode){
-           $name='sokna_cc52_'.$mode;$dest=$W.'/empty-'.$mode;mkdir($dest,0700,true);
-           $p->exec('CREATE DATABASE '.$name.' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-           $t=new LostAckPDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false]);
-           $t->exec("SET time_zone = '+03:30'");$t->exec('SET FOREIGN_KEY_CHECKS=0');
-           foreach($p->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as $row){$n=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$n))exit(2);$t->exec($p->query('SHOW CREATE TABLE '.$n)->fetch(PDO::FETCH_NUM)[1]);}
-           foreach(['schema_migrations','schema_migration_statements'] as $n)foreach($p->query('SELECT * FROM '.$n)->fetchAll(PDO::FETCH_ASSOC) as $row){$cols=array_keys($row);$t->prepare('INSERT INTO '.$n.' ('.implode(',',$cols).') VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}
-           $t->exec('SET FOREIGN_KEY_CHECKS=1');
-           $iid='qa52-'.$mode;$auth=new PublicAuthorityStateService($t,$iid);$b=new BusinessBackupService($t,new Observability($dest),$iid,$auth,null,$dest);
-           $i=$b->inspectEncrypted($backup,$pass);ck(($i['target_kind']??'')==='empty'&&$i['target_ready']===true,'real independent empty target '.$mode);
-           $receipt=$dest.'/recovery-fresh-seed-v1.json';
-           $t->scenario=$mode;
-           try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('fixture expected exception');}catch(RuntimeException $e){ck($e->getMessage()==='synthetic acknowledgement unavailable','actual transaction outcome '.$mode);}
-           $used=glob($receipt.'.used-*');
-           ck((int)$t->query('SELECT COUNT(*) FROM orders')->fetchColumn()===($mode==='committed'?$orders:0),'actual business rows '.$mode);
-           if($mode==='before'){
-            ck(count($used)===0&&count(glob($receipt.'.rolledback-*'))===1&&MediaSnapshotCodec::scan($dest)===[],'known rollback clears bound receipt and active media');
-            ck($b->inspectEncrypted($backup,$pass)['target_ready']===true,'known rollback allows new confirmed retry');
-           }else{
-            ck(count($used)===1&&!file_exists($receipt),'durable empty operation sentinel '.$mode);
-            $proof=json_decode(file_get_contents($used[0]),true,64,JSON_THROW_ON_ERROR);ck($proof['format']==='sokna-empty-restore-v1'&&$proof['commit_distinguished']===true&&$proof['database']===$name,'original exact empty proof '.$mode);
-            $op=substr($used[0],-16);ck(preg_match('/^[a-f0-9]{16}$/D',$op)===1,'operation identity '.$mode);
-            $quarantine=$dest.'/recovery-promoted-hold-'.$op;
-            ck(MediaSnapshotCodec::scan($dest)===$sourceMedia,'promoted media exact '.$mode);
-            reject(fn()=>$b->restoreEncryptedToEmptyTarget($backup,$pass,0),['restore_interrupted'],'direct retry denied '.$mode);
-            if($mode==='rolledback'){
-             $result=$b->reconcileInterruptedSeedOffline();
-             ck($result['reconciled']===true&&$result['target_matches_original_empty']===true&&$result['promoted_media_preserved']===true&&$result['retry_requires_new_confirmation']===true,'safe offline reconciliation of original empty target');
-             ck(MediaSnapshotCodec::scan($dest)===[]&&MediaSnapshotCodec::scan($quarantine)===$sourceMedia,'active target empty; exact promoted bytes quarantined');
-             ck(!file_exists($receipt)&&!file_exists($used[0])&&is_file($receipt.'.rolledback-'.$op),'bound receipt finalized; no fabricated seed');
-             $i=$b->inspectEncrypted($backup,$pass);ck($i['target_ready']===true&&$i['target_kind']==='empty','explicit new empty-target inspection');
-             $rr=$b->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($rr['restored']===true&&$auth->phase()==='reenroll_required','new confirmed actual restore');
-             ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($quarantine)===$sourceMedia,'new restore and protected quarantine exact');
-            }else{
-             reject(fn()=>$b->reconcileInterruptedSeedOffline(),['target_not_empty','restore_interrupted'],'committed target reconciliation refused');
-             ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&!file_exists($quarantine)&&is_file($used[0]),'committed data and media retained untouched');
-             ck($auth->phase()==='reenroll_required','committed Local remains fenced');
-            }
-           }
-           ck(hash_file('sha256',$backup)===$hash&&MediaSnapshotCodec::scan($source)===$sourceMedia&&(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn()===$orders,'source and encrypted backup unchanged '.$mode);
-          }
-          echo "GROUP PASS empty-target reconciliation after uncertain response, real DB outcomes\n";
-          PHP52
-          php -l "$W/gate52.php"
-          php "$W/gate52.php" "$W" | tee "$W/receipts/empty-results.txt"
-          php "$W/gate50.php" "$W" | tee "$W/receipts/results.txt"
+          python - <<'PY'
+          from pathlib import Path
+          import io,zipfile,json,hashlib,sys,subprocess,os
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          def read(raw):
+           with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            assert z.testzip() is None and len(z.namelist())==len(set(z.namelist()))
+            return {n:z.read(n) for n in z.namelist()}
+          def pack(d):
+           b=io.BytesIO()
+           with zipfile.ZipFile(b,'w') as z:
+            for n,v in sorted(d.items()):
+             i=zipfile.ZipInfo(n,(2026,11,27,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=zipfile.ZIP_DEFLATED
+             z.writestr(i,v,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+           return b.getvalue()
+          t=Path(os.environ['RUNNER_TEMP']);out=t/'delivery';out.mkdir()
+          assert os.environ.get('GITHUB_ACTIONS')=='true'
+          raw=(t/'candidate/LOCAL-231GI-UPDATE-QA-DO-NOT-INSTALL.zip').read_bytes()
+          assert H(raw)=='41a7622255ba11fc8664c3cc6441fefe4ba88d0892743cad452171a4e7685c0d'
+          a=read(raw);m=json.loads(a['release-set.json']);L=read(a['artifacts/local/web.zip']);orig=L.copy()
+          k='src/Domain/Recovery/BusinessBackupService.php';p=t/'patchwork/local'/k;p.parent.mkdir(parents=True);p.write_bytes(L[k])
+          assert H(L[k])=='2b96064e1ba7f1c08a34d1152a7eb9c1dd154fd7bafe1e6b47404f1c4c0bedf5'
+          for name,sha in [('p50.patch','3fe943b05bc2ce62eda2e85e25f4c2e0824587a97687563baf187ba9d5a20455'),('p52.patch','c2029d1fe5bb8ef11fd3becb3e08537e5c43b25e38d741d11e8f00b6a01e7420')]:
+           subprocess.run(['git','apply','--check',str(t/name)],cwd=t/'patchwork',check=True)
+           subprocess.run(['git','apply',str(t/name)],cwd=t/'patchwork',check=True)
+           assert H(p.read_bytes())==sha
+          L[k]=p.read_bytes()
+          # Existing acceptance receipts from the actual recovery run, not new asserted outcomes.
+          logs=(t/'recovery/empty-results.txt').read_text()+(t/'recovery/results.txt').read_text()
+          assert 'GROUP PASS empty-target reconciliation after uncertain response, real DB outcomes' in logs and 'GROUP PASS seeded restore reconciliation after uncertain response, real DB outcomes' in logs
+          version='3.0.0-g6.2-workspace.231gk-cc52c-qa';rid='sokna-local-231gk-cc52c-qa';ss='88f4bb20923ac45ed90d0f704ba1794236042bbeae86f9f339c84e9d23ec74bf'
+          L['VERSION.txt']=(version+'\n').encode()
+          k='resources/release-identity-v1.json';i=json.loads(L[k]);ex=set(i['source']['digest_excludes']);i.update(version=version,release_set_id=rid);i['source'].update(canonical_tree_sha256=H(''.join(n+'\0'+str(len(v))+'\0'+H(v)+'\n' for n,v in sorted(L.items()) if n not in ex).encode()),source_ref='SHA256:'+ss+' CC52C integrated');L[k]=J(i)
+          k='resources/build-provenance.json';p=json.loads(L[k]);p.update(version=version,release_set_id=rid,consolidated_source_sha256=ss,source='sha256:'+ss,scope='CC52C accepted empty and seeded restore reconciliation; exact final admission pending');L[k]=J(p)
+          assert {n for n in L if L[n]!=orig[n]}=={'VERSION.txt','resources/release-identity-v1.json','resources/build-provenance.json','src/Domain/Recovery/BusinessBackupService.php'}
+          web=pack(L);assert H(web)=='fafcb63d1c9f7fd1a014836bf2e7f33bf09a1cc30137fa01ab6f056e779d01e8'
+          tree=H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(L.items())).encode());assert tree=='b8019526c9fcbbe65bc5cf564769e62ca9175b956dfaee8cade6097f60309b52'
+          m['targets']['local'].update(version=version,release_id=rid,managed_tree_sha256=tree)
+          m['artifacts']['local-web'].update(sha256=H(web),size_bytes=len(web))
+          m.update(release_set_id=rid,sequence=202611270004)
+          m['qa_notes'].update(source_sha256=ss,qualification='CC52C accepted recovery service; exact final admission pending')
+          qa=pack({'release-set.json':J(m),'artifacts/local/web.zip':web});assert H(qa)=='165e8e15f19374b8ba296e38efb2220d15f3b22a2681397a51dcc26b1b900f70'
+          # Controlled operator qualification uses the existing CP98 same-core policy.
+          # It is explicitly pending actual exact Windows delivery acceptance, never general production qualification.
+          old=(t/'prior/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip').read_bytes()
+          assert H(old)=='a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f'
+          r=json.loads((t/'prior/matrix-receipt.json').read_text(encoding='utf-8-sig'))
+          assert r['status']=='PASS' and r['candidate_sha256']==H(old) and r['phase']=='COMMITTED' and r['independent_restore'] and r['panel_activation_tested'] and r['migrations']==93 and not r['actual_field_host']
+          o=read(old);prior=json.loads(o['release-set.json']);ol=read(o['artifacts/local/web.zip'])
+          assert prior['status']=='CONTROLLED_CAFE_OPERATOR_FIELD_ACCEPTANCE_PENDING' and prior['qa_notes']['maintenance_core_ref']=='f38c20083068e540d593876a2c527c51e0157f92' and prior['requirements']==m['requirements']
+          sql=lambda d:{n:H(v) for n,v in d.items() if n.startswith('database/migrations/') and n.endswith('.sql')}
+          assert len(sql(L))==93 and sql(L)==sql(ol)
+          assert prior['for_install'] and prior['production_pass'] and prior['qa_notes']['cafe_production_approved'] is False
+          q=prior['qualification'];assert all(q[k] for k in ['real_windows','real_mariadb','recovery_console_web_down','business_backup_consistency_real_mariadb','canary']) and q['failure_matrix_cases_required']>=80
+          # Restrict the explicit delivery to Cafe's R307 baseline. Native preflight still verifies every identity field.
+          bases=[x for x in m['supported_baselines'] if x['local']['managed_tree_sha256']=='5455c9d2ea4762a050d826f59c1896f7e22827b1cdad9f6106bca356ba94b186'];assert len(bases)==1
+          m.update(supported_baselines=bases,sequence=202611270005,for_install=prior['for_install'],production_pass=prior['production_pass'],qualification=q,status=prior['status'],qa_notes={'scope':'CONTROLLED_CAFE_OPERATOR_ONLY_FIELD_ACCEPTANCE_PENDING','cafe_production_approved':False,'field_install_verified':False,'operator_install_allowed':True,'qualification_scope':'Historical identical Maintenance Core qualification only; exact current archive requires separate successful native R307 delivery receipt. Not general production qualification.','maintenance_core_ref':prior['qa_notes']['maintenance_core_ref'],'historical_operator_package_sha256':H(old),'original_quarantine_sha256':H(qa),'current_web_sha256':H(web),'recovery_run':46064469872,'installation':'Explicit operator only after exact separate delivery receipt, verified backup, successful native preflight and no open operations; no auto deployment.'})
+          controlled=pack({'release-set.json':J(m),'artifacts/local/web.zip':web})
+          (out/'SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip').write_bytes(controlled)
+          (out/'factory-build-receipt.json').write_bytes(J({'status':'PENDING_EXACT_R307_GATE','sha256':H(controlled),'source_qa_sha256':H(qa),'web_sha256':H(web),'target':m['targets']['local'],'baseline':bases[0]['local'],'controlled_delivery_authorized':False,'production_authorized':False}))
+          print('BUILT_PENDING_FINAL_GATE',H(controlled))
+          PY
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: SOKNA-CC52C-EMPTY-RESTORE-RECEIPTS
-          path: ${{ runner.temp }}/cc50/receipts
+          name: SOKNA-CC54-PENDING-NATIVE-GATE
+          path: ${{ runner.temp }}/delivery/*
+          retention-days: 7
+          if-no-files-found: error
+  native:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - {origin: R307, fault: none, ledger: '83', run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.5'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CC54-PENDING-NATIVE-GATE
+          path: ${{ runner.temp }}/delivery
+      - name: Exact final controlled archive via standard native panel on actual 231fw synthetic origin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'|Select-Object -First 1
+          if(!$base){throw 'BASELINE_MISSING'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $target=Join-Path $env:RUNNER_TEMP 'delivery/SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip'
+          $r=Get-Content "$env:RUNNER_TEMP/delivery/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          if($r.status -ne 'PENDING_EXACT_R307_GATE' -or $r.controlled_delivery_authorized -ne $false -or (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.sha256){throw 'CANDIDATE_DRIFT'}
+          $env:SOKNA_CURRENT_QA_ZIP=$target
+          $env:SOKNA_MATRIX_TARGET_ZIP=$target
+          @'
+          from pathlib import Path
+          p=Path('qa/factory/prepare_checkpoint84_native.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('LOCAL-231GG-CONTROLLED-HOME-CANARY.zip','SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip').replace('CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING','CONTROLLED_CAFE_OPERATOR_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_CANARY_ONLY_NOT_CAFE_PRODUCTION_APPROVAL','CONTROLLED_CAFE_OPERATOR_ONLY_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_EXACT_OUTER_QA_ONLY','CONTROLLED_CAFE_EXACT_OUTER_QA_ONLY')
+          s=s.replace("{t for _,t in origins.values()}","{origins[origin][1]}").replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6','fafcb63d1c9f7fd1a014836bf2e7f33bf09a1cc30137fa01ab6f056e779d01e8')
+          p.with_name('prepare_checkpoint54_native.py').write_text(s,encoding='utf-8')
+          '@ | Set-Content "$env:RUNNER_TEMP/prepare54.py" -Encoding utf8NoBOM
+          python "$env:RUNNER_TEMP/prepare54.py"
+          python qa/factory/prepare_checkpoint54_native.py
+          if($LASTEXITCODE -ne 0){throw 'BRIDGE_PREPARATION_FAILED'}
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'BRIDGE_TEST_FAILED'}
+          }finally{Pop-Location}
+      - name: Verify exact standard native delivery receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r=Get-Content "$env:RUNNER_TEMP/delivery/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $x=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
+          $actual=(Get-FileHash "$env:RUNNER_TEMP/delivery/SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($x.status -ne 'PASS' -or $x.candidate_sha256 -cne $actual -or $actual -cne $r.sha256 -or $x.phase -ne 'COMMITTED' -or $x.origin -ne 'R307' -or $x.origin_tree_sha256 -cne $r.baseline.managed_tree_sha256 -or $x.target_tree_sha256 -cne $r.target.managed_tree_sha256 -or $x.migrations -ne 93 -or !$x.independent_restore -or !$x.panel_activation_tested -or $x.actual_field_host){throw 'DELIVERY_GATE'}
+          Copy-Item "$env:RUNNER_TEMP/matrix-receipt.json" "$env:RUNNER_TEMP/delivery/matrix-receipt.json"
+          @{status='CONTROLLED_CAFE_OPERATOR_DELIVERY_READY';version=$r.target.version;package_sha256=$actual;run_id=$env:GITHUB_RUN_ID;origin='R307';controlled_operator_delivery_authorized=$true;production_host_accepted=$false;automatic_deployment_authorized=$false;requires_verified_backup_and_exact_preflight=$true}|ConvertTo-Json|Set-Content "$env:RUNNER_TEMP/delivery/DELIVERY-RECEIPT.json" -Encoding utf8NoBOM
+          Write-Output "PASS CONTROLLED CAFE LOCAL OPERATOR DELIVERY $actual"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/delivery/*
           retention-days: 30
+          if-no-files-found: error
