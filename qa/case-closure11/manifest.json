@@ -1,0 +1,40 @@
+{
+  "source_sha256": "a586e6674c2c9e20e804a987f24c4b41d87fdca7d35c0ba3146355335896490f",
+  "previous_sha256": "7d1a20e3dbb5b3e8bef105c40187741d3385bf52da7b6917aea4b90c6167e039",
+  "changed": [
+    "local/public/assets/finance-workspace.js",
+    "local/public/assets/operations-workspace.js",
+    "local/public/assets/product-ui.css",
+    "local/public/assets/staff-app/hall-workspace.js",
+    "local/public/assets/subscribers-workspace.js",
+    "local/public/finance/index.php",
+    "local/src/Core/Bootstrap.php",
+    "local/src/Domain/Finance/FinanceWorkspaceService.php",
+    "local/src/Domain/Orders/OrderWorkspaceService.php",
+    "public/assets/operations-workspace.js",
+    "public/assets/product-ui.css",
+    "public/assets/staff-app/hall-workspace.js",
+    "public/assets/staff-app/public-hall-transport.js",
+    "public/assets/subscribers-workspace.js"
+  ],
+  "trees": {
+    "local": "9ffed8a39fbf44d25597c0fd19dc545b364880a717450fde26e58263e55b6af5",
+    "public": "87af80fccb0becd333583d7253ff85a515079a1853023d1e644ea2f52dbebc2f"
+  },
+  "files": {
+    "local/public/assets/finance-workspace.js": "2eb7bad202d70b76bd86cda37ce594a1b8d9e5089b92aa7fd652ec834a2439d8",
+    "local/public/assets/operations-workspace.js": "b0a6d8dd72047ea21d11c7f13196b28c731497fef21478e9ab0100bbf0090e20",
+    "local/public/assets/product-ui.css": "34d21c6ba2dbb4e73b6b9ad21735f94ed52f53f685f987a733f58c97ad22c6a9",
+    "local/public/assets/staff-app/hall-workspace.js": "bdb39f85ad5c402027b96a037126a608a2e26aadf55f4775c5fc429e46978198",
+    "local/public/assets/subscribers-workspace.js": "23ddef3d3318fc59110e52e15aed91326e0b9ca4709576c8a37b456a546d0c65",
+    "local/public/finance/index.php": "8d519cfd8c05be3dafc3fa0ad62e4d0655fc85e6db5eabe008377549dbfae7bf",
+    "local/src/Core/Bootstrap.php": "e70695533b02fcbd5dbd249e3243d7fc0af7a82a0384da1426a72bc866623b21",
+    "local/src/Domain/Finance/FinanceWorkspaceService.php": "7943b28139b3eb040c81f5efdd619da737bdf424f9b8245b5d0244cba1016493",
+    "local/src/Domain/Orders/OrderWorkspaceService.php": "37d5246763a938a0164d6a1f8b382ce7c34d033108d2818a3ef25ed9b4e9e02c",
+    "public/assets/operations-workspace.js": "5b3a41f78bc0ef89887af202822be21a8d107f30c4597bf140cd3819019d5483",
+    "public/assets/product-ui.css": "21d62de3dfde1df3e1fab1cf4fd3c476796ae27235d056d303c0cf0b31dcb899",
+    "public/assets/staff-app/hall-workspace.js": "c43f7eb4a44b8c9d82a51e6bdb4eec7f4230626d71fa593c4ca7aefc3a70e19d",
+    "public/assets/staff-app/public-hall-transport.js": "80cce395be9fe3871bfb853096a908c53d6641c0c5048fc46fd11d14f8ac3dc5",
+    "public/assets/subscribers-workspace.js": "dd74608ba8f432110fa5510798c6741b955c45c032974a3fa83909caf06b4fa9"
+  }
+}
