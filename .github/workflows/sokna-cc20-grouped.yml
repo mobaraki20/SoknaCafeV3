@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-37C exact repaired 35ip origin and Emergency forward schema gate (QA ONLY)
+name: SOKNA RELEASE PRIORITY-38 seven remaining native Local origins (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,104 +7,136 @@ permissions:
   contents: read
   actions: read
 jobs:
-  public-35ip:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    services:
-      mariadb:
-        image: mariadb:11.4
-        env:
-          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
-        ports: ['3306:3306']
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s --health-timeout=5s --health-retries=25
+  native-local:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {origin: GF, fault: none, ledger: '93', run: '45718662312', artifact: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY, file: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip}
+          - {origin: R301, fault: none, ledger: '83', run: '44561325048', artifact: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT, file: SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip}
+          - {origin: R304, fault: none, ledger: '83', run: '44639218881', artifact: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT, file: SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip}
+          - {origin: R306, fault: none, ledger: '83', run: '44723958829', artifact: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT, file: SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R307, fault: none, ledger: '83', run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: R3, fault: none, ledger: '90', run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
+          - {origin: GE, fault: none, ledger: '93', run: '45565963138', artifact: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL, file: LOCAL-FINAL-FROZEN.zip}
     env:
-      QA_DB_PASSWORD: synthetic-cp116-ci-only
-      SOKNA_CI_DB_PASS: synthetic-cp116-ci-only
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ae53ee62504a84b07f8d4ea0b215db0608e34e9d
+          ref: c0316cf3485467241315c2638dcff47fec3f129d
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.5'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
       - uses: actions/download-artifact@v4
         with:
           run-id: 46036608931
           name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - uses: shivammathur/setup-php@v2
+      - uses: actions/download-artifact@v4
         with:
-          php-version: '8.3'
-          extensions: pdo_mysql, zip, mbstring, sodium
-      - name: Exact archived 35ip and previously qualified owner repair
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          run-id: 45764512635
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/gg
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Test quarantine rejection and create isolated positive fixture with identical web bytes
+        shell: pwsh
         run: |
-          set -euo pipefail
-          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/14907451327/zip" -o "$RUNNER_TEMP/origin.zip"
-          echo '3536c7dcc88cfa2501aa88662214f1f1b6e8934f22e00b714756de7657bd5754  '"$RUNNER_TEMP/origin.zip" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/cc37b-receipts"
-          python3 - <<'PYCODE'
-          import os,pathlib,zipfile,hashlib,json,base64,io
-          P=pathlib.Path; t=P(os.environ['RUNNER_TEMP']);H=lambda b:hashlib.sha256(b).hexdigest();J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode();tree=lambda d:H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(d.items())).encode())
-          with zipfile.ZipFile(t/'origin.zip') as z:raw=z.read('SOKNA-PUBLIC-35IP-CLEAN-WEB.zip')
-          assert H(raw)=='1206dd043d87f8e832b9d3660924c1f288bc8565a6854bd09144c9c80956c040'
-          with zipfile.ZipFile(io.BytesIO(raw)) as z:
-              assert z.testzip() is None;old={n:z.read(n) for n in z.namelist() if not n.endswith('/')};z.extractall(t/'old-web')
-          stable={n:v for n,v in old.items() if n=='emergency.php' or n.startswith('src/Emergency/')};managed={n:v for n,v in old.items() if n not in stable};before=tree(managed);assert before=='621b6ebee48ef7876fdd8b0ad8e041628c96e407b1f8a47dc5528307843f603a'
-          clean=t/'candidate/PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip';assert H(clean.read_bytes())=='9317be75ca5d31b2577aee7e5adb07f14dbb69053f47c647b8d705970d84d5fd'
-          paths=['recovery.php','src/Recovery/StableRecoveryService.php','src/Emergency/PublicUpdateService.php']
-          with zipfile.ZipFile(clean) as z:new={n:z.read(n) for n in paths}
-          after=tree(managed|{n:new[n] for n in paths[:2]});assert after=='0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584'
-          pins={n:H(b) for n,b in stable.items()};ledger=[P(n).stem for n in sorted(managed) if n.startswith('database/migrations/') and n.endswith('.sql')];assert len(ledger)==11
-          plan={'version':old['VERSION.txt'].decode().strip(),'before':before,'after':after,'stable_before':pins,'stable_after':pins|{paths[2]:H(new[paths[2]])},'patch':{n:{'old':H(old[n]),'new':H(new[n]),'b64':base64.b64encode(new[n]).decode()} for n in paths},'ledger':ledger}
-          helper=P('qa/checkpoint107/repair-template.php').read_text().replace('__PLAN_BASE64__',base64.b64encode(J(plan)).decode()).encode();assert H(helper)=='5f605bb5bfa0c5506d75b7ccc259049ee3df8170217d1d9631f877a6733fba75'
-          (t/'repair37b.php').write_bytes(helper)
-          print('PASS exact prior repair helper reproduced, no new helper or engine modification')
-          PYCODE
-          mysql --protocol=TCP -h127.0.0.1 -uroot -p"$QA_DB_PASSWORD" -e 'CREATE DATABASE sokna_ci_cp107 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
-          sed 's/5f5010dadaaae7cede43b20ca1e4fc8618362d66f9d31ca288ab96361779b88d/5f605bb5bfa0c5506d75b7ccc259049ee3df8170217d1d9631f877a6733fba75/g' qa/checkpoint107/db-component-test.php > "$RUNNER_TEMP/repair-test.php"
-          php "$RUNNER_TEMP/repair-test.php" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/repair37b.php" | tee "$RUNNER_TEMP/cc37b-receipts/repair.txt"
-      - name: Actual repaired 35ip origin forward migration via same Public ZIP and independent Emergency bridge
-        shell: bash
+          $ErrorActionPreference='Stop'
+          $q=Join-Path $env:RUNNER_TEMP 'candidate/LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip'
+          if((Get-FileHash $q -Algorithm SHA256).Hash.ToLowerInvariant() -cne '19e7591defdb6a368705c9c117ed5bcd048108e2f96484fe9ba0031c4999a117'){throw 'CC36_OUTER_DRIFT'}
+          $bases=@(Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'); if($bases.Count -ne 1){throw 'BASELINE_ARCHIVE_MISSING_OR_AMBIGUOUS'}; $env:SOKNA_BASELINE_ZIP=$bases[0].FullName
+          # Actual negative gate must refuse original quarantined outer.
+          python native-src/packaging/windows/release-gates/check_local_release_set.py $q --require-installable
+          if($LASTEXITCODE -eq 0){throw 'QUARANTINE_UNEXPECTEDLY_INSTALLABLE'}
+          'QUARANTINED ORIGINAL REJECTED BY INSTALLABILITY GATE'|Set-Content "$env:RUNNER_TEMP/quarantine-negative.txt"
+          @'
+          from pathlib import Path
+          import os,sys,hashlib,json,zipfile,io,re
+          P=Path; H=lambda b:hashlib.sha256(b).hexdigest(); J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          assert os.environ['GITHUB_ACTIONS']=='true' and os.environ['RUNNER_OS']=='Windows' and os.environ['SOKNA_R186_CI_ONLY']=='YES'
+          t=Path(os.environ['RUNNER_TEMP']); q=t/'candidate/LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip'; old=t/'gg/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip'; base=Path(os.environ['SOKNA_BASELINE_ZIP']);origin=os.environ['SOKNA_ORIGIN'];fault=os.environ['SOKNA_FAULT']
+          assert H(q.read_bytes())=='19e7591defdb6a368705c9c117ed5bcd048108e2f96484fe9ba0031c4999a117'
+          assert H(old.read_bytes())=='a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f'
+          with zipfile.ZipFile(q) as z:m=json.loads(z.read('release-set.json'));w=z.read('artifacts/local/web.zip');assert z.testzip() is None
+          with zipfile.ZipFile(old) as z:prior=json.loads(z.read('release-set.json'))
+          assert m['for_install'] is False and m['production_pass'] is False and m['qa_notes']['operator_install_allowed'] is False
+          assert H(w)=='f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f'
+          assert m['targets']['local']['managed_tree_sha256']=='f6a745b7febaacc4d312b4bb4f0ceab2e3c176ef6a04b73638733be3a6a6e950'
+          assert prior['targets']['local'] in [x['local'] for x in m['supported_baselines']]
+          # CI fixture ONLY, not operational admission, with same inner bytes. Do not publish fixture.
+          m.update(for_install=True,production_pass=True,qualification=prior['qualification'],status='CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING',qa_notes={'scope':'DISPOSABLE_CI_FIXTURE_ONLY_NOT_RELEASE','distribution_authorized':False,'production_accepted':False,'field_install_verified':False,'source_quarantine_sha256':H(q.read_bytes()),'historical_qualification_fixture_only':True})
+          out=t/'LOCAL-231GH-PANEL-FIXTURE-CI-ONLY.zip'
+          with zipfile.ZipFile(out,'w') as z:
+           for n,b in sorted({'release-set.json':J(m),'artifacts/local/web.zip':w}.items()):
+            i=zipfile.ZipInfo(n,(2026,11,27,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=zipfile.ZIP_DEFLATED;z.writestr(i,b,compresslevel=9)
+          with zipfile.ZipFile(out) as z:assert z.read('artifacts/local/web.zip')==w
+          script=Path('qa/factory/prepare_checkpoint77_native.py' if fault=='none' else 'qa/factory/prepare_checkpoint83_fault.py');s=script.read_text(encoding='utf-8')
+          s=s.replace("origin=os.environ[\"SOKNA_ORIGIN\"]", "origins['GG']=('a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f','bafc41567eb3ed3db042855474bf51fdacc2a926094885f561411ae4dae42fa6')\norigin=os.environ[\"SOKNA_ORIGIN\"]")
+          s=s.replace('LOCAL-231GG-PANEL-FIXTURE-CI-ONLY.zip','LOCAL-231GH-PANEL-FIXTURE-CI-ONLY.zip').replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',H(w)).replace("@('GE','GF')","@('GE','GF','GG')")
+          s=s.replace(" $fault=$env:SOKNA_FAULT\n $args=", " $fault=$env:SOKNA_FAULT\n $args=")
+          # Preserve exact previous runner behavior, add separate evidence of quarantine rejection via the static install gate.
+          s=s.replace("(tmp/'native-matrix.ps1').write_text(s,encoding='utf8')", "(tmp/'native-matrix.ps1').write_text(s,encoding='utf8')")
+          os.environ['SOKNA_CURRENT_QA_ZIP']=str(out);os.environ['SOKNA_MATRIX_TARGET_ZIP']=str(out)
+          exec(compile(s,str(script),'exec'),{'__file__':str(script.resolve()),'__name__':'__main__'})
+          # Export exact fixture path and pinned original hash for separate receipt reconciliation.
+          (t/'cc37-fixture.json').write_bytes(J({'source_outer_sha256':H(q.read_bytes()),'fixture_outer_sha256':H(out.read_bytes()),'web_sha256':H(w),'target_tree_sha256':m['targets']['local']['managed_tree_sha256'],'origin':origin,'fault':fault,'production_authorized':False,'scope':'DISPOSABLE_CI_ONLY'}))
+          '@ | Set-Content "$env:RUNNER_TEMP/native37.py" -Encoding utf8NoBOM
+          python "$env:RUNNER_TEMP/native37.py"
+          if($LASTEXITCODE -ne 0){throw 'FIXTURE_PREPARE_FAILED'}
+          $env:SOKNA_MATRIX_TARGET_ZIP=Join-Path $env:RUNNER_TEMP 'LOCAL-231GH-PANEL-FIXTURE-CI-ONLY.zip'
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'NATIVE_MATRIX_FAILED'}
+          }finally{Pop-Location}
+      - name: Bind native test receipt to original and identical web bytes, not original outer admission
+        shell: pwsh
         run: |
-          set -euo pipefail
-          cat > "$RUNNER_TEMP/emergency37b.php" <<'PHPCODE'
-          <?php
-          declare(strict_types=1);
-          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
-          use Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge as Bridge;
-          use Sokna\PublicEdge\Emergency\PublicUpdateException;
-          use Sokna\PublicEdge\Core\Migrations;
-          use Sokna\PublicEdge\Health\PublicHealthService;
-          if(getenv('GITHUB_ACTIONS')!=='true'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only'||$argc!==4)exit(2);
-          [$script,$phase,$web,$pkg]=$argv;
-          function ck($v,$msg){if(!$v)throw new RuntimeException($msg);echo "PASS $msg\n";}
-          $rec=json_decode(file_get_contents(dirname($pkg).'/factory-evidence-decision.json'),true,512,JSON_THROW_ON_ERROR);$want=$rec['public'];ck(hash_file('sha256',$pkg)==='c8dd86c49109c7948e1cab0ffd1d10a74e529587ed4faaf7342a1002adaf38e8','exact CC36 public archive');
-          foreach(['src/Shared/IranTime.php','src/Emergency/PublicUpdateException.php','src/Update/RoutinePublicUpdateService.php','src/Core/Migrations.php','src/Core/SafeErrors.php','src/Health/PublicHealthService.php','src/Update/IndependentEmergencyRoutineBridge.php'] as $n)require $web.'/'.$n;
-          $storage=$web.'/storage';if(!is_dir($storage))mkdir($storage,0700,true);
-          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_cp107;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());$b=new Bridge($r,$storage,fn()=>$m->pendingVersions(),fn()=>$h->status()['body']);
-          if($phase==='stage'){
-           ck(count($m->appliedVersions())===11,'actual repaired baseline DB ledger');
-           $old=$r->currentVersion();$tree=$r->managedTreeDigest();ck($tree==='0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584','exact repaired 35ip baseline');
-           $s=$b->snapshot();ck($s['channel']==='emergency_independent_routine_v2'&&$s['managed_tree_matches_expected']===true,'reconciled independent emergency owner');
-           $st=$b->stageUploadedZip($pkg,'qa37');ck($st['package_sha256']===hash_file('sha256',$pkg)&&$st['version']===$want['version'],'same archive staged by emergency bridge');ck($r->currentVersion()===$old&&$r->managedTreeDigest()===$tree,'stage leaves active tree unchanged');
-           $a=$b->activateStaged('qa37');ck($a['current_version']===$want['version']&&is_array($a['pending_verification'])&&is_file($r->maintenanceLockPath()),'emergency activation stays pending');
-           try{$b->stageUploadedZip($pkg,'qa37');throw new RuntimeException('stage unexpectedly accepted');}catch(PublicUpdateException $e){ck($e->errorCode==='routine_activation_in_progress','pending stage cannot be overwritten');}
-          }elseif($phase==='commit'){
-           ck($r->currentVersion()===$want['version']&&$r->managedTreeDigest()===$want['managed_tree_sha256'],'fresh process exact target tree');
-           $s=$b->commitPending('qa37');ck($s['active_version']===$want['version']&&$s['pending_verification']===null&&$s['db_forward_fence']===null&&!is_file($r->maintenanceLockPath()),'fresh emergency commit');ck(count($m->verifiedAppliedVersions())===12&&(int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='cp107-disposable'")->fetchColumn()===1,'preserved real data and migration ledger');
-           foreach($want['protected_pins'] as $n=>$v)ck(hash_file('sha256',$web.'/'.$n)===$v,'protected unchanged '.$n);
-           try{$b->rollback('qa37');throw new RuntimeException('rollback unexpectedly accepted');}catch(PublicUpdateException $e){ck($e->errorCode==='emergency_rollback_not_qualified','unqualified old code rollback rejected');}
-          }else exit(2);
-          PHPCODE
-          php "$RUNNER_TEMP/emergency37b.php" stage "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/candidate/PUBLIC-35IZ-UPDATE-QA-DO-NOT-INSTALL.zip" | tee "$RUNNER_TEMP/cc37b-receipts/stage.txt"
-          php "$RUNNER_TEMP/emergency37b.php" commit "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/candidate/PUBLIC-35IZ-UPDATE-QA-DO-NOT-INSTALL.zip" | tee "$RUNNER_TEMP/cc37b-receipts/commit.txt"
+          $r=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
+          $f=Get-Content "$env:RUNNER_TEMP/cc37-fixture.json" -Raw|ConvertFrom-Json
+          if($r.status -ne 'PASS' -or $r.candidate_sha256 -cne $f.fixture_outer_sha256 -or $r.target_tree_sha256 -cne $f.target_tree_sha256 -or !$r.independent_restore -or $r.actual_field_host -or $r.distribution_authorized){throw 'RECEIPT_DRIFT'}
+          if($r.phase -ne 'COMMITTED' -or $r.migrations -ne 93){throw 'FORWARD_COMMIT_NOT_PROVEN'}
+          if($env:SOKNA_FAULT -eq 'none' -and !$r.panel_activation_tested){throw 'PANEL_NOT_PROVEN'}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC37B-35IP-EMERGENCY-RECEIPTS-QA-ONLY
-          path: ${{ runner.temp }}/cc37b-receipts/*
+          name: SOKNA-CC38-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-QA-ONLY
+          path: |
+            ${{ runner.temp }}/matrix-receipt.json
+            ${{ runner.temp }}/cc37-fixture.json
+            ${{ runner.temp }}/quarantine-negative.txt
+          if-no-files-found: warn
           retention-days: 7
