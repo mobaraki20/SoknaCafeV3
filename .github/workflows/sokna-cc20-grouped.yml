@@ -1,4 +1,4 @@
-name: SOKNA 48B actual financial dates from UI on frozen Local (QA only)
+name: SOKNA 49 actual historical and current finance peer compatibility (QA only)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,7 +7,7 @@ permissions:
   contents: read
   actions: read
 jobs:
-  financial-ui:
+  mixed-peer:
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     services:
@@ -34,114 +34,121 @@ jobs:
           name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Real financial form submission with synthetic records only
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45389831526
+          name: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior
+      - name: Real signed historical and current finance projection peers
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc48b"; mkdir -p "$W/local" "$W/receipts"
+          W="$RUNNER_TEMP/cc49"; mkdir -p "$W/local" "$W/public" "$W/old/local" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
+          B="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
+          O="$RUNNER_TEMP/prior/SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip"
+          echo "f864a42fb82124e4f16c9b9437464256ef3b59d79d26518232cf05cbc9393f42  $O" | sha256sum -c -
+          echo "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
+          unzip -q "$B" -d "$W/public"
           export QA_WORK="$W" TMPDIR="$W"
+          python - "$W" "$O" "$A" <<'PY'
+          import pathlib,sys,zipfile,io,hashlib
+          W,old,current=map(pathlib.Path,sys.argv[1:]);H=lambda b:hashlib.sha256(b).hexdigest()
+          with zipfile.ZipFile(old) as z:
+           b=z.read('artifacts/local/web.zip')
+          assert H(b)=='3f5860ffbc30fa718b68709d89780ae56d3898fb9cc100157580d98d9ca2b2f9'
+          with zipfile.ZipFile(io.BytesIO(b)) as z:z.extractall(W/'old/local')
+          assert H(current.read_bytes())=='cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a'
+          s=pathlib.Path('qa/cp160/fixture.php').read_text()
+          # Use exactly the old installed schema, with the basic synthetic partial-payment seed; omit unrelated current report setup.
+          start=s.index('// Independent QA-only rows')
+          end=s.index('$iid=(string)',start)
+          s=s[:start]+'$reportDay=$core->time()->civilDate();\n'+s[end:]
+          s=s.replace('sokna_cp150','sokna_cc49_old')
+          (W/'old-fixture.php').write_text(s)
+          PY
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/fixture.txt"
-          cat > "$W/verify.php" <<'PHP'
+          php qa/cp160/fixture.php "$W/local" > "$W/receipts/current-fixture.txt"
+          php "$W/old-fixture.php" "$W/old/local" > "$W/receipts/old-fixture.txt"
+          # Both independent synthetic installations use the same test peer binding for this transition experiment.
+          php -r '$old=require $argv[1];$new=require $argv[2];$old["installation"]["id"]=$new["installation"]["id"];$old["public"]=$new["public"];file_put_contents($argv[1],"<?php return ".var_export($old,true).";");' "$W/old/config.php" "$W/config.php"
+          php qa/cp160/public-fixture.php "$W/public"
+          cat > "$W/peer.php" <<'PHP'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $p=sokna_local_bootstrap($cfg)->database();
-          if($argv[2]==='seed'){
-           if((int)$p->query('SELECT COUNT(*) FROM tax_rate_versions')->fetchColumn()===0)$p->exec("INSERT INTO tax_rate_versions(rate_bps,effective_from) VALUES(500,'2020-01-01 00:00:00')");
+          [$s,$mode,$root,$cfgPath,$sequence]=$argv;
+          $root=realpath($root);require $root.'/bootstrap.php';
+          $cfg=require $cfgPath;
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||!in_array($cfg['db']['name']??'',['sokna_cp150','sokna_cc49_old'],true)||($cfg['public']['base_url']??'')!=='http://127.0.0.1:18766/public')exit(2);
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
+          $core=\Sokna\Local\Core\Bootstrap::fromArray($cfg);$p=$core->database();
+          $versions=$p->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN);
+          $old=str_contains(file_get_contents($root.'/VERSION.txt'),'.231gc-');
+          ck(count($versions)===($old?91:93),'actual '.($old?'old 91':'current 93').' migration ledger');
+          if($mode==='projection'){
+           $model=$core->publicProjectionBuilder()->remoteModelsFor(['operations'])[0];
+           $state=$model['payload']['finance_projection'];
+           ck($state['status']==='ready','actual financial projection ready');
+           ck(($state['remaining_discount_correction_contract']??0)===($old?0:1),'actual code capability '.($old?'old':'new'));
+           ck(count($model['payload']['settlement_accounts'])>0,'actual accounts projected');
+           $r=$core->publicEdgeSyncClient()->postRaw('/api/v1/local/read-model-v2',['format'=>'sokna-read-model-v2','up_to_sequence'=>(int)$sequence,'model'=>$model],5);
+           ck($r['status']===200&&($r['body']['ack_sequence']??0)===(int)$sequence,'signed real Public acknowledgement '.$sequence);
+           $h=$core->publicEdgePublisher()->syncHeartbeat(5);ck(($h['success']??false)===true,'real signed heartbeat');
+           echo json_encode(['hash'=>$model['source_version'],'finance'=>$state],JSON_THROW_ON_ERROR).PHP_EOL;exit;
+          }
+          if($mode==='downgrade'){
+           ck(!$old,'current installation owns the downgrade decision');
+           $catalog=[];foreach(glob(dirname($root).'/old/local/database/migrations/*.sql') as $file)$catalog[basename($file,'.sql')]=hash_file('sha256',$file);
+           try{\Sokna\Local\Domain\Update\UpdateMigrationPolicy::assertInstalledLineage($versions,$catalog,$root.'/database/migrations');throw new RuntimeException('unsafe downgrade accepted');}
+           catch(\Sokna\Local\Domain\Update\LocalUpdateException $e){ck($e->errorCode==='schema_downgrade_unsupported','actual current ledger rejects incompatible direct rollback');}
            exit;
           }
-          $rows=json_decode(file_get_contents($w.'/receipts/accepted-ui.json'),true,512,JSON_THROW_ON_ERROR);
-          if(count($rows)!==7)throw new RuntimeException('missing UI mutation receipts '.count($rows));
-          foreach($rows as $v){$kind=$v['kind'];$table=match($kind){'tax_rate'=>'tax_rate_versions','tax_policy'=>'tax_item_policy_versions','expense_create'=>'expenses'};$q=$p->prepare('SELECT * FROM '.$table.' WHERE id=?');$q->execute([$v['id']]);$r=$q->fetch(PDO::FETCH_ASSOC);
-           $time=$kind==='expense_create'?'occurred_at':'effective_from';$value=match($kind){'tax_rate'=>'rate_bps','tax_policy'=>'custom_rate_bps','expense_create'=>'amount'};
-           if(!$r||$r[$time]!==$v['expected']||(int)$r[$value]!==(int)($v['rate_bps']??$v['amount']))throw new RuntimeException('UI receipt DB mismatch '.$kind);
-           echo 'PASS actual UI saved database row '.$kind.' '.$v['expected'].PHP_EOL;
-          }
+          exit(2);
           PHP
-          php "$W/verify.php" "$W" seed
-          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" > "$W/receipts/local-http.log" 2>&1 &
+          php "$W/peer.php" downgrade "$W/local" "$W/config.php" 0 | tee "$W/receipts/downgrade.txt"
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 &
           sleep 2
+          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
           cat > "$W/ui.cjs" <<'JS'
-          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs');
-          const W=process.env.QA_WORK,base='http://127.0.0.1:18765',f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
-          const accepted=[];let failures=0;
+          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs'),{execFileSync}=require('child_process');
+          const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
+          const sid=Number(f.hall.partial.session);
           function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)}
-          async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){failures++;console.log('GROUP FAIL '+n+' '+e.stack)}}
-          async function auth(p){await p.goto(base+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!=='qa-target'){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="qa-target"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'real administrator login')}
-          async function ready(p,sel){await p.waitForFunction(s=>{const el=document.querySelector(s);return el&&!el.disabled&&el.offsetParent!==null},sel,{timeout:20000})}
-          async function putDate(p,selector,iso){
-           const wrap=p.locator(selector+' + .sc-jalali-control');
-           const date=wrap.locator('.sc-jalali-date'),time=wrap.locator('.sc-jalali-time');
-           const j=iso?await p.evaluate(s=>window.SoknaJalali.gregorianToJalali(...s.slice(0,10).split('-').map(Number)).map((n,i)=>String(n).padStart(i?2:4,'0')).join('/'),iso):'';
-           await date.fill(j);if(await time.count())await time.fill(iso?iso.slice(11,16):'');
-           await ck(await p.locator(selector).inputValue()===iso,'visible date produces correct hidden value '+selector+' '+iso);
-          }
-          async function mutate(p,selector,action){
-           const pending=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/finance/api.php')&&r.request().postDataJSON().action===action);
-           await p.locator(selector).click();const r=await pending,j=await r.json();ck(r.ok()&&j.success,'UI saved '+action);
-           const data=r.request().postDataJSON();await ready(p,selector);
-           return {data,result:j.result}
-          }
-          async function checkTax(p,kind){
-           const rate=kind==='tax_rate',field=rate?'[data-tax-effective]':'[data-tax-policy-effective]',save=rate?'[data-save-tax-rate]':'[data-save-tax-policy]';
-           if(!rate){await ready(p,'[data-tax-item]');await p.locator('[data-tax-item]').selectOption(String(f.tax_item));await ready(p,save);await p.locator('[data-tax-policy]').selectOption('custom_rate')}
-           for(const [i,iso] of ['2026-03-21T04:05','2030-01-02T09:15',''].entries()){
-            await ready(p,save);
-            await p.locator(rate?'[data-tax-rate]':'[data-tax-custom]').fill(String(7+i));
-            await putDate(p,field,iso);
-            const started=Date.now(),r=await mutate(p,save,kind);
-            ck(r.data.effective_from===iso.replace('T',' '),'actual UI submitted exact intent '+kind+' '+(iso||'now'));
-            if(iso)ck(r.result.effective_from.startsWith(iso+':00')&&r.result.effective_from.endsWith('+03:30'),'response confirms Iran local timestamp '+kind);
-            else ck(Math.abs(Date.parse(r.result.effective_from)-started)<120000,'blank intent records now '+kind);
-            accepted.push({kind,id:r.result.id,expected:r.result.effective_from.slice(0,19).replace('T',' '),rate_bps:(7+i)*100});
+          function sync(old,seq){console.log(execFileSync('php',[W+'/peer.php','projection',W+(old?'/old/local':'/local'),W+(old?'/old/config.php':'/config.php'),String(seq)],{encoding:'utf8'}))}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true}),c=await b.newContext({viewport:{width:1280,height:900},locale:'fa-IR'}),p=await c.newPage();p.setDefaultTimeout(16000);
+          try{
+           sync(true,1);
+           await p.goto(base+'/staff/login');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key='user:'+f.users.find(u=>u.name==='qa-target').id;
+           if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="'+key+'"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}
+           await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);
+           await p.goto(base+'/staff/hall/');await p.waitForFunction(()=>!!window.SoknaHallTransport);
+           async function state(old,seq){
+            const res=await p.request.get(base+'/api/staff/read?model=operations');const r=await res.json();ck(res.ok()&&r.payload.finance_projection.status==='ready','real signed projection visible to logged-in browser '+seq);
+            ck((r.payload.finance_projection.remaining_discount_correction_contract||0)===(old?0:1),'browser sees actual version capability '+seq);
+            const x=await p.evaluate(async sid=>{await window.SoknaHallTransport.request('/api/hall?action=snapshot');const h=window.SoknaHallTransport;return {correct:h.canCorrectDiscount(sid),resolve:h.canResolveCorrection(),abandon:h.canAbandonCorrection(),pending:h.pendingCorrectionForSession(sid)?.request_id||null}},sid);
+            ck(x.resolve===!old&&x.abandon===!old,'real browser correction resolution guarded '+seq);return x;
            }
-           await p.screenshot({path:W+'/receipts/'+kind+'.png'});
-          }
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const c=await b.newContext({viewport:{width:1280,height:900},locale:'fa-IR'});const p=await c.newPage();p.setDefaultTimeout(20000);
-           try{await auth(p);await p.goto(base+'/finance/?tab=tax');await p.locator('[data-tab="settings"]').click();await ready(p,'[data-save-tax-rate]');
-           await group('FIN-L220 UI tax rate explicit future now',()=>checkTax(p,'tax_rate'));
-           await group('FIN-L220 UI item policy explicit future now',()=>checkTax(p,'tax_policy'));
-           await group('FIN-L220 actual invoice filter dates',async()=>{
-            await p.goto(base+'/finance/?tab=receipts');await p.locator('[data-invoice-from] + .sc-jalali-control .sc-jalali-date').waitFor({state:'visible'});
-            await putDate(p,'[data-invoice-from]','2026-01-01');
-            const pending=p.waitForResponse(r=>{const u=new URL(r.url());return u.pathname.endsWith('/finance/api.php')&&u.searchParams.get('action')==='invoices'&&u.searchParams.get('from')==='2026-01-01'&&u.searchParams.get('to')==='2030-12-31'});
-            await putDate(p,'[data-invoice-to]','2030-12-31');const res=await pending;ck(res.ok()&&(await res.json()).success,'real invoice search preserved both dates');
-            const req=[];const listener=r=>{if(r.url().includes('/finance/api.php')&&new URL(r.url()).searchParams.get('action')==='invoices')req.push(r.url())};p.on('request',listener);
-            await p.locator('[data-invoice-from] + .sc-jalali-control .sc-jalali-date').fill('1405/99/99');await p.waitForTimeout(1000);
-            ck(req.length===0,'invalid invoice date does not send an unfiltered request');p.off('request',listener);
-            await putDate(p,'[data-invoice-from]','2026-01-01');await p.screenshot({path:W+'/receipts/invoice-filter.png'});
-           });
-           await group('FIN-L220 real expense form timestamp',async()=>{
-            await p.goto(base+'/operations/?tab=expenses');await ready(p,'[data-open="expense-create"]');
-            await p.locator('[data-open="expense-create"]').click();const form=p.locator('form[data-form="expense-create"]');await form.waitFor({state:'visible'});
-            const cat=form.locator('select[name="category_key"]');await p.waitForFunction(()=>document.querySelector('form[data-form="expense-create"] select[name="category_key"]')?.options.length>0);
-            if(!await cat.inputValue())await cat.selectOption({index:0});
-            await form.locator('[name="amount"]').fill('12345');await form.locator('[name="description"]').fill('Synthetic CC48 dated expense');
-            const sel='form[data-form="expense-create"] [name="occurred_at"]';
-            const iso=await p.evaluate(()=>{const d=new Date(Date.now()-60000),a=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d).map(x=>[x.type,x.value]));return a.year+'-'+a.month+'-'+a.day+'T'+a.hour+':'+a.minute});
-            await putDate(p,sel,iso);
-            const pending=p.waitForResponse(r=>r.url().includes('/operations/api.php')&&r.request().method()==='POST'&&r.request().postDataJSON().action==='expense_create');
-            await form.locator('[data-ops-submit]').click();const res=await pending,j=await res.json();
-            ck(res.ok()&&j.success&&Number(j.result.id)>0,'actual UI expense committed');
-            ck(res.request().postDataJSON().occurred_at===iso.replace('T',' '),'expense intent preserved');
-            accepted.push({kind:'expense_create',id:j.result.id,expected:iso.replace('T',' ')+':00',amount:12345});await form.waitFor({state:'hidden'});await p.screenshot({path:W+'/receipts/expense.png'});
-           });
-           }finally{fs.writeFileSync(W+'/receipts/accepted-ui.json',JSON.stringify(accepted));await c.close();await b.close()}
-           if(failures)process.exitCode=1;
-          })().catch(e=>{console.error(e);process.exitCode=1});
+           let x=await state(true,1);ck(!x.correct,'old peer prevents new correction');
+           sync(false,2);x=await state(false,2);ck(x.correct,'current peer enables correction');
+           // Simulate only the browser's persisted uncertain-request receipt, not any server response.
+           const ledger=await p.evaluate(sid=>{const key='sokna:staff-command-ledger:v1:'+((document.body.dataset.appBase||document.body.dataset.basePath||'').replace(/\/$/,'')||'/')+':'+(document.body.dataset.projectionId||'');localStorage.setItem(key,JSON.stringify([{kind:'settlement.discount_correction',session_id:sid,request_id:'qa49-pending-synthetic',keep_until:Number.MAX_SAFE_INTEGER}]));return {key,pending:window.SoknaHallTransport.pendingCorrectionForSession(sid)?.request_id}},sid);
+           ck(ledger.pending==='qa49-pending-synthetic','explicit synthetic uncertain receipt installed');
+           sync(true,3);x=await state(true,3);ck(!x.correct&&x.pending==='qa49-pending-synthetic','actual old projection retains pending identity');
+           let posts=0;const listener=r=>{if(r.method()==='POST'&&r.url().includes('/api/staff/realtime'))posts++};p.on('request',listener);
+           const rejected=await p.evaluate(async sid=>{try{await window.SoknaFinanceTransport.post('',{action:'discount_correction',session_id:sid,request_id:'qa49-duplicate-attempt'});return ''}catch(e){return e.code}},sid);
+           ck(rejected==='request_pending'&&posts===0,'no duplicate financial POST to real Public');
+           sync(false,4);x=await state(false,4);ck(!x.correct&&x.pending==='qa49-pending-synthetic','current peer return retains same request and enables resolution only');
+           await p.screenshot({path:W+'/receipts/mixed-peer.png',animations:'disabled'});p.off('request',listener);
+           console.log('GROUP PASS actual older/current signed projections and real browser guard');
+          }finally{await c.close();await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
           JS
-          node "$W/ui.cjs" | tee "$W/receipts/browser-results.txt"
-          php "$W/verify.php" "$W" verify | tee "$W/receipts/db-results.txt"
+          node "$W/ui.cjs" | tee "$W/receipts/mixed.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC48B-FINANCIAL-UI-RECEIPTS
-          path: ${{ runner.temp }}/cc48b/receipts
+          name: SOKNA-CC49-REAL-MIXED-PEER-RECEIPTS
+          path: ${{ runner.temp }}/cc49/receipts
           retention-days: 30
