@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-38 seven remaining native Local origins (QA ONLY)
+name: SOKNA RELEASE PRIORITY-39 four remaining native Local interruption boundaries (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -14,13 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {origin: GF, fault: none, ledger: '93', run: '45718662312', artifact: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY, file: SOKNA-LOCAL-231GF-CONTROLLED-HOME-CANARY.zip}
-          - {origin: R301, fault: none, ledger: '83', run: '44561325048', artifact: SOKNA-R301-LOCAL-CONTROLLED-INSTALL-EXACT-ARTIFACT, file: SOKNA-R301-LOCAL-231FS-PUBLIC-MOVE-CONTROLLED-INSTALL.zip}
-          - {origin: R304, fault: none, ledger: '83', run: '44639218881', artifact: SOKNA-R304-EXACT-CANDIDATES-REQUIRE-ONSITE-PREFLIGHT, file: SOKNA-R304-LOCAL-231FU-NATIVE-CANDIDATE-NOT-FIELD.zip}
-          - {origin: R306, fault: none, ledger: '83', run: '44723958829', artifact: SOKNA-R306-EXACT-LOCAL-PUBLIC-CANDIDATES-PREFLIGHT, file: SOKNA-R306-LOCAL-231FV-CONTROLLED-PREFLIGHT.zip}
-          - {origin: R307, fault: none, ledger: '83', run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
-          - {origin: R3, fault: none, ledger: '90', run: '45363732321', artifact: SOKNA-LOCAL-231GB-CONTROLLED-OPERATOR-RELEASE, file: SOKNA-LOCAL-231GB-UNIVERSAL-UPDATE.zip}
-          - {origin: GE, fault: none, ledger: '93', run: '45565963138', artifact: SOKNA-FINAL-FROZEN-DO-NOT-INSTALL, file: LOCAL-FINAL-FROZEN.zip}
+          - {origin: C2, fault: APACHE_STOPPED, ledger: '91'}
+          - {origin: C2, fault: DATABASE_BACKUP_VERIFIED, ledger: '91'}
+          - {origin: C2, fault: POINTER_SWITCHED, ledger: '91'}
+          - {origin: C2, fault: COMMITTED, ledger: '91'}
     env:
       SOKNA_R186_CI_ONLY: 'YES'
       SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
@@ -128,12 +125,15 @@ jobs:
           $r=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
           $f=Get-Content "$env:RUNNER_TEMP/cc37-fixture.json" -Raw|ConvertFrom-Json
           if($r.status -ne 'PASS' -or $r.candidate_sha256 -cne $f.fixture_outer_sha256 -or $r.target_tree_sha256 -cne $f.target_tree_sha256 -or !$r.independent_restore -or $r.actual_field_host -or $r.distribution_authorized){throw 'RECEIPT_DRIFT'}
-          if($r.phase -ne 'COMMITTED' -or $r.migrations -ne 93){throw 'FORWARD_COMMIT_NOT_PROVEN'}
+          $forward=$env:SOKNA_FAULT -in @('POINTER_SWITCHED','COMMITTED')
+          $expectedPhase=if($forward){'COMMITTED'}else{'RECOVERED_TO_PREVIOUS_SLOT'}
+          $expectedLedger=if($forward){93}else{91}
+          if($r.phase -ne $expectedPhase -or $r.migrations -ne $expectedLedger){throw 'EXPECTED_RECOVERY_NOT_PROVEN'}
           if($env:SOKNA_FAULT -eq 'none' -and !$r.panel_activation_tested){throw 'PANEL_NOT_PROVEN'}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC38-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-QA-ONLY
+          name: SOKNA-CC39-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-QA-ONLY
           path: |
             ${{ runner.temp }}/matrix-receipt.json
             ${{ runner.temp }}/cc37-fixture.json
