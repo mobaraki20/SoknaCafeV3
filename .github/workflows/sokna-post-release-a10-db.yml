@@ -1,4 +1,4 @@
-name: SOKNA A12 real DB and grouped full pages QA
+name: SOKNA A12 grouped mobile and desktop interaction confirmation
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -135,7 +135,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A12-FULL-PAGE-GATE-EVIDENCE-NO-INSTALL
+          name: SOKNA-A12-CONFIRMATION-EVIDENCE-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
