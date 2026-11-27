@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-35 exact update evidence and isolated business recovery (QA ONLY)
+name: SOKNA RELEASE PRIORITY-36 exact four package candidate and native clean gate (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -9,7 +9,7 @@ permissions:
 jobs:
   acceptance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 23
+    timeout-minutes: 25
     services:
       mariadb:
         image: mariadb:11.4
@@ -1325,108 +1325,200 @@ jobs:
               assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
               print('PASS EXACT CASE-CLOSURE-35',host,n,actual)
           PYCODE
-      - name: Essential recovery and verified update display acceptance
+      - uses: actions/checkout@v4
+        with:
+          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          path: historical-factory
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+      - name: Build exact standard format QA archives from verified cumulative source
         shell: bash
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/cp148-qa"
-          export QA_WORK="$W" TMPDIR="$W"
-          cat > "$W/gate35.php" <<'SOKNA_QA_gate35_php'
-          <?php
-          declare(strict_types=1);
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
-          $root=realpath($argv[1]);require $root.'/bootstrap.php';$f=\Sokna\Local\Domain\System\MaintenanceSupportEvidence::class;
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
-          $sha=str_repeat('a',64);$id=str_repeat('b',32);$actor='user:17';$ref=$sha.'.zip';
-          // Contract fields read from pinned native ReleaseSetVerifierStager and Stage coordinator; not a native execution receipt.
-          $r=['ok'=>true,'data'=>['operation'=>['operation_id'=>$id,'operator_id'=>$actor,'operation_type'=>'update.local-stage','state'=>'staged','package_ref'=>$ref], 'receipt'=>['format'=>'sokna-maintenance-staged-release-v1','schema_version'=>1,'release_set_id'=>'sokna-release-qa35','sequence'=>202611270001,'manifest_sha256'=>str_repeat('c',64),'package_sha256'=>$sha,'operator_authorized'=>true,'signature_verified'=>false,'artifact_integrity_verified'=>true,'preflight_identity_match'=>true,'activation_performed'=>false,'database_mutation_performed'=>false,'stage_root'=>'private-not-exported']]];
-          $proof=$f::stageIdentity($r,$ref,$actor);ck($proof===['stage_operation_id'=>$id,'package_sha256'=>$sha,'manifest_sha256'=>str_repeat('c',64),'release_set_id'=>'sokna-release-qa35','sequence'=>202611270001],'exact stage evidence projection and no private paths');
-          foreach(['format'=>'wrong','schema_version'=>2,'release_set_id'=>'../bad','sequence'=>0,'manifest_sha256'=>'abc','package_sha256'=>str_repeat('d',64),'operator_authorized'=>false,'signature_verified'=>true,'artifact_integrity_verified'=>false,'preflight_identity_match'=>false,'activation_performed'=>true,'database_mutation_performed'=>true] as $k=>$v){$bad=$r;$bad['data']['receipt'][$k]=$v;ck($f::stageIdentity($bad,$ref,$actor)===null,'reject stage receipt '.$k);}
-          foreach(['operation_id'=>'bad','operator_id'=>'user:99','operation_type'=>'update.local-package-preflight','state'=>'running','package_ref'=>str_repeat('d',64).'.zip'] as $k=>$v){$bad=$r;$bad['data']['operation'][$k]=$v;ck($f::stageIdentity($bad,$ref,$actor)===null,'reject mismatched operation '.$k);}
-          $bad=$r;unset($bad['data']['receipt']);ck($f::stageIdentity($bad,$ref,$actor)===null,'reject missing stage receipt');$bad=$r;$bad['ok']=false;ck($f::stageIdentity($bad,$ref,$actor)===null,'reject unauthenticated result');
-          echo "GROUP PASS SYS-L520 exact native receipt contract projection (fixture, not actual install)\n";
-          SOKNA_QA_gate35_php
-          cat > "$W/restore35.php" <<'SOKNA_QA_restore35_php'
-          <?php
-          declare(strict_types=1);
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
-          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}
-          $mode=$argv[2]??'seed';$pass='synthetic-cc35-backup-password';$path=$W.'/cc35-business.skbf';$fpath=$W.'/cc35-restore-fixture.json';
-          function digest(PDO $p,string $t){$order=$t==='guest_media_derivatives'?'media_id,variant_key':'id';$rows=$p->query('SELECT * FROM `'.$t.'` ORDER BY '.$order)->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$row)foreach($row as &$v)if($v!==null)$v=(string)$v;unset($v,$row);return ['count'=>count($rows),'sha256'=>hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR))];}
-          if($mode==='seed'){
-           $img=imagecreatetruecolor(400,300);imagefill($img,0,0,imagecolorallocate($img,48,141,103));imagepng($img,$W.'/cc35-image.png');imagedestroy($img);
-           $g=$c->guestContent();$upload=$g->importUpload($W.'/cc35-image.png','cc35-image.png','QA35 actual restore media',$admin);$key=$upload['media_key'];$m=$g->localPreview($key,$admin);ck(is_file($m['path']),'source actual image file');
-           $mediaRoot=rtrim($cfg['app']['data_dir'],'/\\').'/guest-media/';$rel=substr($m['path'],strlen($mediaRoot));ck(str_starts_with($m['path'],$mediaRoot)&&$rel!=='','source image within managed root');
-           $tables=['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','guest_media_assets','guest_media_derivatives'];$f=['source'=>$cfg['installation']['id'],'media_key'=>$key,'rel'=>$rel,'media_sha'=>hash_file('sha256',$m['path']),'tables'=>[]];
-           foreach($tables as $t)$f['tables'][$t]=digest($p,$t);ck($f['tables']['settlement_records']['count']>0&&$f['tables']['orders']['count']>0,'nonempty original financial and order documents');
-           $r=$c->businessBackup()->createEncrypted($path,$pass,(int)$admin['id']);$f['sha']=hash_file('sha256',$path);ck($r['sha256']===$f['sha'],'actual encrypted business backup');file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));exit;
-          }
-          $f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);ck(hash_file('sha256',$path)===$f['sha'],'original encrypted bytes unchanged');
-          // Exactly isolated DB cloned schema in disposable CI only; no external endpoint configured.
-          // Copy only actual schema and migration ledger, never source business rows.
-          $p->exec('CREATE DATABASE sokna_cc35_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-          $t=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cc35_restore;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
-          $t->exec('SET FOREIGN_KEY_CHECKS=0');foreach($p->query('SHOW FULL TABLES WHERE Table_type=\'BASE TABLE\'')->fetchAll(PDO::FETCH_NUM) as $row){$name=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$name))throw new RuntimeException('unexpected table');$ddl=$p->query('SHOW CREATE TABLE `'.$name.'`')->fetch(PDO::FETCH_NUM)[1];$t->exec($ddl);}
-          foreach(['schema_migrations','schema_migration_statements'] as $name){$rows=$p->query('SELECT * FROM `'.$name.'`')->fetchAll(PDO::FETCH_ASSOC);foreach($rows as $row){$cols=array_keys($row);$t->prepare('INSERT INTO `'.$name.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}}$t->exec('SET FOREIGN_KEY_CHECKS=1');
-          ck($t->query('SELECT DATABASE()')->fetchColumn()==='sokna_cc35_restore'&&$t->query('SELECT COUNT(*) FROM users')->fetchColumn()==0,'separate empty target database');
-          $destId='qa35-target-independent';$dest=$W.'/cc35-dest-data';if(!is_dir($dest))mkdir($dest,0700,true);$o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$destId);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$destId,$auth,null,$dest);
-          $manifest=$b->inspectEncrypted($path,$pass);ck($manifest['stream_verified']===true&&$manifest['target_ready']===true&&$manifest['target_kind']==='empty'&&$manifest['source_installation_id']===$f['source'],'actual target inspection ready, source identity verified');
-          $r=$b->restoreEncryptedToEmptyTarget($path,$pass,0);ck($r['restored']===true&&$r['source_installation_id']===$f['source']&&$r['media_included']===true,'real encrypted restore completed');ck($r['public_authority_fence_confirmed']===false&&$r['public_authority_fence_error']==='public_not_configured','no false peer confirmation when Public not configured');ck($auth->phase()==='reenroll_required','target authority fenced independently');ck(scalar($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$destId,'destination machine identity preserved');
-          foreach($f['tables'] as $table=>$digest){ck(digest($t,$table)===$digest,'restored immutable rows '.$table);ck(digest($p,$table)===$digest,'source unchanged '.$table);}
-          $img=$dest.'/guest-media/'.$f['rel'];ck(is_file($img)&&hash_file('sha256',$img)===$f['media_sha'],'restored actual media exact bytes');
-          foreach(['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $table)ck((int)scalar($t,'SELECT COUNT(*) FROM `'.$table.'`')===0,'no old transport state '.$table);
-          try{$b->restoreEncryptedToEmptyTarget($path,$pass,0);throw new RuntimeException('unexpected second restore');}catch(Throwable $e){ck(($e->errorCode??'')==='target_not_empty','second restore blocked on populated destination');}
-          ck(hash_file('sha256',$img)===$f['media_sha'],'rejected repeat preserves media');echo "GROUP PASS SYS-L524 SYS-L545 SYS-L546 GUEST-L346 HALL-20261126-DISCOUNT-UI-02 actual empty target financial/media restore and authority isolation\n";
-          SOKNA_QA_restore35_php
-          cat > "$W/gate35.cjs" <<'SOKNA_QA_gate35_cjs'
-          const fs=require('fs'),crypto=require('crypto'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');
-          const W=process.env.QA_WORK,base='http://127.0.0.1:18765',f=JSON.parse(fs.readFileSync(W+'/cc35-package-fixture.json'));
-          const stageId='b'.repeat(32),preId='a'.repeat(32),opId='d'.repeat(32),key='activate-cc35-fixture-only-1234';
-          let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){fail++;console.log('GROUP FAIL '+n+' '+e.stack)}};
-          const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function wait(fn,n,ms=12000){let end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){ck(true,n);return;}}catch{}await sleep(100)}throw Error(n)}
-          async function auth(p){await p.goto(base+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!=='qa-target'){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="qa-target"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'real administrator login');}
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:1280,height:1000},locale:'fa-IR'});p.setDefaultTimeout(15000);let actual=null,error='',stageMismatch=false,activeVersion='3.0.0-previous-qa',activeTree='9'.repeat(64),posts=[],committed=false,received=Buffer.alloc(0);try{await auth(p);
-          // Read actual authenticated PHP GET and preserve all unrelated data. Only the absent Windows service and fault responses are simulated. No actual installation POST is forwarded.
-          actual=await p.evaluate(async()=>await (await fetch('/system/api.php?section=updates')).json());ck(actual.success===true&&actual.update_center?.local,'actual authenticated update API before fixture');
-          function state(){const r=structuredClone(actual);r.legacy_local_blocked=true;r.maintenance_updater={ready:true,verification_ready:true,code:'OK'};r.maintenance_panel_bound=true;r.maintenance_verification_bound=true;r.nonfatal_errors=error?{[error]:{message:'QA35 independent injected unavailable'}}:{};r.update_center.local={...r.update_center.local,current_version:activeVersion,active_version:activeVersion,managed_tree_sha256:activeTree,recovery_mode:{required:false},activation_journal:null,legacy_local_blocked:true};return r;}
-          await p.route('**/system/api.php*',async route=>{const req=route.request(),u=new URL(req.url()),section=u.searchParams.get('section');const json=body=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});if(req.method()==='GET'){if(section==='updates')return json(state());if(section==='updates_public_probe')return json({success:true,public_update_refresh:{status:'failed',error_code:'QA35_PUBLIC_OUTAGE'}});if(section==='maintenance_operation')return json({success:true,maintenance_operation:{operation_id:opId,state:committed?'committed':'running',terminal:committed}});return route.continue();}const d=req.postDataJSON();posts.push(d.action);if(d.action==='maintenance_inbox_chunk'){if(d.offset===0)received=Buffer.alloc(0);received=Buffer.concat([received,Buffer.from(d.chunk_base64,'base64')]);return json({success:true,upload:{received_bytes:received.length,complete:received.length===d.total_bytes,content_sha256_verified:crypto.createHash('sha256').update(received).digest('hex')===f.sha,release_signature_verified:false,package_ref:f.sha+'.zip'}});}if(d.action==='maintenance_local_preflight')return json({success:true,operator_preflight_verified:true,preflight_operation_id:preId});if(d.action==='maintenance_local_stage')return json({success:true,operator_stage_verified:true,stage_operation_id:stageId,stage_identity:{stage_operation_id:stageId,package_sha256:stageMismatch?'e'.repeat(64):f.sha,manifest_sha256:f.manifest_sha,release_set_id:f.release,sequence:202611270001}});if(d.action==='maintenance_local_activate')return json({success:true,accepted:true,activation_committed:false,operation_id:opId});return route.fulfill({status:403,body:'QA unexpected mutation blocked'});});
-          const activate=p.locator('[data-maintenance-activate]'),submit=p.locator('[data-maintenance-upload] button[type=submit]'),message=p.locator('[data-maintenance-upload-message]'),progress=p.locator('[data-maintenance-progress-message]');
-          async function reload(){await p.goto(base+'/system/?tab=updates');await wait(async()=>await p.locator('[data-maintenance-upload]').isVisible()&&!(await p.locator('[data-system-workspace]').getAttribute('aria-busy')),'functional panel loaded');}
-          await group('SYS-L519 independent unavailable snapshots and safe Local/Public isolation',async()=>{error='update_center';await reload();await wait(async()=>await p.locator('[data-updates-partial]').isVisible(),'partial center shown');ck(await submit.isDisabled()&&await activate.isDisabled(),'center failure cannot enable local stage or activate');error='core';await reload();await wait(async()=>await p.locator('[data-updates-partial]').isVisible(),'partial core shown');ck(await submit.isDisabled()&&await activate.isDisabled(),'core failure cannot enable local mutation');error='public_cached';await reload();await wait(async()=>!await submit.isDisabled(),'independent Public cache failure does not block Local file check');ck(await p.locator('[data-public-activate]').isDisabled(),'unknown Public cannot activate');error='';});
-          await group('SYS-L520 actual browser ZIP hash and target evidence (Windows response fixture)',async()=>{await reload();await wait(async()=>!await submit.isDisabled(),'ready synthetic Windows state');const input=p.locator('[data-maintenance-upload] input[type=file]');stageMismatch=true;await input.setInputFiles(W+'/cc35-fixture.zip');await submit.click();await wait(async()=>await message.innerText().then(x=>x.includes('تطبیق ندارد')),'mismatched exact hash rejected');ck(await activate.isDisabled(),'wrong stage cannot activate');stageMismatch=false;await input.setInputFiles(W+'/cc35-fixture.zip');await submit.click();await wait(async()=>!await activate.isDisabled(),'matching exact stage enables confirm');ck((await message.innerText()).includes(f.version)&&(await message.innerText()).includes(f.sha),'actual staged version and SHA displayed');ck(crypto.createHash('sha256').update(received).digest('hex')===f.sha,'browser sent exact fixture ZIP bytes');await p.screenshot({path:W+'/cc35-stage.png'});await reload();await wait(async()=>!await activate.isDisabled()&&(await message.innerText()).includes(f.sha),'same exact target survives page reload');await p.evaluate(()=>{window.SoknaUI.confirm=async(title,text)=>{sessionStorage.setItem('qa35-confirm',text);return false}});await activate.click();await wait(async()=>await p.evaluate(()=>!!sessionStorage.getItem('qa35-confirm')),'explicit cancel confirm captured');const txt=await p.evaluate(()=>sessionStorage.getItem('qa35-confirm'));ck(txt.includes(f.version)&&txt.includes(f.sha)&&!posts.includes('maintenance_local_activate'),'confirm exact target and cancel means zero activation');});
-          await group('SYS-L520 SYS-L521 committed response cannot prove wrong live version or tree',async()=>{await p.evaluate(({key,f,stageId})=>{sessionStorage.setItem('sokna-maintenance-pending-v1',key);sessionStorage.setItem('sokna-maintenance-pending-target-v1',JSON.stringify({id:stageId,version:f.version,tree:f.tree,sha:f.sha,release:f.release}));},{key,f,stageId});committed=true;activeVersion='3.0.0-unrelated-qa';activeTree=f.tree;await reload();await wait(async()=>await progress.innerText().then(x=>x.includes('ثبت نهایی')),'committed result observed');await sleep(400);ck(await p.evaluate(()=>!!sessionStorage.getItem('sokna-maintenance-pending-v1')),'different installed version not sufficient');activeVersion=f.version;activeTree='e'.repeat(64);await p.locator('[data-maintenance-progress-refresh]').click();await sleep(500);ck(await p.evaluate(()=>!!sessionStorage.getItem('sokna-maintenance-pending-v1')),'correct version wrong tree retains pending');error='update_center';activeTree=f.tree;await p.locator('[data-maintenance-progress-refresh]').click();await sleep(500);ck(await p.evaluate(()=>!!sessionStorage.getItem('sokna-maintenance-pending-v1')),'partial readback retains pending even with matching target');error='';await p.locator('[data-maintenance-progress-refresh]').click();await wait(async()=>!(await p.evaluate(()=>sessionStorage.getItem('sokna-maintenance-pending-v1'))),'matching version/tree and healthy readback clears pending');ck(!posts.includes('maintenance_local_activate'),'polling did not send install POST');});
-          }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
-          SOKNA_QA_gate35_cjs
-          python3 - "$W" <<'PYCODE'
-          import pathlib,sys,zipfile,json,hashlib
-          w=pathlib.Path(sys.argv[1]);f=w/'cc35-fixture.zip'
-          # Synthetic ZIP ONLY; no native installer or operational package. PHP actual endpoint mutations intercepted in browser test.
-          manifest={'for_install':True,'production_pass':True,'status':'CONTROLLED_FIXTURE','release_type':'local_only','release_set_id':'sokna-release-qa35','qualification':{'real_windows':True,'real_mariadb':True},'targets':{'local':{'version':'3.0.0-qa35-target','managed_tree_sha256':'c'*64}}}
-          raw=json.dumps(manifest).encode()
-          with zipfile.ZipFile(f,'w',zipfile.ZIP_DEFLATED) as z:
-              z.writestr('release-set.json',raw);z.writestr('artifacts/local/web.zip',b'fixture not installable')
+          cat > "$W/build36.py" <<'SOKNA_QA_CC36_build36_py'
+          """CP76/CP98/CP110 manifest-compatible candidate preparation. No qualification inherited; QA only."""
+          from pathlib import Path
+          import zipfile,io,json,hashlib,copy,sys
           H=lambda b:hashlib.sha256(b).hexdigest()
-          (w/'cc35-package-fixture.json').write_text(json.dumps({'sha':H(f.read_bytes()),'manifest_sha':H(raw),'version':manifest['targets']['local']['version'],'tree':'c'*64,'release':manifest['release_set_id']}))
+          J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          root,lb,pb,out=map(Path,sys.argv[1:]);out.mkdir(parents=True,exist_ok=True)
+          def read(b):
+           with zipfile.ZipFile(io.BytesIO(b)) as z:
+            assert z.testzip() is None and len(z.namelist())==len(set(z.namelist()))
+            assert all(n and not n.startswith('/') and '..' not in n.split('/') and '\\' not in n for n in z.namelist())
+            return {n:z.read(n) for n in z.namelist() if not n.endswith('/')}
+          def pack(d):
+           b=io.BytesIO()
+           with zipfile.ZipFile(b,'w') as z:
+            for n,v in sorted(d.items()):
+             i=zipfile.ZipInfo(n,(2026,11,27,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=zipfile.ZIP_DEFLATED
+             z.writestr(i,v,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+           return b.getvalue()
+          def tree(d):return H(''.join(n+'\0'+H(b)+'\n' for n,b in sorted(d.items())).encode())
+          def canonical(d,ex):return H(''.join(n+'\0'+str(len(b))+'\0'+H(b)+'\n' for n,b in sorted(d.items()) if n not in ex).encode())
+          def walk(p):return {f.relative_to(p).as_posix():f.read_bytes() for f in p.rglob('*') if f.is_file()}
+          L=walk(root/'local');Pfull=walk(root/'public');assert len(L)==626 and len(Pfull)==258
+          assert tree(L)=='0fe2896595b8cb0964a6797bfea64bee17c3271c605559481259dc27109ecf57' and tree(Pfull)=='21815114deed0c12042750de55e1e8c3add5d3468081b5e1031a0ca0cd38d09c'
+          assert H(lb.read_bytes())=='a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f';assert H(pb.read_bytes())=='2abc6270f88c59afc3e76dc11bd164f5238447b5f9e1f624ba2eb192f04f7e7e'
+          a=read(lb.read_bytes());m=json.loads(a['release-set.json']);L0=read(a['artifacts/local/web.zip']);b=read(pb.read_bytes());pm=json.loads(b['manifest.json']);P0={n[8:]:v for n,v in b.items() if n.startswith('payload/')}
+          assert tree(L0)==m['targets']['local']['managed_tree_sha256'] and tree(P0)==pm['target_managed_tree_sha256']
+          protected={n:Pfull[n] for n in set(Pfull)-set(P0)};assert len(protected)==6 and set(protected)=={'emergency.php','src/Emergency/EmergencyAccessService.php','src/Emergency/PairingSecretStore.php','src/Emergency/PublicTakeoverService.php','src/Emergency/PublicUpdateException.php','src/Emergency/PublicUpdateService.php'}
+          assert {n:H(v) for n,v in protected.items()}=={'emergency.php':'b41a7deae19becca160586401a0c4bc33150c43f811d838c5973249bbeb2c6ce','src/Emergency/EmergencyAccessService.php':'65f5c6fc92f17a5baba3965a69c7f8f2cdabfc5f0d2467240889cc48c8d5a9bb','src/Emergency/PairingSecretStore.php':'f80ae57516b365780d9830310b2921a690f7f243c97863372934272fad4f5482','src/Emergency/PublicTakeoverService.php':'100b9cd37384eea6828ed64ddfba9dac968e5912d6b62dafec2a66c55849e986','src/Emergency/PublicUpdateException.php':'220d3808bcd2685beb27a9d520671b97f959256dc1cbbb10616383086952c306','src/Emergency/PublicUpdateService.php':'352f1d68c9c5627946afdd22382d5f5c8fe272524112b9642d96afe281e7d773'}
+          P={n:v for n,v in Pfull.items() if n not in protected}
+          for d,old,count in [(L,L0,93),(P,P0,12)]:
+           assert not set(old)-set(d)
+           mig=lambda a:{n:H(v) for n,v in a.items() if n.startswith('database/migrations/') and n.endswith('.sql')}
+           assert len(mig(d))==count and mig(d)==mig(old)
+           assert all(d[n]==old[n] for n in old if (('/Update/' in n or '/Emergency/' in n) and n!='src/Update/emergency-owner-v1.json') or n=='emergency.php')
+           assert not any(n in ('config.php','install.lock') or n.startswith('storage/') for n in d)
+          source_sha='7066c40b31b398680e6d519508ed89f42dde333f87bbf30ffe14dc1e505fd965'
+          lv='3.0.0-g6.2-workspace.231gh-cc36-qa';pv='3.0.0-g3.6-workspace.35iz-cc36-qa';lr='sokna-local-231gh-cc36-qa';pr='sokna-public-35iz-cc36-qa';status='QUARANTINED_EXACT_CANDIDATE_NOT_FOR_INSTALL'
+          # Exact predecessor identities only; retain original allowed origins but never claim new candidate acceptance.
+          m['supported_baselines'].append({'local':copy.deepcopy(m['targets']['local'])});pm['compatibility']['supported_baselines'].append({'version':pm['version'],'managed_tree_sha256':pm['target_managed_tree_sha256']})
+          key='resources/local-managed-files-v1.json';idx=json.loads(L[key]);idx['files']=sorted(L);L[key]=J(idx)
+          for d,v,rel,orig in [(L,lv,lr,[x['local']['version'] for x in m['supported_baselines']]),(P,pv,pr,[x['version'] for x in pm['compatibility']['supported_baselines']])]:
+           d['VERSION.txt']=(v+'\n').encode()
+           if d is P:
+            k='src/Update/emergency-owner-v1.json';o=json.loads(d[k]);assert o['sha256']==H(d['src/Update/EmergencyOwnerCandidate.php']);o['release_version']=v;d[k]=J(o)
+           k='resources/release-identity-v1.json';i=json.loads(d[k]);ex=set(i['source']['digest_excludes']);i.update(version=v,release_set_id=rel,qualification={'tier':status,'claim_rule':'QA only; new exact package gates required; no operational distribution.'});i['baseline']['source_versions']=orig;i['source'].update(canonical_tree_sha256=canonical(d,ex),canonical_file_count=len(set(d)-ex),managed_file_count=len(d),source_ref='SHA256:'+source_sha+' CASE-CLOSURE-35');d[k]=J(i)
+           k='resources/build-provenance.json';p=json.loads(d[k]);p.update(version=v,release_set_id=rel,classification=status,consolidated_source_sha256=source_sha,source='sha256:'+source_sha,scope='CC35 exact source, CP76-format QA candidate, no deployment',created_at='2026-11-27T00:00:00Z',full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,operator_warning='DO NOT INSTALL; exact candidate acceptance pending');d[k]=J(p);assert canonical(d,ex)==i['source']['canonical_tree_sha256']
+          web=pack(L);m['targets']['local'].update(version=lv,release_id=lr,managed_files=len(L),managed_tree_sha256=tree(L));m['artifacts']['local-web'].update(sha256=H(web),size_bytes=len(web));m.update(release_set_id=lr,sequence=202611270001,created_at='2026-11-27T00:00:00Z',status=status,for_install=False,production_pass=False,signature=None);m['qualification']={k:(False if isinstance(v,bool) else 0 if isinstance(v,int) else 'PENDING_EXACT_CANDIDATE_QA') for k,v in m['qualification'].items()};m['qa_notes']={'scope':'QUARANTINED_EXACT_CANDIDATE_NOT_FOR_INSTALL','operator_install_allowed':False,'cafe_production_approved':False,'field_install_verified':False,'source_sha256':source_sha,'prior_format':'CP76/CP98','qualification':'New exact receipts required'}
+          pm.update(version=pv,target_managed_tree_sha256=tree(P),files=[{'path':n,'sha256':H(v),'size':len(v)} for n,v in sorted(P.items())]);pm['provenance'].update(build='CC36 exact candidate from CC35',source_archive_sha256=source_sha,origin_package_sha256=H(pb.read_bytes()),modified_files=sorted(n for n,v in P.items() if v!=P0.get(n)),installation_authorized=False,production_host_qualified=False,offline_qualified=False,release_qualification=status,qualification_qa_run='PENDING_EXACT_CANDIDATE_QA')
+          files={'LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip':pack({'release-set.json':J(m),'artifacts/local/web.zip':web}),'LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip':web,'PUBLIC-35IZ-UPDATE-QA-DO-NOT-INSTALL.zip':pack({'manifest.json':J(pm)}|{'payload/'+n:v for n,v in P.items()}),'PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip':pack(P|protected)}
+          for n,v in files.items():assert read(v);(out/n).write_bytes(v)
+          assert read(files['LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip'])['artifacts/local/web.zip']==files['LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip'];assert all(read(files['PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip'])[n]==v for n,v in P.items())
+          r={'status':status,'source_sha256':source_sha,'files':{n:{'sha256':H(v),'bytes':len(v)} for n,v in files.items()},'local':{'version':lv,'managed_tree_sha256':tree(L),'migrations':93,'files':626,'prior_baselines':len(m['supported_baselines'])},'public':{'version':pv,'managed_tree_sha256':tree(P),'migrations':12,'files':252,'protected_pins':{n:H(v) for n,v in protected.items()},'prior_baselines':len(pm['compatibility']['supported_baselines'])},'production_authorized':False,'operator_installable':False,'native_windows_install':False,'local_clean_web_only':True,'package_format':'prior CP76/CP98/CP110; adapted candidate builder, not production admission'}
+          (out/'factory-evidence-decision.json').write_bytes(J(r));print(json.dumps(r,indent=2))
+          SOKNA_QA_CC36_build36_py
+          mkdir -p "$RUNNER_TEMP/cp76/out" "$RUNNER_TEMP/delivery"
+          python3 "$W/build36.py" "$W" "$RUNNER_TEMP/cp148-input/local/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip" "$RUNNER_TEMP/cp148-input/public/SOKNA-PUBLIC-35IY-35IP-CAFE-QA.zip" "$RUNNER_TEMP/cp76/out" | tee "$RUNNER_TEMP/delivery/factory-build-results.txt"
+          cp "$RUNNER_TEMP/cp76/out/factory-evidence-decision.json" "$RUNNER_TEMP/delivery/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
+          path: ${{ runner.temp }}/cp76/out/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Exact Public upgrade and separate Local database acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          cat > "$W/public36.php" <<'SOKNA_QA_CC36_public36_php'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
+          use Sokna\PublicEdge\Emergency\PublicUpdateException;
+          use Sokna\PublicEdge\Core\Migrations;
+          use Sokna\PublicEdge\Health\PublicHealthService;
+          if(getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only'||$argc!==4)exit(2);
+          [$script,$phase,$web,$pkg]=$argv;
+          function ck($v,$msg){if(!$v)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          $rec=json_decode(file_get_contents(dirname($pkg).'/factory-evidence-decision.json'),true,512,JSON_THROW_ON_ERROR);$want=$rec['public'];ck(hash_file('sha256',$pkg)===$rec['files'][basename($pkg)]['sha256'],'exact public archive bytes');
+          require $web.'/src/Shared/IranTime.php';require $web.'/src/Emergency/PublicUpdateException.php';require $web.'/src/Update/RoutinePublicUpdateService.php';require $web.'/src/Core/Migrations.php';require $web.'/src/Core/SafeErrors.php';require $web.'/src/Health/PublicHealthService.php';
+          $storage=$web.'/storage';if(!is_dir($storage))mkdir($storage,0700,true);
+          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_update36;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$m=new Migrations($db,$web.'/database/migrations');$health=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$health->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());
+          if($phase==='stage'){
+           ck(count($m->migrate())===12,'actual baseline schema');$db->exec("INSERT INTO installations(installation_id) VALUES('qa36-preserve')");
+           ck($r->managedTreeDigest()==='c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6','exact prior Public managed tree');
+           $orig=$r->currentVersion();$s=$r->stageUploadedDeltaZip($pkg,'qa36',true);ck($s['package_sha256']===hash_file('sha256',$pkg)&&$s['version']===$want['version'],'exact stage package identity');ck($r->currentVersion()===$orig,'stage cannot mutate active version');
+           $a=$r->activateStaged('qa36');ck($a['current_version']===$want['version']&&$r->managedTreeDigest()===$want['managed_tree_sha256']&&is_array($a['pending_verification'])&&is_file($r->maintenanceLockPath()),'activated exact tree stays pending');
+          }elseif($phase==='commit'){
+           ck($r->currentVersion()===$want['version']&&$m->pendingVersions()===[],'fresh process target and ledger');$s=$r->commitActivation('qa36',fn($v)=>$health->status()['body']);ck($s['active_version']===$want['version']&&$s['managed_tree_matches_expected']===true&&$s['pending_verification']===null&&$s['db_forward_fence']===null&&!is_file($r->maintenanceLockPath()),'fresh process exact commit');
+           ck(count($m->verifiedAppliedVersions())===12&&(int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='qa36-preserve'")->fetchColumn()===1,'preserved DB row and exact migration ledger');foreach($want['protected_pins'] as $n=>$h)ck(hash_file('sha256',$web.'/'.$n)===$h,'protected unchanged '.$n);
+           try{$r->stageUploadedDeltaZip($pkg,'qa36',true);throw new RuntimeException('unexpected reinstallation');}catch(PublicUpdateException $e){ck($e->errorCode==='downgrade_or_reinstall_forbidden','same package reinstallation rejected');}
+          }else exit(2);
+          SOKNA_QA_CC36_public36_php
+          python3 - <<'PYCODE'
+          import os,pathlib,zipfile,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);o=t/'cp76/out';r=json.loads((o/'factory-evidence-decision.json').read_text());H=lambda b:hashlib.sha256(b).hexdigest()
+          for n,v in r['files'].items(): assert H((o/n).read_bytes())==v['sha256']
+          with zipfile.ZipFile(o/'LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip') as z:z.extractall(t/'local-fixture/web')
+          b=t/'cp148-input/public/SOKNA-PUBLIC-35IY-35IP-CAFE-QA.zip';w=t/'public-upgrade36';w.mkdir()
+          with zipfile.ZipFile(b) as z:
+              for n in z.namelist():
+                  if n.startswith('payload/'):
+                      p=w/n[8:];p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(z.read(n))
+          for n,h in r['public']['protected_pins'].items():
+              p=w/n;p.parent.mkdir(parents=True,exist_ok=True);v=(t/'cp148-qa/public'/n).read_bytes();assert H(v)==h;p.write_bytes(v)
           PYCODE
-          php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          fail=0
-          php "$W/gate35.php" "$W/local" | tee "$W/cc35-receipt-results.txt" || fail=1
-          (php "$W/restore35.php" "$W/local" seed && php "$W/restore35.php" "$W/local" restore) | tee "$W/cc35-recovery-results.txt" || fail=1
-          npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
-          trap 'kill "$lp" 2>/dev/null || true' EXIT
-          sleep 2
-          node "$W/gate35.cjs" | tee "$W/cc35-browser-results.txt" || fail=1
-          exit "$fail"
+          mysql --protocol=TCP -h127.0.0.1 -uroot -p"$QA_DB_PASSWORD" -e 'CREATE DATABASE sokna_ci_local36 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE sokna_ci_update36 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+          export SOKNA_CI_DB_PASS="$QA_DB_PASSWORD"
+          php historical-factory/qa/sokna-final-20261124/test_mariadb_exact_setup.php "$RUNNER_TEMP/local-fixture/web" sokna_ci_local36 setup 0093_bundle_distribution_provenance | tee "$RUNNER_TEMP/delivery/local-db.json"
+          python3 -c 'import json,sys; x=json.load(open(sys.argv[1])); assert x["migration_count"]==93 and x["result"]=="PASS" and "231gh" in x["source_version"]' "$RUNNER_TEMP/delivery/local-db.json"
+          php "$W/public36.php" stage "$RUNNER_TEMP/public-upgrade36" "$RUNNER_TEMP/cp76/out/PUBLIC-35IZ-UPDATE-QA-DO-NOT-INSTALL.zip" | tee "$RUNNER_TEMP/delivery/public-upgrade-stage.txt"
+          php "$W/public36.php" commit "$RUNNER_TEMP/public-upgrade36" "$RUNNER_TEMP/cp76/out/PUBLIC-35IZ-UPDATE-QA-DO-NOT-INSTALL.zip" | tee "$RUNNER_TEMP/delivery/public-upgrade-commit.txt"
+      - name: Reuse exact factory Public Apache setup gate for new clean bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          import pathlib,textwrap,os
+          p=pathlib.Path('historical-factory/.github/workflows/sokna-factory-checkpoint76.yml');s=p.read_text();t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          def step(name):
+              b=s.split('      - name: '+name+'\n',1)[1].split('      - ',1)[0].split('        run: |\n',1)[1];return textwrap.dedent(b)
+          for i,name in enumerate(['Exact factory bytes and isolated Apache PHP','Real HTTP fresh setup and pairing on exact 35iu root and nested host']):
+              b=step(name).replace('PUBLIC-35IU-CLEAN-WEB-QA-DO-NOT-INSTALL.zip','PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip').replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip','LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip').replace('sokna-disposable-public-clean-ci','synthetic-cp116-ci-only')
+              (t/f'public-clean36-{i}.sh').write_text(b)
+          PYCODE
+          bash "$RUNNER_TEMP/public-clean36-0.sh"
+          bash "$RUNNER_TEMP/public-clean36-1.sh" | tee "$RUNNER_TEMP/delivery/public-clean-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC35-PRIORITY-ACCEPTANCE-QA-ONLY
-          path: |
-            ${{ runner.temp }}/cp148-qa/*-results.txt
-            ${{ runner.temp }}/cp148-qa/cc35-*.png
+          name: SOKNA-CC36-EXACT-PACKAGE-DB-PUBLIC-RECEIPTS-QA-ONLY
+          path: ${{ runner.temp }}/delivery/*
+          if-no-files-found: error
           retention-days: 7
+  native-clean:
+    needs: acceptance
+    if: ${{ always() && needs.acceptance.result != 'cancelled' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
+          path: ${{ runner.temp }}/cp76/out
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Real native Windows standard clean web with exact current archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $receipt=Get-Content "$env:RUNNER_TEMP/cp76/out/factory-evidence-decision.json" -Raw|ConvertFrom-Json
+          $pkg='LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip'
+          $sha=$receipt.files.$pkg.sha256
+          if($sha -notmatch '^[a-f0-9]{64}$' -or $receipt.local.version -cne '3.0.0-g6.2-workspace.231gh-cc36-qa' -or $receipt.production_authorized){throw 'INVALID_CANDIDATE_RECEIPT'}
+          if((Get-FileHash "$env:RUNNER_TEMP/cp76/out/$pkg" -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'CANDIDATE_ARCHIVE_DRIFT'}
+          $s=Get-Content 'qa/factory/checkpoint78-standard-clean-web.ps1' -Raw
+          $s=$s.Replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip',$pkg).Replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',$sha).Replace('3.0.0-g6.2-workspace.231gg-checkpoint76-qa',$receipt.local.version)
+          $p=Join-Path $env:RUNNER_TEMP 'native-clean36.ps1';Set-Content $p $s -Encoding utf8NoBOM
+          & $p
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_CLEAN_FAILED'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CC36-NATIVE-CLEAN-WINDOWS-RECEIPT-QA-ONLY
+          path: ${{ runner.temp }}/checkpoint78-standard-clean-web-receipt.json
           if-no-files-found: warn
+          retention-days: 7
