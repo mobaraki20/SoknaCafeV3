@@ -1,4 +1,4 @@
-name: SOKNA CASE-CLOSURE-32 recovery inspection and native backup interruption (QA ONLY)
+name: SOKNA CASE-CLOSURE-32B remaining actual recovery browser acceptance (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -1148,13 +1148,13 @@ jobs:
           async function upload(file){await p.locator('[data-recovery-upload] input[type=file]').setInputFiles(W+'/'+file);const resp=p.waitForResponse(r=>r.url().includes('/system/recovery-upload.php')&&r.request().method()==='POST');await p.locator('[data-recovery-upload] button[type=submit]').click();const rr=await resp,j=await rr.json();ck(rr.status()===200&&j.success&&j.backup.id.startsWith('uploaded-'),'actual upload '+file);await wait(async()=>await selected.inputValue()===j.backup.id&&!await password.isDisabled(),'new uploaded ID selected '+file);return j.backup;}
           await group('SYS-L542 SYS-L545 actual large multipart and separate identities',async()=>{
           let large=await upload('cc32-large.skbf');ck(large.size_bytes===8*1024*1024&&large.sha256===f.large_sha,'exact 8 MiB multipart content');await password.fill(pass);await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'large invalid payload is not a valid backup');ck(await restore.isDisabled(),'invalid payload cannot restore');
-          let x=await upload('cc32-valid.skbf'),y=await upload('cc32-valid.skbf');ck(x.id!==y.id&&x.sha256===f.sha256&&y.sha256===f.sha256,'same upload filename gets independent immutable IDs');await wait(async()=>await p.locator(`[data-backup-select="${x.id}"]`).isVisible()&&await p.locator(`[data-backup-select="${y.id}"]`).isVisible(),'uploaded history holds both independent IDs');await p.locator(`[data-backup-select="${x.id}"]`).click();ck(await selected.inputValue()===x.id&&await password.inputValue()==='','select previous upload by immutable ID');await password.fill(pass);await inspect.click();await wait(async()=>{const t=await manifest.innerText();return t.includes(f.source)&&t.includes(x.id)},'uploaded actual manifest confirmed');ck(await restore.isDisabled(),'existing target still blocks restore');await p.screenshot({path:W+'/cc32-uploaded.png'});
+          let x=await upload('cc32-valid.skbf'),y=await upload('cc32-valid.skbf');ck(x.id!==y.id&&x.sha256===f.sha256&&y.sha256===f.sha256,'same upload filename gets independent immutable IDs');await p.locator('details').filter({has:p.locator('[data-uploaded-backups]')}).locator('summary').click();await wait(async()=>await p.locator(`[data-backup-select="${x.id}"]`).isVisible()&&await p.locator(`[data-backup-select="${y.id}"]`).isVisible(),'uploaded history holds both independent IDs');await p.locator(`[data-backup-select="${x.id}"]`).click();ck(await selected.inputValue()===x.id&&await password.inputValue()==='','select previous upload by immutable ID');await password.fill(pass);await inspect.click();await wait(async()=>{const t=await manifest.innerText();return t.includes(f.source)&&t.includes(x.id)},'uploaded actual manifest confirmed');ck(await restore.isDisabled(),'existing target still blocks restore');await p.screenshot({path:W+'/cc32-uploaded.png'});
           });
           await group('SYS-L546 actual corrupted ciphertext and stale inspection navigation',async()=>{
           let x=await upload('cc32-corrupt.skbf');await password.fill(pass);await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'tampered ciphertext rejected in real UI');ck(await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'tamper cannot reuse valid manifest');await p.screenshot({path:W+'/cc32-corrupt.png'});
           await p.locator(`[data-backup-select="${f.id}"]`).click();await password.fill(pass);
           // Delay only delivery of actual authenticated server response, then change tab.
-          let release;const barrier=new Promise(r=>release=r);let captured=false;const handler=async route=>{if(route.request().method()!=='POST'||!route.request().postData()?.includes('backup_inspect'))return route.continue();const actual=await route.fetch();captured=true;await barrier;await route.fulfill({response:actual})};await p.route('**/system/api.php',handler);await inspect.click();await wait(async()=>captured,'actual inspection response intercepted after server completion');await p.locator('[data-tab="health"]').click();release();await p.unroute('**/system/api.php',handler);await p.locator('[data-tab="recovery"]').click();await wait(async()=>!await password.isDisabled(),'return to recovery after delayed actual response');ck(await selected.inputValue()===''&&await password.inputValue()===''&&await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'late verified response cannot rearm after leaving tab');
+          let release;const barrier=new Promise(r=>release=r);let captured=false,delivered=false;const handler=async route=>{if(route.request().method()!=='POST'||!route.request().postData()?.includes('backup_inspect'))return route.continue();const actual=await route.fetch();captured=true;await barrier;await route.fulfill({response:actual});delivered=true};await p.route('**/system/api.php',handler);await inspect.click();await wait(async()=>captured,'actual inspection response intercepted after server completion');await p.locator('[data-tab="health"]').click();release();await wait(async()=>delivered,'delayed real response delivered');await p.unroute('**/system/api.php',handler);await p.locator('[data-tab="recovery"]').click();await wait(async()=>!await password.isDisabled(),'return to recovery after delayed actual response');ck(await selected.inputValue()===''&&await password.inputValue()===''&&await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'late verified response cannot rearm after leaving tab');
           });
           }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
           SOKNA_QA_CC32_gate32_cjs
@@ -1209,7 +1209,6 @@ jobs:
           cp "$W/local/src/Domain/Recovery/BusinessBackupService.php" "$W/local/src/Domain/Recovery/RecoveryException.php" "$W/crypto32.py" "$W/crypto32.php" "$W/cc32-windows-input/"
           (cd "$W/cc32-windows-input"; sha256sum BusinessBackupService.php RecoveryException.php crypto32.py crypto32.php > SHA256SUMS.txt)
           fail=0
-          python3 "$W/crypto32.py" "$W/local/src/Domain/Recovery" "$W/crypto32.php" | tee "$W/cc32-linux-results.txt" || fail=1
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
           php "$W/gate32.php" "$W/local" | tee "$W/cc32-db-results.txt" || fail=1
@@ -1224,53 +1223,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC32-GROUPED-ACCEPTANCE-QA-ONLY
+          name: SOKNA-CC32B-GROUPED-ACCEPTANCE-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/cc32-*.png
-          retention-days: 7
-          if-no-files-found: warn
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: SOKNA-CC32-EXACT-CRYPTO-WINDOWS-QA-INPUT
-          path: ${{ runner.temp }}/cp148-qa/cc32-windows-input/
-          retention-days: 7
-          if-no-files-found: error
-  native-windows-backup:
-    needs: acceptance
-    if: ${{ always() && needs.acceptance.result != 'cancelled' }}
-    runs-on: windows-2022
-    timeout-minutes: 10
-    env:
-      SOKNA_QA_DISPOSABLE: YES
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: SOKNA-CC32-EXACT-CRYPTO-WINDOWS-QA-INPUT
-          path: windows-qa
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: sodium
-          coverage: none
-      - name: Verify exact source and actual native Windows ciphertext interruption
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Get-Content windows-qa/SHA256SUMS.txt | ForEach-Object {
-            $parts = $_.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
-            if ((Get-FileHash (Join-Path 'windows-qa' $parts[1]) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $parts[0]) { throw 'source digest mismatch' }
-          }
-          php -v
-          php -r "if(PHP_OS_FAMILY!=='Windows'||!extension_loaded('sodium'))exit(2);"
-          if ($LASTEXITCODE -ne 0) { throw 'native Windows PHP sodium missing' }
-          python windows-qa/crypto32.py windows-qa windows-qa/crypto32.php | Tee-Object -FilePath windows-qa/cc32-native-windows-results.txt
-          if ($LASTEXITCODE -ne 0) { throw 'native backup acceptance failed' }
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: SOKNA-CC32-NATIVE-WINDOWS-RESULTS-QA-ONLY
-          path: windows-qa/cc32-native-windows-results.txt
           retention-days: 7
           if-no-files-found: warn
