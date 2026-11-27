@@ -1,4 +1,4 @@
-name: SOKNA 44B remaining report role matrix (QA ONLY)
+name: SOKNA 46 register exact frozen QA archives - no deploy
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,45 +7,27 @@ permissions:
   contents: read
   actions: read
 jobs:
-  acceptance:
+  exact-archives:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
-    services:
-      mariadb:
-        image: mariadb:11.4
-        env:
-          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
-          MARIADB_ROOT_HOST: '%'
-        ports: [3306:3306]
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=5s --health-timeout=5s --health-retries=20
-    env:
-      QA_DB_PASSWORD: synthetic-cp116-ci-only
-      SOKNA_QA_DISPOSABLE: YES
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: 6983e9d52435a746325f60ace428b8548bcc8fc0
-          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           run-id: 46036608931
           name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Read-only HTTP and workbook checks using synthetic fixture
+      - name: Reproduce the four frozen hashes without changing candidate status
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc44"; mkdir -p "$W/local" "$W/public" "$W/receipts"
+          W="$RUNNER_TEMP/cc46"; mkdir -p "$W/local" "$W/public" "$W/out"
           A="$RUNNER_TEMP/candidate/LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           B="$RUNNER_TEMP/candidate/PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           echo "f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f  $A" | sha256sum -c -
           echo "9317be75ca5d31b2577aee7e5adb07f14dbb69053f47c647b8d705970d84d5fd  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
           unzip -q "$B" -d "$W/public"
-          export QA_WORK="$W" TMPDIR="$W"
           python - "$W" <<'PATCH44'
           from pathlib import Path
           import sys,hashlib
@@ -82,82 +64,78 @@ jobs:
           for n,h in pins.items():
            assert hashlib.sha256((r/n).read_bytes()).hexdigest()==h,n
            print('PASS exact report component',n)
+          
+          p='local/src/Domain/PublicEdge/PublicEdgeSyncClient.php'
+          old="        if($phase==='reenroll_required'&&$path!=='/api/v1/local/authority/fence')throw"
+          change(p,old,"        if($phase==='reenroll_required'&&$path==='/api/v1/local/authority/fence')return;\n"+old)
+          p='local/public/reports/index.php';change(p,"$workspaceExportAnalytical=$canAudit?", "$workspaceExportAnalytical=$pricingEnabled?")
+          for p in ['local/public/assets/reports-workspace.js','public/assets/reports-workspace.js']:
+           change(p,"message=el('div','sc-alert sc-alert--info','تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.');", "message=el('div','sc-alert sc-alert--info',(x.restricted_sections||[]).includes(section.dataset.reportSection)?'مجوز مشاهده بهای مواد و حاشیه مشارکت فعال نیست.':'تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.');")
+           change(p,'if(message)message.hidden=supported;for(const child', "if(message){message.hidden=supported;if(!supported)message.textContent=(x.restricted_sections||[]).includes(section.dataset.reportSection)?'مجوز مشاهده بهای مواد و حاشیه مشارکت فعال نیست.':'تحلیل تفصیلی این بازه همگام نشده است. خلاصه فروش و روند را می‌توانی ببینی.';}for(const child")
+          for n,h in {'local/public/assets/reports-workspace.js':'b7002b3b16603b8a6c39026cb29fb7609018f4e56143ac4f7f1a61997caa9a0d','local/public/reports/index.php':'63d52ca980898a75cb1c5d745b439b3cd9f2e97c2080a1562d82a050fb0af7e4','local/src/Domain/PublicEdge/PublicEdgeSyncClient.php':'81f25615f0fedca55368061046ffbcc5193b17e623d8789ea5a558fce4bef123','public/assets/reports-workspace.js':'9780e5f5c1300230908b2ecd6591c375828b470c0e00e8caeb7b911c4272c5af'}.items():
+           assert hashlib.sha256((r/n).read_bytes()).hexdigest()==h,n
+           print('PASS exact component',n)
           PATCH44
-          php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local"
-          cat > "$W/roles44b.php" <<'PHP'
-          <?php
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
-          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $core=sokna_local_bootstrap($cfg);$p=$core->database();$ids=[];
-          foreach(['qa-supervisor'=>['shift_supervision','remote_access'],'qa-cost-supervisor'=>['shift_supervision','inventory_cost_view','inventory_view','remote_access'],'qa-report-only-staff'=>['staff_consumption_reports','remote_access']] as $name=>$caps){
-           $hash=password_hash('synthetic-member-only',PASSWORD_DEFAULT);
-           $p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,$hash,$name]);$id=(int)$p->lastInsertId();$ids[$name]=$id;
-           foreach($caps as $cap)$p->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$id,$cap]);
-           $p->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")->execute([$id,$hash]);
-          }
-          $f=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
-          $byName=array_column($core->publicProjectionBuilder()->authProjections(),null,'username');
-          foreach($ids as $name=>$id){$v=$byName[$name];$f['users'][]=['id'=>$id,'name'=>$name,'role'=>$v['role'],'password'=>'synthetic-member-only','caps'=>$v['capabilities'],'areas'=>$v['preparation_areas'],'hash'=>$v['password_hash']];}
-          file_put_contents($w.'/cp144-fixture.json',json_encode($f,JSON_THROW_ON_ERROR));
-          PHP
-          php "$W/roles44b.php" "$W"
-          php qa/cp160/public-fixture.php "$W/public"
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/receipts/local-http.log" 2>&1 &
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/receipts/public-http.log" 2>&1 &
-          sleep 2
-          php qa/cp160/worker.php "$W/local" init
-          cat > "$W/report44.py" <<'REPORT44'
-          import json,sys,urllib.request,urllib.parse,urllib.error,http.cookiejar,zipfile,io,xml.etree.ElementTree as ET
+          cat > "$W/replay.py" <<'REPLAY'
           from pathlib import Path
-          w=Path(sys.argv[1]);f=json.loads((w/'cp144-fixture.json').read_text());iid=f['installation'];day=f['report_day']
-          L='http://127.0.0.1:18765';P='http://127.0.0.1:18766/public'
-          def ck(x,n):
-           assert x,n
-           print('PASS',n,flush=True)
-          def session(base,user):
-           c=http.cookiejar.CookieJar();o=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(c));url=base+('/login.php' if base==L else '/staff/login')
-           data={'username':user,'password':'synthetic-qa-admin-not-real' if user=='qa-target' else 'synthetic-member-only'}
-           if base==P:data['installation_id']=iid
-           o.open(url,urllib.parse.urlencode(data).encode(),timeout=20).close()
-           return o
-          def get(o,url):
-           try:
-            with o.open(url,timeout=30) as r:return r.status,r.read()
-           except urllib.error.HTTPError as e:return e.code,e.read()
-          def sheets(b):
+          import zipfile,io,json,hashlib,sys
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode()
+          root,lb,pb,out=map(Path,sys.argv[1:]);out.mkdir(parents=True,exist_ok=True)
+          def read(b):
            with zipfile.ZipFile(io.BytesIO(b)) as z:
-            return {e.attrib['name'] for e in ET.fromstring(z.read('xl/workbook.xml')).iter() if e.tag.endswith('}sheet')}
-          restricted={'Inventory_Cost','Contribution_Margin','Margin_Items','Margin_Categories'}
-          for user,allowed in [('qa-cost-supervisor',True),('qa-supervisor',False)]:
-           for base in [L,P]:
-            o=session(base,user);q='?from='+day+'&to='+day
-            code,b=get(o,base+('/reports/api.php' if base==L else '/staff/reports-adapter')+q)
-            ck(code==200,'ordinary report '+user+' '+base);r=json.loads(b)['report']
-            ck(('inventory' in r and 'margin' in r) if allowed else ('inventory' not in r and 'margin' not in r),'cost section authorization '+user+' '+base)
-            ck('net_sales' in r['summary'],'ordinary sales retained '+user+' '+base)
-            if base==P:
-             code,b=get(o,P+'/api/staff/read?model=reports');ck(code==200,'raw report GET '+user)
-             p=json.loads(b)['payload'];ck(('inventory' in p and 'margin' in p) if allowed else ('inventory' not in p and 'margin' not in p),'raw cost boundary '+user)
-            else:
-             code,b=get(o,L+'/reports/export.php'+q);ck(code==200,'current workbook '+user);names=sheets(b)
-             ck(restricted<=names if allowed else not restricted&names,'actual workbook cost sheets '+user)
-             code,b=get(o,L+'/reports/export-analytical.php'+q)
-             ck(code==200 if allowed else code==403,'analytical authorization '+user)
-          for base in [L,P]:
-              o=session(base,'qa-report-only-staff');code,b=get(o,base+('/reports/api.php' if base==L else '/staff/reports-adapter'));ck(code==403,'staff-only denied general reporting '+base)
-              if base==P:
-               code,b=get(o,P+'/api/staff/read?model=reports');ck(code==403,'staff-only denied raw report')
-              else:
-               for endpoint in ['/reports/export.php','/reports/export-analytical.php']:
-                code,b=get(o,L+endpoint);ck(code==403,'staff-only denied '+endpoint)
-          print('GROUP PASS remaining report role matrix')
-          REPORT44
-          python "$W/report44.py" "$W" | tee "$W/receipts/results.txt"
+            assert z.testzip() is None and len(z.namelist())==len(set(z.namelist()))
+            assert all(n and not n.startswith('/') and '..' not in n.split('/') and '\\' not in n for n in z.namelist())
+            return {n:z.read(n) for n in z.namelist() if not n.endswith('/')}
+          def pack(d):
+           b=io.BytesIO()
+           with zipfile.ZipFile(b,'w') as z:
+            for n,v in sorted(d.items()):
+             i=zipfile.ZipInfo(n,(2026,11,27,0,0,0));i.create_system=3;i.external_attr=0o100644<<16;i.compress_type=zipfile.ZIP_DEFLATED
+             z.writestr(i,v,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+           return b.getvalue()
+          def tree(d):return H(''.join(n+'\0'+H(b)+'\n' for n,b in sorted(d.items())).encode())
+          def canonical(d,ex):return H(''.join(n+'\0'+str(len(b))+'\0'+H(b)+'\n' for n,b in sorted(d.items()) if n not in ex).encode())
+          def walk(p):return {f.relative_to(p).as_posix():f.read_bytes() for f in p.rglob('*') if f.is_file()}
+          L=walk(root/'local');Pfull=walk(root/'public');assert len(L)==626 and len(Pfull)==258
+          assert H(lb.read_bytes())=='19e7591defdb6a368705c9c117ed5bcd048108e2f96484fe9ba0031c4999a117';assert H(pb.read_bytes())=='c8dd86c49109c7948e1cab0ffd1d10a74e529587ed4faaf7342a1002adaf38e8'
+          a=read(lb.read_bytes());m=json.loads(a['release-set.json']);L0=read(a['artifacts/local/web.zip']);b=read(pb.read_bytes());pm=json.loads(b['manifest.json']);P0={n[8:]:v for n,v in b.items() if n.startswith('payload/')}
+          assert tree(L0)==m['targets']['local']['managed_tree_sha256'] and tree(P0)==pm['target_managed_tree_sha256']
+          protected={n:Pfull[n] for n in set(Pfull)-set(P0)}
+          assert len(protected)==6
+          P={n:v for n,v in Pfull.items() if n not in protected}
+          for d,old,count in [(L,L0,93),(P,P0,12)]:
+           assert not set(old)-set(d)
+           mig=lambda a:{n:H(v) for n,v in a.items() if n.startswith('database/migrations/') and n.endswith('.sql')}
+           assert len(mig(d))==count and mig(d)==mig(old)
+           assert all(d[n]==old[n] for n in old if (('/Update/' in n or '/Emergency/' in n) and n!='src/Update/emergency-owner-v1.json') or n=='emergency.php')
+          source_sha='7df0e9b58f56aa5b73e577bdba9fa135c1912ee7caf98e02ee38209f2bbaf3db'
+          lv='3.0.0-g6.2-workspace.231gi-cc43-qa';pv='3.0.0-g3.6-workspace.35ja-cc43-qa';lr='sokna-local-231gi-cc43-qa';pr='sokna-public-35ja-cc43-qa';status='QUARANTINED_EXACT_CANDIDATE_NOT_FOR_INSTALL'
+          key='resources/local-managed-files-v1.json';idx=json.loads(L[key]);idx['files']=sorted(L);L[key]=J(idx)
+          for d,v,rel,orig in [(L,lv,lr,[x['local']['version'] for x in m['supported_baselines']]),(P,pv,pr,[x['version'] for x in pm['compatibility']['supported_baselines']])]:
+           d['VERSION.txt']=(v+'\n').encode()
+           if d is P:
+            k='src/Update/emergency-owner-v1.json';o=json.loads(d[k]);assert o['sha256']==H(d['src/Update/EmergencyOwnerCandidate.php']);o['release_version']=v;d[k]=J(o)
+           k='resources/release-identity-v1.json';i=json.loads(d[k]);ex=set(i['source']['digest_excludes']);i.update(version=v,release_set_id=rel,qualification={'tier':status,'claim_rule':'QA only; new exact package gates required; no operational distribution.'});i['baseline']['source_versions']=orig;i['source'].update(canonical_tree_sha256=canonical(d,ex),canonical_file_count=len(set(d)-ex),managed_file_count=len(d),source_ref='SHA256:'+source_sha+' CC43 integrated');d[k]=J(i)
+           k='resources/build-provenance.json';p=json.loads(d[k]);p.update(version=v,release_set_id=rel,classification=status,consolidated_source_sha256=source_sha,source='sha256:'+source_sha,scope='CC43 integrated source, CP76-format QA candidate, no deployment',created_at='2026-11-27T00:00:00Z',full_business_acceptance=False,installed_host_accepted=False,production_host_install_verified=False,operator_warning='DO NOT INSTALL; exact candidate acceptance pending');d[k]=J(p);assert canonical(d,ex)==i['source']['canonical_tree_sha256']
+          web=pack(L);m['targets']['local'].update(version=lv,release_id=lr,managed_files=len(L),managed_tree_sha256=tree(L));m['artifacts']['local-web'].update(sha256=H(web),size_bytes=len(web));m.update(release_set_id=lr,sequence=202611270002,created_at='2026-11-27T00:00:00Z',status=status,for_install=False,production_pass=False,signature=None);m['qualification']={k:(False if isinstance(v,bool) else 0 if isinstance(v,int) else 'PENDING_EXACT_CANDIDATE_QA') for k,v in m['qualification'].items()};m['qa_notes']={'scope':'QUARANTINED_EXACT_CANDIDATE_NOT_FOR_INSTALL','operator_install_allowed':False,'cafe_production_approved':False,'field_install_verified':False,'source_sha256':source_sha,'prior_format':'CP76/CP98','qualification':'New exact receipts required'}
+          pm.update(version=pv,target_managed_tree_sha256=tree(P),files=[{'path':n,'sha256':H(v),'size':len(v)} for n,v in sorted(P.items())]);pm['provenance'].update(build='CC43 candidate from integrated CC43 source',source_archive_sha256=source_sha,origin_package_sha256=H(pb.read_bytes()),modified_files=sorted(n for n,v in P.items() if v!=P0.get(n)),installation_authorized=False,production_host_qualified=False,offline_qualified=False,release_qualification=status,qualification_qa_run='PENDING_EXACT_CANDIDATE_QA')
+          files={'LOCAL-231GI-UPDATE-QA-DO-NOT-INSTALL.zip':pack({'release-set.json':J(m),'artifacts/local/web.zip':web}),'LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip':web,'PUBLIC-35JA-UPDATE-QA-DO-NOT-INSTALL.zip':pack({'manifest.json':J(pm)}|{'payload/'+n:v for n,v in P.items()}),'PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip':pack(P|protected)}
+          expected={'LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip':'cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a','LOCAL-231GI-UPDATE-QA-DO-NOT-INSTALL.zip':'41a7622255ba11fc8664c3cc6441fefe4ba88d0892743cad452171a4e7685c0d','PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip':'fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca','PUBLIC-35JA-UPDATE-QA-DO-NOT-INSTALL.zip':'3b297bb2561caeb9fd1dcb57d165270d6e4f4ba476d432b2672c6d2162c42077'}
+          assert set(expected)==set(files)
+          for n,v in files.items():
+           assert H(v)==expected[n],(n,H(v),expected[n])
+           assert read(v)
+          for n,v in files.items():
+           (out/n).write_bytes(v)
+           print('EXACT MATCH',n,H(v))
+          (out/'SHA256SUMS.txt').write_text(''.join(expected[n]+'  '+n+'\n' for n in sorted(expected)))
+          (out/'candidate-receipt.json').write_bytes(J({'checkpoint':'CC43','scope':'REPRODUCED_EXACT_QA_BYTES_NOT_INSTALLABLE','source_sha256':source_sha,'packages':expected,'production_authorized':False,'local_clean_web_only':True}))
+          REPLAY
+          python "$W/replay.py" "$W" "$RUNNER_TEMP/candidate/LOCAL-231GH-UPDATE-QA-DO-NOT-INSTALL.zip" "$RUNNER_TEMP/candidate/PUBLIC-35IZ-UPDATE-QA-DO-NOT-INSTALL.zip" "$W/out"
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: SOKNA-CC44B-REPORT-ROLE-MATRIX
-          path: ${{ runner.temp }}/cc44/receipts
-          retention-days: 7
+          name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/cc46/out
+          if-no-files-found: error
+          retention-days: 30
