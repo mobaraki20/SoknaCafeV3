@@ -1,0 +1,24 @@
+{
+  "source_sha256": "04f8fbbf8d5430db1c5da880e920e351fc17f4cf9f0e2495cfff82ffe3680e7f",
+  "previous_sha256": "5173c37933465c3dc3d1213ab79ff69a1453cb32385573baf2b2661102b56b59",
+  "changed": [
+    "local/public/assets/operations-workspace.js",
+    "local/public/assets/reports-workspace.js",
+    "local/resources/shared-staff-ui/reports-workspace.php",
+    "local/src/Domain/Reporting/ReportingService.php",
+    "public/assets/reports-workspace.js",
+    "public/resources/shared-staff-ui/reports-workspace.php"
+  ],
+  "trees": {
+    "local": "2eb39f8fbcfbbfe0ad8206cfddf74807a313b11bb49720ba3e4e625df6cbdc40",
+    "public": "1196b79b068d51f2b091586909acae0acc85515dd20c19f1235945753eafe1a0"
+  },
+  "files": {
+    "local/public/assets/operations-workspace.js": "b22d242b656fe3f1a4c2c3a128083f7237c2a36686d7d43c571664fece253f29",
+    "local/public/assets/reports-workspace.js": "315d89a229dc2dba349557fc06939c483e69b1961281412648859ece4af4d901",
+    "local/resources/shared-staff-ui/reports-workspace.php": "e08d48854aa4c5dcae481d49f2b05cb1ad7cb9408ad25f7d5b8dd2ba16da62a3",
+    "local/src/Domain/Reporting/ReportingService.php": "f07431e4cf3bf46da768c8b5f2f290998a9d25d67bf9a96fdc41ce494839e507",
+    "public/assets/reports-workspace.js": "834ac4ab399660900d8e1af581224ada0f1fa0e8a79a7bd5c1fac1cd2b65ce63",
+    "public/resources/shared-staff-ui/reports-workspace.php": "cedef47ec97163ae2c78e5ed0659c8e8da96b361907d4b57f0725503d27e8b3a"
+  }
+}
