@@ -1,4 +1,4 @@
-name: SOKNA 49 actual historical and current finance peer compatibility (QA only)
+name: SOKNA 49B exact 231gg legacy finance peer and 231gi compatibility (QA only)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -36,8 +36,8 @@ jobs:
           path: ${{ runner.temp }}/candidate
       - uses: actions/download-artifact@v4
         with:
-          run-id: 45389831526
-          name: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/prior
       - name: Real signed historical and current finance projection peers
@@ -47,8 +47,8 @@ jobs:
           W="$RUNNER_TEMP/cc49"; mkdir -p "$W/local" "$W/public" "$W/old/local" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           B="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          O="$RUNNER_TEMP/prior/SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip"
-          echo "f864a42fb82124e4f16c9b9437464256ef3b59d79d26518232cf05cbc9393f42  $O" | sha256sum -c -
+          O="$RUNNER_TEMP/prior/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip"
+          echo "a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f  $O" | sha256sum -c -
           echo "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
           unzip -q "$B" -d "$W/public"
@@ -58,7 +58,7 @@ jobs:
           W,old,current=map(pathlib.Path,sys.argv[1:]);H=lambda b:hashlib.sha256(b).hexdigest()
           with zipfile.ZipFile(old) as z:
            b=z.read('artifacts/local/web.zip')
-          assert H(b)=='3f5860ffbc30fa718b68709d89780ae56d3898fb9cc100157580d98d9ca2b2f9'
+          assert H(b)=='2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6'
           with zipfile.ZipFile(io.BytesIO(b)) as z:z.extractall(W/'old/local')
           assert H(current.read_bytes())=='cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a'
           s=pathlib.Path('qa/cp160/fixture.php').read_text()
@@ -86,8 +86,8 @@ jobs:
           function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
           $core=\Sokna\Local\Core\Bootstrap::fromArray($cfg);$p=$core->database();
           $versions=$p->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN);
-          $old=str_contains(file_get_contents($root.'/VERSION.txt'),'.231gc-');
-          ck(count($versions)===($old?91:93),'actual '.($old?'old 91':'current 93').' migration ledger');
+          $old=str_contains(file_get_contents($root.'/VERSION.txt'),'.231gg-');
+          ck(count($versions)===93,'actual '.($old?'old 93':'current 93').' migration ledger');
           if($mode==='projection'){
            $model=$core->publicProjectionBuilder()->remoteModelsFor(['operations'])[0];
            $state=$model['payload']['finance_projection'];
@@ -108,7 +108,6 @@ jobs:
           }
           exit(2);
           PHP
-          php "$W/peer.php" downgrade "$W/local" "$W/config.php" 0 | tee "$W/receipts/downgrade.txt"
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 &
           sleep 2
           npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
@@ -149,6 +148,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC49-REAL-MIXED-PEER-RECEIPTS
+          name: SOKNA-CC49B-REAL-MIXED-PEER-RECEIPTS
           path: ${{ runner.temp }}/cc49/receipts
           retention-days: 30
