@@ -1,0 +1,30 @@
+{
+  "source_sha256": "bc68de776955f2cc6a59679e77659f38a78ba2ea18c2348c5f5eccbd8ea84b5d",
+  "changed": [
+    "local/public/assets/admin-workspace.js",
+    "local/public/assets/connections-workspace.js",
+    "local/public/assets/guest-content-workspace.js",
+    "local/public/assets/marketing-workspace.js",
+    "local/public/assets/operations-workspace.js",
+    "local/public/assets/printing-workspace.js",
+    "local/public/assets/reports-workspace.js",
+    "local/public/assets/staff-app/preparation-workspace.js",
+    "local/public/assets/staff-consumption-workspace.js",
+    "local/public/assets/system-diagnostics.js",
+    "local/public/guest-content/api.php",
+    "local/public/marketing/api.php",
+    "local/src/Domain/GuestContent/GuestContentService.php",
+    "local/src/Domain/Marketing/MarketingService.php",
+    "local/src/Domain/System/SystemDiagnosticsService.php",
+    "public/assets/operations-workspace.js",
+    "public/assets/reports-workspace.js",
+    "public/assets/staff-app/preparation-workspace.js",
+    "public/assets/staff-app/public-hall-transport.js",
+    "public/src/Remote/RemoteReadModelService.php"
+  ],
+  "gzip_sha256": "4939a176c2983a84acade25002d00ca365cfecf029b8bba4ba4d73f2d9cece3d",
+  "trees": {
+    "local": "5d96b3446061825e824e25c1b0cc28322340a038ba7e37d30f479d45ce664eae",
+    "public": "2d3338a4331642ab1a93c9ba1679ececba0c402dfca60d8b67802eee9c855669"
+  }
+}
