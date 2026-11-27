@@ -1,0 +1,16 @@
+{
+  "source_sha256": "ceefeec0374cae35c6d278117145a569827501ebf66e2dbebb2f579e6102d62b",
+  "previous_sha256": "bc68de776955f2cc6a59679e77659f38a78ba2ea18c2348c5f5eccbd8ea84b5d",
+  "changed": [
+    "local/public/assets/staff-consumption-workspace.js",
+    "local/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php"
+  ],
+  "trees": {
+    "local": "3ff34b583de1616f195f38b7dd7ec1c2df7a8e1e36acb185b7ae6a0edd8fd5a1",
+    "public": "2d3338a4331642ab1a93c9ba1679ececba0c402dfca60d8b67802eee9c855669"
+  },
+  "files": {
+    "local/public/assets/staff-consumption-workspace.js": "daf7b33cac6c20cff2e78a4d31594abab3d7683ba00ed4d9ce282f35141cc74b",
+    "local/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php": "f5e3de736716ef311fe95972b51ca5362bd6d3e9c5095c6ce9407a802fbc1215"
+  }
+}

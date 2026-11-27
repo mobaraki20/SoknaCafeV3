@@ -1,0 +1,47 @@
+--- a/local/public/assets/staff-consumption-workspace.js
++++ b/local/public/assets/staff-consumption-workspace.js
+@@ -23,7 +23,7 @@
+ function dtLocalToSql(v){v=String(v||'').trim();if(!v)return null;return v.replace('T',' ')+(v.length===16?':00':'')}
+ function sqlToLocal(v){v=String(v||'').trim();return v?v.slice(0,16).replace(' ','T'):''}
+ function access(cap){return !!snap?.access?.[cap]}
+-function personnelOptions(select,includeAll=false){if(!select||!snap)return;const current=select.value;select.replaceChildren();const first=el('option','',includeAll?'همه پرسنل':'انتخاب پرسنل');first.value=includeAll?'0':'';select.append(first);for(const p of snap.personnel||[]){const o=el('option','',`${p.display_name}${p.job_title?` · ${p.job_title}`:''}${p.linked_user_id?'':' · بدون ورود'}`);o.value=String(p.id);select.append(o)}if([...select.options].some(o=>o.value===current))select.value=current}
++function personnelOptions(select,includeAll=false,historical=false){if(!select||!snap)return;const current=select.value;select.replaceChildren();const first=el('option','',includeAll?'همه پرسنل':'انتخاب پرسنل');first.value=includeAll?'0':'';select.append(first);for(const p of (historical?snap.historical_personnel:snap.personnel)||[]){const o=el('option','',`${p.display_name}${p.job_title?` · ${p.job_title}`:''}${p.linked_user_id?'':' · بدون ورود'}${bool(p.historical_only)?' · سابق / غیرفعال':''}`);o.value=String(p.id);select.append(o)}if([...select.options].some(o=>o.value===current))select.value=current}
+ function policyOptions(select,allowNone=false){if(!select||!snap?.benefits)return;const current=select.value;select.replaceChildren();if(allowNone){const o=el('option','','بدون مزیت (صریح)');o.value='0';select.append(o)}for(const p of snap.benefits.policies||[]){const o=el('option','',`${p.name}${bool(p.active)?'':' · غیرفعال'}`);o.value=String(p.id);select.append(o)}if([...select.options].some(o=>o.value===current))select.value=current}
+ function managementTargetOptions(select,scope,current=''){if(!select||!snap?.benefits)return;select.replaceChildren();if(scope==='all'){const o=el('option','','همه اقلام');o.value='0';select.append(o);return}const rows=scope==='category'?(snap.benefits.scope_targets?.categories||[]):snap.benefits.scope_targets?.items||[];for(const row of rows){const o=el('option','',`${row.name}${bool(row.active)?'':' · غیرفعال'}`);o.value=String(row.id);select.append(o)}if([...select.options].some(o=>o.value===String(current)))select.value=String(current)}
+ function runtimeTargetOptions(panel){const scope=panel.querySelector('[data-runtime-scope]'),target=panel.querySelector('[data-runtime-target]');if(!scope||!target||!snap)return;const current=target.value;target.replaceChildren();if(scope.value==='all'){const o=el('option','','همه اقلام');o.value='0';target.append(o);return}let rows=[];if(scope.value==='category'){const seen=new Map();for(const i of snap.catalog||[])if(!seen.has(i.category_id))seen.set(i.category_id,{id:i.category_id,name:i.category_name});rows=[...seen.values()]}else rows=(snap.catalog||[]).map(i=>({id:i.id,name:i.name}));for(const r of rows){const o=el('option','',r.name);o.value=String(r.id);target.append(o)}if([...target.options].some(o=>o.value===current))target.value=current}
+@@ -208,7 +208,7 @@
+ // Retain the native select as the account identity and no-JS fallback. The shared
+ // combobox supplies search, and must reflect any account-draft guard rejection.
+ function refreshAccountPicker(select){const box=$('[data-account-picker]');if(!select||!box||!window.SoknaInteractions?.setupComboboxes)return;const input=box.querySelector('[data-combobox-input]'),value=box.querySelector('[data-combobox-value]'),list=box.querySelector('[data-combobox-list]');const sync=(preserveQuery=false)=>{value.value=select.value;const label=select.value?select.selectedOptions[0]?.textContent||'':'';if(!preserveQuery||select.value){input.value=label;if(label)input.dataset.selectedLabel=label;else delete input.dataset.selectedLabel}};list.replaceChildren();for(const item of select.options){if(!item.value)continue;const option=el('button','sc-combobox__option',item.textContent);option.type='button';option.dataset.comboboxOption='';option.dataset.value=item.value;option.dataset.label=item.textContent;option.dataset.searchText=item.textContent;option.setAttribute('role','option');list.append(option)}if(!box.dataset.accountPickerBound){box.dataset.accountPickerBound='1';value.addEventListener('change',()=>{const requested=value.value;select.value=requested;select.dispatchEvent(new Event('change',{bubbles:true}));sync(!select.value&&!requested)});select.addEventListener('change',()=>{if(value.value!==select.value)sync()})}sync(!select.value&&!list.hidden);window.SoknaInteractions.setupComboboxes(root);box.hidden=false;select.hidden=true;}
+-function renderSnapshot(){personnelOptions($('[data-history-personnel]'),true);const accountSelect=$('[data-account-personnel]');const oldAccount=accountSelect?.value||'';personnelOptions(accountSelect,false);refreshAccountPicker(accountSelect);if(accountSelect&&oldAccount!==accountSelect.value){resetAccountView();if(!accountDraftPending())resetAccountForms();}lastAccountSelection=accountSelect?.value||'';personnelOptions($('[data-report-personnel]'),true);consumePanels.forEach(x=>x.render());renderHistory();renderBenefits();if($('[data-report-from]')&&!$('[data-report-from]').value){$('[data-report-from]').value=snap.report_defaults.from;$('[data-report-to]').value=snap.report_defaults.to}applyModuleState();$$('[data-consume-panel]').forEach(syncRuntimeBenefit)}
++function renderSnapshot(){personnelOptions($('[data-history-personnel]'),true,access('staff_consumption_reports'));const accountSelect=$('[data-account-personnel]');const oldAccount=accountSelect?.value||'';personnelOptions(accountSelect,false,access('staff_account_manage'));refreshAccountPicker(accountSelect);if(accountSelect&&oldAccount!==accountSelect.value){resetAccountView();if(!accountDraftPending())resetAccountForms();}lastAccountSelection=accountSelect?.value||'';personnelOptions($('[data-report-personnel]'),true,access('staff_consumption_reports'));consumePanels.forEach(x=>x.render());renderHistory();renderBenefits();if($('[data-report-from]')&&!$('[data-report-from]').value){$('[data-report-from]').value=snap.report_defaults.from;$('[data-report-to]').value=snap.report_defaults.to}applyModuleState();$$('[data-consume-panel]').forEach(syncRuntimeBenefit)}
+ async function loadSnapshot(showBusy=true){if(showBusy){root.setAttribute('aria-busy','true');setStatus('')}try{const j=await request(`${api}?action=snapshot`);snap=j;benefitSnapshotFresh=true;const restore=window.SoknaUI?.captureScroll?.(root);renderSnapshot();restore?.()}catch(e){benefitSnapshotFresh=false;throw e}finally{if(showBusy)root.removeAttribute('aria-busy')}}
+ async function refreshWorkspace(){resetAccountView();try{await loadSnapshot(true);if(Number($('[data-account-personnel]')?.value||0)>0)await loadAccount()}catch(e){setStatus(e.message,true)}}
+ $('[data-refresh]').addEventListener('click',refreshWorkspace);$('[data-history-load]')?.addEventListener('click',()=>loadHistory().catch(e=>actionError(e,'دریافت سابقه انجام نشد')));$('[data-account-load]')?.addEventListener('click',()=>loadAccount().catch(e=>actionError(e,'دریافت حساب انجام نشد')));$('[data-report-load]')?.addEventListener('click',()=>loadReport().catch(e=>actionError(e,'دریافت گزارش انجام نشد')));
+--- a/local/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php
++++ b/local/src/Domain/StaffConsumption/StaffConsumptionWorkspaceService.php
+@@ -44,6 +44,7 @@
+             'access'=>$access,
+             'self_personnel'=>$self,
+             'personnel'=>$personnel,
++            'historical_personnel'=>($access['staff_account_manage']||$access['staff_consumption_reports'])?$this->historicalPersonnel():[],
+             'catalog'=>$catalog,
+             'catalog_groups'=>$catalogGroups,
+             'history'=>$history,
+@@ -105,6 +106,16 @@
+             "SELECT p.id,p.display_name,p.personnel_code,p.job_title,p.linked_user_id,u.username linked_username " .
+             "FROM personnel p LEFT JOIN users u ON u.id=p.linked_user_id " .
+             "WHERE p.active=1 AND p.archived_at IS NULL ORDER BY p.display_name,p.id"
++        )->fetchAll(PDO::FETCH_ASSOC);
++    }
++
++    /** Historical accounts/reports only; never offered for a new consumption. */
++    private function historicalPersonnel(): array
++    {
++        return $this->pdo->query(
++            "SELECT p.id,p.display_name,p.personnel_code,p.job_title,p.linked_user_id," .
++            "CASE WHEN p.active=1 AND p.archived_at IS NULL THEN 0 ELSE 1 END historical_only " .
++            "FROM personnel p ORDER BY historical_only,p.display_name,p.id"
+         )->fetchAll(PDO::FETCH_ASSOC);
+     }
+ 
