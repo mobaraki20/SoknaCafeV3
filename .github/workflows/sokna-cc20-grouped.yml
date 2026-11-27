@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-42C targeted fix actual peer and remote table race (QA ONLY)
+name: SOKNA 44 read-only report acceptance (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -8,10 +8,6 @@ permissions:
   actions: read
 jobs:
   acceptance:
-    strategy:
-      fail-fast: false
-      matrix:
-        scope: [peer]
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
@@ -38,125 +34,105 @@ jobs:
           name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Exact Local and Public archives; new independent acceptance gates
+      - name: Read-only HTTP and workbook checks using synthetic fixture
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc42"; mkdir -p "$W/local" "$W/public" "$W/receipts"
+          W="$RUNNER_TEMP/cc44"; mkdir -p "$W/local" "$W/public" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           B="$RUNNER_TEMP/candidate/PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           echo "f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f  $A" | sha256sum -c -
           echo "9317be75ca5d31b2577aee7e5adb07f14dbb69053f47c647b8d705970d84d5fd  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
           unzip -q "$B" -d "$W/public"
-          # Exact archive first, then apply isolated candidate product patch.
-          python - "$W/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php" <<'PY'
-          from pathlib import Path
-          import sys
-          p=Path(sys.argv[1])
-          s=p.read_text()
-          old="        if($phase==='reenroll_required'&&$path!=='/api/v1/local/authority/fence')throw"
-          new="        if($phase==='reenroll_required'&&$path==='/api/v1/local/authority/fence')return;\n"+old
-          assert s.count(old)==1
-          p.write_text(s.replace(old,new))
-          PY
-          php -l "$W/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php"
           export QA_WORK="$W" TMPDIR="$W"
+          python - "$W" <<'PATCH44'
+          from pathlib import Path
+          import sys,hashlib
+          r=Path(sys.argv[1])
+          def change(n,old,new):
+           p=r/n;s=p.read_text();assert s.count(old)==1,(n,s.count(old));p.write_text(s.replace(old,new))
+          policy="""    /** Existing inventory-cost capability also protects derived cost and margin report sections. */
+              public static function restrictCostReport(array $report): array
+              {
+                  unset($report['inventory'],$report['margin']);
+                  $restricted=['inventory','margin','pricing'];
+                  $all=['overview','operations','inventory','margin','pricing','financial','activity','tenders','trends','item-sales'];
+                  $report['available_sections']=array_values(array_diff($report['available_sections']??$all,$restricted));
+                  $report['restricted_sections']=$restricted;
+                  return $report;
+              }
+          
+          """
+          p='local/src/Domain/Reporting/ReportingService.php'
+          change(p,'    /** Build current filtered report workbook using current_view_v1 schema. */',policy+'    /** Build current filtered report workbook using current_view_v1 schema. */')
+          change(p,'?string $query=null): string\n    {\n        $r=$this->report($from,$to);','?string $query=null,bool $includeCost=true): string\n    {\n        $r=$this->report($from,$to);')
+          change(p,"        $sheets=array_merge($sheets,PersianReportExport::current($r));", "        if(!$includeCost)$sheets=array_values(array_filter($sheets,static fn(array $sheet):bool=>!in_array($sheet['name'],['Inventory_Cost','Contribution_Margin','Margin_Items','Margin_Categories'],true)));\n        $sheets=array_merge($sheets,PersianReportExport::current($r));")
+          p='local/public/reports/api.php';change(p,"    WebAction::requireAny($core,['cashier_accounts','shift_supervision']);\n    WebAction::json(['success'=>true,'report'=>$core->reporting()->report((string)($_GET['from']??''),(string)($_GET['to']??''))]);", "    $viewer=WebAction::requireAny($core,['cashier_accounts','shift_supervision']);\n    $report=$core->reporting()->report((string)($_GET['from']??''),(string)($_GET['to']??''));\n    if(!$core->auth()->hasCapability('inventory_cost_view',$viewer))$report=\\Sokna\\Local\\Domain\\Reporting\\ReportingService::restrictCostReport($report);\n    WebAction::json(['success'=>true,'report'=>$report]);")
+          p='local/public/reports/export.php';change(p,"ActivityFilterInput::family($_GET['family']??null),(string)($_GET['q']??''));", "ActivityFilterInput::family($_GET['family']??null),(string)($_GET['q']??''),$core->auth()->hasCapability('inventory_cost_view',$user));")
+          p='local/public/reports/export-analytical.php';change(p,"$user=WebAction::requireAny($core,['shift_supervision']);", "$user=WebAction::requireAny($core,['shift_supervision']);\nif(!$core->auth()->hasCapability('inventory_cost_view',$user))WebAction::json(['success'=>false,'code'=>'forbidden','message'=>'دسترسی مشاهده هزینه مواد فعال نیست.'],403);")
+          p='public/src/Remote/RemoteReadModelService.php';change(p,"        if ($modelKey === 'reports' && !$this->hasCapability($session,'shift_supervision')) unset($payload['activity']);", "        if ($modelKey === 'reports' && !$this->hasCapability($session,'shift_supervision')) unset($payload['activity']);\n        if ($modelKey === 'reports' && !$this->hasCapability($session,'inventory.cost.read')) $payload=self::restrictCostReport($payload);")
+          change(p,'    private function filterOperations(array $payload,array $session): array',policy+'    private function filterOperations(array $payload,array $session): array')
+          pins={
+          'local/public/reports/api.php':'42661d6e756fbc082c251e4667c20316f147ac77f51368c918ed9dc05279f128',
+          'local/public/reports/export-analytical.php':'f300ecd2ae34939d1743fbef5c655402189310de64d1a1d34adea128a7b85a33',
+          'local/public/reports/export.php':'62b75671f53bc7e5e6dc4cf2bae4fabc27a48551738fbb9528663fe008d638b4',
+          'local/src/Domain/Reporting/ReportingService.php':'0202e774d233890520d8bae134b92f7b732330141caef422a3a71f8feb131eda',
+          'public/src/Remote/RemoteReadModelService.php':'e112f181409e95c61a02eb8d33b6fdbe1b0a695acdd402761ba19b96af0b167a'}
+          for n,h in pins.items():
+           assert hashlib.sha256((r/n).read_bytes()).hexdigest()==h,n
+           print('PASS exact report component',n)
+          PATCH44
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/local-fixture.txt"
-          php qa/cp160/public-fixture.php "$W/public" > "$W/receipts/public-fixture.txt"
-          cat > "$W/gate42.php" <<'SOKNA_CC42_PHP'
-          <?php
-          declare(strict_types=1);
-          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);
-          require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';
-          if(($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['host']??'')!=='127.0.0.1')exit(2);
-          $c=sokna_local_bootstrap($cfg);$p=$c->database();
-          function ck($ok,$msg){if(!$ok)throw new RuntimeException($msg);echo "PASS $msg\n";}
-          function s(PDO $p,string $sql,array $args=[]){$q=$p->prepare($sql);$q->execute($args);return $q->fetchColumn();}
-          function connection(string $db):PDO{if(!preg_match('/^sokna_(cp150_public|cc42_[a-z]+)$/D',$db))exit(2);return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$db.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}
-          function cloneSchema(PDO $p,string $db):PDO{
-           if(!preg_match('/^sokna_cc42_[a-z]+$/D',$db))exit(2);$p->exec('CREATE DATABASE '.$db.' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$t=connection($db);$t->exec('SET FOREIGN_KEY_CHECKS=0');
-           foreach($p->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as $row){$n=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$n))exit(2);$t->exec($p->query('SHOW CREATE TABLE '.$n)->fetch(PDO::FETCH_NUM)[1]);}
-           foreach(['schema_migrations','schema_migration_statements'] as $n)foreach($p->query('SELECT * FROM '.$n)->fetchAll(PDO::FETCH_ASSOC) as $row){$cols=array_keys($row);$t->prepare('INSERT INTO '.$n.' ('.implode(',',$cols).') VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}
-           $t->exec('SET FOREIGN_KEY_CHECKS=1');return $t;
-          }
-          function http(string $path,?array $data=null,string $cookie='',bool $form=false):array{
-           $h=curl_init('http://127.0.0.1:18766/public'.$path);curl_setopt_array($h,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>12,CURLOPT_HTTPHEADER=>['Content-Type: '.($form?'application/x-www-form-urlencoded':'application/json')],CURLOPT_COOKIE=>$cookie]);if($data!==null)curl_setopt($h,CURLOPT_POSTFIELDS,$form?http_build_query($data):json_encode($data,JSON_THROW_ON_ERROR));$raw=curl_exec($h);if($raw===false)throw new RuntimeException(curl_error($h));$status=curl_getinfo($h,CURLINFO_RESPONSE_CODE);$split=curl_getinfo($h,CURLINFO_HEADER_SIZE);$head=substr($raw,0,$split);$body=json_decode(substr($raw,$split),true);curl_close($h);preg_match('/^Set-Cookie:\s*(sokna_staff=[^;\r\n]+)/mi',$head,$m);return ['status'=>$status,'body'=>$body,'cookie'=>$m[1]??''];
-          }
-          $mode=$argv[2]??'';
-          $admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
-          if($mode==='prep-peer'){
-           $q=connection('sokna_cp150_public');$pc=require $W.'/public/config.php';
-           $pc['relay']['secret_encryption_key_base64'] ??= base64_encode(random_bytes(32));
-           foreach(['reachable','unreachable'] as $name){$id='qa42-'.$name;$secret=bin2hex(random_bytes(32));$q->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_state) VALUES(?,?,1,1,1,'active')")->execute([$id,$id]);$pc['relay']['installation_secrets'][$id]=$secret;}
-           file_put_contents($W.'/public/config.php','<?php return '.var_export($pc,true).';');
-           exit;
-          }
-          if($mode==='peer'){
-           $q=connection('sokna_cp150_public');$pc=require $W.'/public/config.php';$backup=$W.'/peer.skbf';$pass='synthetic-cc42-peer-password';$r=$c->businessBackup()->createEncrypted($backup,$pass,(int)$admin['id']);$hash=hash_file('sha256',$backup);ck($hash===$r['sha256'],'source encrypted input intact');
-           $sourceId=$cfg['installation']['id'];
-           $sourceRow=fn()=>s($q,'SELECT CONCAT(authority_state,":",remote_enabled,":",order_intake_enabled) FROM installations WHERE installation_id=?',[$sourceId]);
-           $src=$sourceRow();
-           foreach(['reachable','unreachable'] as $name){
-            $id='qa42-'.$name;$db='sokna_cc42_'.$name;$t=cloneSchema($p,$db);$dest=$W.'/data-'.$name;mkdir($dest,0700,true);
-            $tcfg=$cfg;$tcfg['db']['name']=$db;$tcfg['app']['data_dir']=$dest;$tcfg['installation']['id']=$id;$tcfg['public']['base_url']=$name==='reachable'?'http://127.0.0.1:18766/public':'http://127.0.0.1:18769/public';$tcfg['public']['shared_secret']=$pc['relay']['installation_secrets'][$id];
-            $o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$id);$cl=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient(\Sokna\Local\Core\Config::fromArray($tcfg),null,$o,$auth);
-            ck($cl->configured(),'configured distinct target '.$name);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$id,$auth,$cl,$dest);
-            $r=$b->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($r['restored']===true,'real restore '.$name);ck($auth->phase()==='reenroll_required','local fence '.$name);ck(s($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$id,'independent installation '.$name);
-            echo 'FENCE '.json_encode(['name'=>$name,'confirmed'=>$r['public_authority_fence_confirmed'],'error'=>$r['public_authority_fence_error']])."\n";ck($r['public_authority_fence_confirmed']===($name==='reachable'),'truthful fence receipt '.$name);
-            $state=s($q,'SELECT CONCAT(authority_state,":",remote_enabled,":",order_intake_enabled) FROM installations WHERE installation_id=?',[$id]);ck($state===($name==='reachable'?'reenroll_pending:0:0':'active:1:1'),'actual peer database '.$name);
-            try{$cl->postRaw('/api/v1/local/realtime/exchange',[],2);throw new RuntimeException('fenced local accepted relay');}catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){ck($e->errorCode==='public_authority_reenrollment_required','relay blocked even without peer '.$name);}
-            ck($sourceRow()===$src,'source Public identity and authority untouched '.$name);
-           }
-           ck(hash_file('sha256',$backup)===$hash,'backup unchanged');echo "GROUP PASS SYS-L524 reachable and unreachable real peer\n";exit;
-          }
-          if($mode==='relay-child'){
-           $r=$c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);echo json_encode($r,JSON_THROW_ON_ERROR);exit;
-          }
-          if($mode==='disable-child'){
-           $f=json_decode(file_get_contents($argv[3]),true,512,JSON_THROW_ON_ERROR);
-           try{$r=$c->adminControls()->saveTable(['id'=>$f['table'],'name'=>$f['name'],'table_number'=>$f['number'],'active'=>false],$admin);echo json_encode(['ok'=>true,'result'=>$r]);}catch(Throwable $e){echo json_encode(['ok'=>false,'code'=>$e->errorCode??'','message'=>$e->getMessage()]);}exit;
-          }
-          if($mode!=='relay')exit(2);
-          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA42 menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA42 category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES('qa42-race',?,'QA42 race item',10000,1,1,'active',1,1,'hot_bar')")->execute([$cid]);$item=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$item]);$p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('orders_accepting.cafe','1'),('orders_accepting.bar','1'),('orders_accepting.kitchen','1'),('printing.quick.auto_preparation','0') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
-          $login=http('/staff/login',['installation_id'=>$cfg['installation']['id'],'username'=>'qa-target','password'=>'synthetic-qa-admin-not-real'],'',true);ck($login['status']===303&&$login['cookie']!=='','actual Public admin session');$cookie=$login['cookie'];
-          function spawn(string $mode,string $file=''){global $root;$a=[PHP_BINARY,__FILE__,$root,$mode];if($file!=='')$a[]=$file;$pr=proc_open($a,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($pr))throw new RuntimeException('spawn');fclose($pipes[0]);return [$pr,$pipes];}
-          function result(array $a){[$pr,$pipes]=$a;$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$rc=proc_close($pr);if($rc!==0)throw new RuntimeException('child '.$rc.' '.$err);return json_decode($out,true,512,JSON_THROW_ON_ERROR);}
-          function waitSleep(PDO $p){$end=microtime(true)+7;while(microtime(true)<$end){if((int)s($p,"SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB='sokna_cp150' AND STATE='User sleep'")>0)return true;usleep(30000);}return false;}
-          function terminal(string $id,string $cookie){$end=microtime(true)+18;while(microtime(true)<$end){$r=http('/api/staff/realtime/result?request_id='.rawurlencode($id),null,$cookie);if($r['status']===200&&in_array($r['body']['state']??'',['committed','rejected'],true))return $r['body'];usleep(150000);}throw new RuntimeException('no terminal relay result');}
-          $p->exec("CREATE TRIGGER qa42_order_hold BEFORE INSERT ON orders FOR EACH ROW BEGIN IF NEW.table_id IN (SELECT id FROM cafe_tables WHERE table_number=9421) THEN DO SLEEP(2); END IF; END");
-          $p->exec("CREATE TRIGGER qa42_disable_hold BEFORE UPDATE ON cafe_tables FOR EACH ROW BEGIN IF OLD.active=1 AND NEW.active=0 AND OLD.table_number=9422 THEN DO SLEEP(2); END IF; END");
-          try{
-           foreach([9422] as $n){
-            $name='QA42 table '.$n;$tid=(int)$c->adminControls()->saveTable(['name'=>$name,'table_number'=>$n,'active'=>true],$admin)['id'];$f=['name'=>$name,'table'=>$tid,'number'=>$n];$file=$W.'/race-'.$n.'.json';file_put_contents($file,json_encode($f));
-            $id='qa42-public-draft-finalize-'.$n;$now=time();$e=['request_id'=>$id,'kind'=>'table_draft.finalize_atomic','created_at'=>gmdate('c',$now),'expires_at'=>gmdate('c',$now+100),'payload'=>['table_id'=>$tid,'expected_version'=>0,'expected_session_id'=>0,'items'=>[['id'=>$item,'quantity'=>1,'expected_price'=>10000]]]];
-            $queued=http('/api/staff/realtime',$e,$cookie);ck(in_array($queued['status'],[200,202],true)&&($queued['body']['ok']??false)===true,'real Public accepted command '.$n);
-            if($n===9421){$relay=spawn('relay-child');ck(waitSleep($p),'remote order transaction holds lock');$dis=spawn('disable-child',$file);}else{$dis=spawn('disable-child',$file);ck(waitSleep($p),'disable transaction holds lock');$relay=spawn('relay-child');}
-            $d=result($dis);$rr=result($relay);echo 'RACE '.json_encode(['disable'=>$d,'relay'=>$rr])."\n";if(($rr['processed']??0)===0){sleep(32);$rr=$c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);echo 'RECLAIM '.json_encode($rr)."\n";}
-            $c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);
-            $r=terminal($id,$cookie);$active=(int)s($p,'SELECT active FROM cafe_tables WHERE id=?',[$tid]);$count=(int)s($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$tid]);$sessions=(int)s($p,"SELECT COUNT(*) FROM table_sessions WHERE table_id=? AND status IN('active','pending')",[$tid]);
-            if($n===9421){ck($r['state']==='committed'&&!$d['ok']&&$d['code']==='table_live','remote order wins and disable rejected');ck($active===1&&$count===1&&$sessions===1,'one order and session preserved');}
-            else{ck($r['state']==='rejected'&&$d['ok']&&in_array($r['error_code']??'',['invalid_table','table_inactive'],true),'disable wins and remote rejected');ck($active===0&&$count===0&&$sessions===0,'no orphan order or session');}
-            ck((int)s($p,'SELECT COUNT(*) FROM lan_staff_realtime_receipts WHERE request_id=?',[$id])===1,'one durable receipt '.$n);
-           }
-          }finally{$p->exec('DROP TRIGGER qa42_order_hold');$p->exec('DROP TRIGGER qa42_disable_hold');}
-          echo "GROUP PASS ADM-L454 signed Public staff relay races\n";
-          SOKNA_CC42_PHP
-          php -l "$W/gate42.php"
-          if [[ '${{ matrix.scope }}' == peer ]]; then
-            php "$W/gate42.php" "$W/local" prep-peer
-          fi
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 & pp=$!
-          trap 'kill "$pp" 2>/dev/null || true; tail -n 40 "$W/receipts/public-http.log" || true' EXIT
+          php qa/cp160/fixture.php "$W/local"
+          php qa/cp160/public-fixture.php "$W/public"
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/receipts/local-http.log" 2>&1 &
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/receipts/public-http.log" 2>&1 &
           sleep 2
-          kill -0 "$pp"
-          php qa/cp160/worker.php "$W/local" init | tee "$W/receipts/signed-sync.txt"
-          php "$W/gate42.php" "$W/local" '${{ matrix.scope }}' | tee "$W/receipts/results.txt"
+          php qa/cp160/worker.php "$W/local" init
+          cat > "$W/report44.py" <<'REPORT44'
+          import json,sys,urllib.request,urllib.parse,urllib.error,http.cookiejar,zipfile,io,xml.etree.ElementTree as ET
+          from pathlib import Path
+          w=Path(sys.argv[1]);f=json.loads((w/'cp144-fixture.json').read_text());iid=f['installation'];day=f['report_day']
+          L='http://127.0.0.1:18765';P='http://127.0.0.1:18766/public'
+          def ck(x,n):
+           assert x,n
+           print('PASS',n,flush=True)
+          def session(base,user):
+           c=http.cookiejar.CookieJar();o=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(c));url=base+('/login.php' if base==L else '/staff/login')
+           data={'username':user,'password':'synthetic-qa-admin-not-real' if user=='qa-target' else 'synthetic-member-only'}
+           if base==P:data['installation_id']=iid
+           o.open(url,urllib.parse.urlencode(data).encode(),timeout=20).close()
+           return o
+          def get(o,url):
+           try:
+            with o.open(url,timeout=30) as r:return r.status,r.read()
+           except urllib.error.HTTPError as e:return e.code,e.read()
+          def sheets(b):
+           with zipfile.ZipFile(io.BytesIO(b)) as z:
+            return {e.attrib['name'] for e in ET.fromstring(z.read('xl/workbook.xml')).iter() if e.tag.endswith('}sheet')}
+          restricted={'Inventory_Cost','Contribution_Margin','Margin_Items','Margin_Categories'}
+          for user,allowed in [('qa-target',True),('qa-cashier',False)]:
+           for base in [L,P]:
+            o=session(base,user);q='?from='+day+'&to='+day
+            code,b=get(o,base+('/reports/api.php' if base==L else '/staff/reports-adapter')+q)
+            ck(code==200,'ordinary report '+user+' '+base);r=json.loads(b)['report']
+            ck(('inventory' in r and 'margin' in r) if allowed else ('inventory' not in r and 'margin' not in r),'cost section authorization '+user+' '+base)
+            ck('net_sales' in r['summary'],'ordinary sales retained '+user+' '+base)
+            if base==P:
+             code,b=get(o,P+'/api/staff/read?model=reports');ck(code==200,'raw report GET '+user)
+             p=json.loads(b)['payload'];ck(('inventory' in p and 'margin' in p) if allowed else ('inventory' not in p and 'margin' not in p),'raw cost boundary '+user)
+            else:
+             code,b=get(o,L+'/reports/export.php'+q);ck(code==200,'current workbook '+user);names=sheets(b)
+             ck(restricted<=names if allowed else not restricted&names,'actual workbook cost sheets '+user)
+             code,b=get(o,L+'/reports/export-analytical.php'+q)
+             ck(code==200 if allowed else code==403,'analytical authorization '+user)
+          print('GROUP PASS read-only report regression')
+          REPORT44
+          python "$W/report44.py" "$W" | tee "$W/receipts/results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC42C-${{ matrix.scope }}-RECEIPTS
-          path: ${{ runner.temp }}/cc42/receipts
+          name: SOKNA-CC44-REPORT-RECEIPTS
+          path: ${{ runner.temp }}/cc44/receipts
           retention-days: 7
