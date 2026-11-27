@@ -1,4 +1,4 @@
-name: SOKNA A11 rebased exact latest delivery grouped QA
+name: SOKNA A11 full authenticated pages and real DB grouped QA
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -100,10 +100,28 @@ jobs:
           export TMPDIR="$W"
           php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-results.txt"
           php -r 'require $argv[1]."/bootstrap.php";$cfg=require $argv[1]."/config.php";if(($cfg["db"]["host"]??"")!=="127.0.0.1"||($cfg["db"]["name"]??"")!=="sokna_cp150_public")exit(2);$core=sokna_public_bootstrap($cfg);$m=$core->migrations();if($m->pendingVersions()!==[]||$m->migrate()!==[]||$m->migrate()!==[])exit(3);echo "PASS Public clean schema and twice reapply no-op\n";' "$W/public" | tee -a "$W/public-results.txt"
+      - name: Real authenticated Local and Public full pages, grouped Chromium
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          test -f "$W/cp144-fixture.json"
+          npm install --prefix "$W/pw" playwright
+          export TMPDIR="$W" RUNNER_TEMP="$W"
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-http.log" 2>&1 & lp=$!
+          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-http.log" 2>&1 & pp=$!
+          trap 'kill "$lp" "$pp" 2>/dev/null || true' EXIT
+          sleep 2
+          php qa/cp160/worker.php "$W/local" init | tee "$W/sync-results.txt"
+          node qa/post-release-a10/browser.cjs 2>&1 | tee "$W/browser-results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A11-REAL-DB-GATE-EVIDENCE-NO-INSTALL
-          path: ${{ runner.temp }}/cp148-qa/*-results.txt
+          name: SOKNA-A11-FULL-PAGE-GATE-EVIDENCE-NO-INSTALL
+          path: |
+            ${{ runner.temp }}/cp148-qa/*-results.txt
+            ${{ runner.temp }}/cp148-qa/*-http.log
+            ${{ runner.temp }}/cp148-qa/screenshots/*.png
           retention-days: 7
           if-no-files-found: warn
