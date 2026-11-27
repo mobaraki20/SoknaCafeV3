@@ -1,4 +1,4 @@
-name: SOKNA 49D exact 231gg legacy finance peer and 231gi compatibility (QA only)
+name: SOKNA 46B final report UI only on registered exact bytes
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,9 +7,9 @@ permissions:
   contents: read
   actions: read
 jobs:
-  mixed-peer:
+  acceptance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 12
     services:
       mariadb:
         image: mariadb:11.4
@@ -34,130 +34,104 @@ jobs:
           name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - uses: actions/download-artifact@v4
-        with:
-          run-id: 45764512635
-          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/prior
-      - name: Real signed historical and current finance projection peers
+      - name: Exact current report UI gate (no repeated API acceptance)
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc49"; mkdir -p "$W/local" "$W/public" "$W/old/local" "$W/receipts"
+          W="$RUNNER_TEMP/cc46b"; mkdir -p "$W/local" "$W/public" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           B="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          O="$RUNNER_TEMP/prior/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip"
-          echo "a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f  $O" | sha256sum -c -
+          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
           echo "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
           unzip -q "$B" -d "$W/public"
           export QA_WORK="$W" TMPDIR="$W"
-          python - "$W" "$O" "$A" <<'PY'
-          import pathlib,sys,zipfile,io,hashlib
-          W,old,current=map(pathlib.Path,sys.argv[1:]);H=lambda b:hashlib.sha256(b).hexdigest()
-          with zipfile.ZipFile(old) as z:
-           b=z.read('artifacts/local/web.zip')
-          assert H(b)=='2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6'
-          with zipfile.ZipFile(io.BytesIO(b)) as z:z.extractall(W/'old/local')
-          assert H(current.read_bytes())=='cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a'
-          s=pathlib.Path('qa/cp160/fixture.php').read_text()
-          # Use exactly the old installed schema, with the basic synthetic partial-payment seed; omit unrelated current report setup.
-          start=s.index('// Independent QA-only rows')
-          end=s.index('$iid=(string)',start)
-          s=s[:start]+'$reportDay=$core->time()->civilDate();\n'+s[end:]
-          s=s.replace('sokna_cp150','sokna_cc49_old')
-          (W/'old-fixture.php').write_text(s)
-          PY
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/current-fixture.txt"
-          php "$W/old-fixture.php" "$W/old/local" > "$W/receipts/old-fixture.txt"
-          # Both independent synthetic installations use the same test peer binding for this transition experiment.
-          php -r '$old=require $argv[1];$new=require $argv[2];$old["installation"]["id"]=$new["installation"]["id"];$old["public"]=$new["public"];file_put_contents($argv[1],"<?php return ".var_export($old,true).";");' "$W/old/config.php" "$W/config.php"
-          php qa/cp160/public-fixture.php "$W/public"
-          # Allocate a synthetic monotonic transition sequence above both independently seeded DB watermarks.
-          export QA_SEQUENCE_BASE="$(mysql --protocol=TCP -h127.0.0.1 -uroot -p"$QA_DB_PASSWORD" -N -B -e 'SELECT GREATEST((SELECT COALESCE(MAX(last_sequence),0) FROM sokna_cp150.public_projection_model_targets),(SELECT COALESCE(MAX(last_sequence),0) FROM sokna_cc49_old.public_projection_model_targets))')"
-          [[ "$QA_SEQUENCE_BASE" =~ ^[0-9]+$ ]]
-          cat > "$W/peer.php" <<'PHP'
+          php qa/cp160/fixture.php "$W/local" > "$W/receipts/setup.txt"
+          cat > "$W/roles44b.php" <<'PHP'
           <?php
-          declare(strict_types=1);
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          [$s,$mode,$root,$cfgPath,$sequence]=$argv;
-          $root=realpath($root);require $root.'/bootstrap.php';
-          $cfg=require $cfgPath;
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||!in_array($cfg['db']['name']??'',['sokna_cp150','sokna_cc49_old'],true)||($cfg['public']['base_url']??'')!=='http://127.0.0.1:18766/public')exit(2);
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
-          $core=\Sokna\Local\Core\Bootstrap::fromArray($cfg);$p=$core->database();
-          $versions=$p->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN);
-          $old=str_contains(file_get_contents($root.'/VERSION.txt'),'.231gg-');
-          ck(count($versions)===93,'actual '.($old?'old 93':'current 93').' migration ledger');
-          if($mode==='projection'){
-           $sequence=(int)getenv('QA_SEQUENCE_BASE')+(int)$sequence;
-           $target=(int)$p->query("SELECT COALESCE(MAX(last_sequence),0) FROM public_projection_model_targets")->fetchColumn();
-           ck($sequence>$target,'fixture transport sequence covers real local target');
-           $model=$core->publicProjectionBuilder()->remoteModelsFor(['operations'])[0];
-           $state=$model['payload']['finance_projection'];
-           ck($state['status']==='ready','actual financial projection ready');
-           ck(($state['remaining_discount_correction_contract']??0)===($old?0:1),'actual code capability '.($old?'old':'new'));
-           ck(count($model['payload']['settlement_accounts'])>0,'actual accounts projected');
-           $r=$core->publicEdgeSyncClient()->postRaw('/api/v1/local/read-model-v2',['format'=>'sokna-read-model-v2','up_to_sequence'=>(int)$sequence,'model'=>$model],5);
-           ck($r['status']===200&&($r['body']['ack_sequence']??0)===(int)$sequence,'signed real Public acknowledgement '.$sequence);
-           $h=$core->publicEdgePublisher()->syncHeartbeat(5);ck(($h['success']??false)===true,'real signed heartbeat');
-           echo json_encode(['hash'=>$model['source_version'],'finance'=>$state],JSON_THROW_ON_ERROR).PHP_EOL;exit;
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
+          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$ids=[];
+          foreach(['qa-supervisor'=>['shift_supervision','remote_access'],'qa-cost-supervisor'=>['shift_supervision','inventory_cost_view','inventory_view','remote_access'],'qa-report-only-staff'=>['staff_consumption_reports','remote_access']] as $name=>$caps){
+           $hash=password_hash('synthetic-member-only',PASSWORD_DEFAULT);
+           $p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,$hash,$name]);$id=(int)$p->lastInsertId();$ids[$name]=$id;
+           foreach($caps as $cap)$p->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$id,$cap]);
+           $p->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")->execute([$id,$hash]);
           }
-          if($mode==='downgrade'){
-           ck(!$old,'current installation owns the downgrade decision');
-           $catalog=[];foreach(glob(dirname($root).'/old/local/database/migrations/*.sql') as $file)$catalog[basename($file,'.sql')]=hash_file('sha256',$file);
-           try{\Sokna\Local\Domain\Update\UpdateMigrationPolicy::assertInstalledLineage($versions,$catalog,$root.'/database/migrations');throw new RuntimeException('unsafe downgrade accepted');}
-           catch(\Sokna\Local\Domain\Update\LocalUpdateException $e){ck($e->errorCode==='schema_downgrade_unsupported','actual current ledger rejects incompatible direct rollback');}
-           exit;
-          }
-          exit(2);
+          $f=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
+          $byName=array_column($core->publicProjectionBuilder()->authProjections(),null,'username');
+          foreach($ids as $name=>$id){$v=$byName[$name];$f['users'][]=['id'=>$id,'name'=>$name,'role'=>$v['role'],'password'=>'synthetic-member-only','caps'=>$v['capabilities'],'areas'=>$v['preparation_areas'],'hash'=>$v['password_hash']];}
+          file_put_contents($w.'/cp144-fixture.json',json_encode($f,JSON_THROW_ON_ERROR));
           PHP
+          php "$W/roles44b.php" "$W"
+          php qa/cp160/public-fixture.php "$W/public"
+          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" > "$W/receipts/local-http.log" 2>&1 &
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 &
           sleep 2
-          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
-          cat > "$W/ui.cjs" <<'JS'
-          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs'),{execFileSync}=require('child_process');
-          const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
-          const sid=Number(f.hall.partial.session);
-          function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)}
-          function sync(old,seq){console.log(execFileSync('php',[W+'/peer.php','projection',W+(old?'/old/local':'/local'),W+(old?'/old/config.php':'/config.php'),String(seq)],{encoding:'utf8'}))}
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true}),c=await b.newContext({viewport:{width:1280,height:900},locale:'fa-IR'}),p=await c.newPage();p.setDefaultTimeout(16000);
-          try{
-           sync(true,1);
-           await p.goto(base+'/staff/login');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key='user:'+f.users.find(u=>u.name==='qa-target').id;
+          php qa/cp160/worker.php "$W/local" init
+          cat > "$W/ui46b.cjs" <<'UI46B'
+          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs');
+          const W=process.env.QA_WORK,f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
+          const L='http://127.0.0.1:18765',P='http://127.0.0.1:18766/public';
+          function ck(x,m){if(!x)throw Error(m);console.log('PASS '+m)}
+          async function auth(p,base,user){
+           await p.goto(base+(base===L?'/login.php':'/staff/login'));
+           const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});
+           const key=base===L?user:'user:'+f.users.find(u=>u.name===user).id;
            if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="'+key+'"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}
-           await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);
-           await p.goto(base+'/staff/operator/');await p.waitForFunction(()=>!!window.SoknaHallTransport);
-           async function state(old,seq){
-            const res=await p.request.get(base+'/api/staff/read?model=operations');const r=await res.json();ck(res.ok()&&r.payload.finance_projection.status==='ready','real signed projection visible to logged-in browser '+seq);
-            ck((r.payload.finance_projection.remaining_discount_correction_contract||0)===(old?0:1),'browser sees actual version capability '+seq);ck(r.stale===false&&r.connectivity.local_fresh===true,'real model fresh '+seq+' '+JSON.stringify(r.freshness));
-            await p.waitForFunction(async({old,sid})=>{await window.SoknaHallTransport.request('/api/hall?action=snapshot');const h=window.SoknaHallTransport;return h.canResolveCorrection()===!old&&h.canAbandonCorrection()===!old},{old,sid},{timeout:20000,polling:400});
-            const x=await p.evaluate(sid=>{const h=window.SoknaHallTransport;return {correct:h.canCorrectDiscount(sid),resolve:h.canResolveCorrection(),abandon:h.canAbandonCorrection(),pending:h.pendingCorrectionForSession(sid)?.request_id||null}},sid);
-            ck(x.resolve===!old&&x.abandon===!old,'real browser correction resolution guarded '+seq);return x;
+           await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');
+           await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);
+           ck(!p.url().includes('/login'),'authenticated '+user+' '+base);
+          }
+          (async()=>{
+           const b=await chromium.launch({channel:'chrome',headless:true});let failed=0;
+           try{
+           for(const base of [L,P])for(const [user,allowed,width] of [['qa-supervisor',false,390],['qa-cashier',false,1280],['qa-cost-supervisor',true,390],['qa-target',true,1280]]){
+            const label=(base===L?'local':'public')+'-'+user+'-'+width;
+            const ctx=await b.newContext({viewport:{width,height:900},locale:'fa-IR'});
+            const p=await ctx.newPage();p.setDefaultTimeout(16000);
+            try{
+             await auth(p,base,user);
+             await p.goto(base+(base===L?'/reports/':'/staff/reports/'));
+             await p.locator('[data-summary] [data-report-kpi="net_sales"]').waitFor({state:'visible'});
+             for(const k of ['inventory','margin']){
+              await p.locator('#report-tab-'+k).click();
+              const s=p.locator('[data-report-section="'+k+'"]');await s.waitFor({state:'visible'});
+              const m=s.locator('[data-report-unavailable]');
+              if(allowed){
+               ck(!await m.isVisible(),'authorized '+k+' '+label);
+               const metric=s.locator(k==='inventory'?'[data-inventory-metrics]':'[data-margin-coverage]');
+               await metric.waitFor({state:'visible'});
+               ck((await metric.innerText()).trim().length>0,'real contents '+k+' '+label);
+              }else{
+               await m.waitFor({state:'visible'});
+               ck((await m.innerText()).includes('مجوز مشاهده بهای مواد'),'permission message '+k+' '+label);
+               ck(await s.evaluate(el=>[...el.children].filter(c=>!c.hasAttribute('data-report-unavailable')).every(c=>c.hidden)),'restricted children hidden '+k+' '+label);
+              }
+              await p.screenshot({path:W+'/receipts/'+label+'-'+k+'.png',animations:'disabled'});
+             }
+             await p.locator('#report-tab-overview').click();
+             ck(await p.locator('[data-summary] [data-report-kpi="net_sales"]').isVisible(),'sales still visible '+label);
+             if(base===L){
+              const analytics=p.locator('[data-export-analytical]');
+              ck((await analytics.count()>0)===allowed,'export control permission '+label);
+             }
+             ck(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'viewport fits '+label);
+             console.log('GROUP PASS REP-L281 '+label);
+            }catch(e){failed++;console.log('GROUP FAIL REP-L281 '+label+' '+e.stack);await p.screenshot({path:W+'/receipts/'+label+'-failure.png',animations:'disabled'}).catch(()=>{});}
+            finally{await ctx.close();}
            }
-           let x=await state(true,1);ck(!x.correct,'old peer prevents new correction');
-           sync(false,2);x=await state(false,2);ck(x.correct,'current peer enables correction');
-           // Simulate only the browser's persisted uncertain-request receipt, not any server response.
-           const ledger=await p.evaluate(sid=>{const key='sokna:staff-command-ledger:v1:'+((document.body.dataset.appBase||document.body.dataset.basePath||'').replace(/\/$/,'')||'/')+':'+(document.body.dataset.projectionId||'');localStorage.setItem(key,JSON.stringify([{kind:'settlement.discount_correction',session_id:sid,request_id:'qa49-pending-synthetic',keep_until:Number.MAX_SAFE_INTEGER}]));return {key,pending:window.SoknaHallTransport.pendingCorrectionForSession(sid)?.request_id}},sid);
-           ck(ledger.pending==='qa49-pending-synthetic','explicit synthetic uncertain receipt installed');
-           sync(true,3);x=await state(true,3);ck(!x.correct&&x.pending==='qa49-pending-synthetic','actual old projection retains pending identity');
-           let posts=0;const listener=r=>{if(r.method()==='POST'&&r.url().includes('/api/staff/realtime'))posts++};p.on('request',listener);
-           const rejected=await p.evaluate(async sid=>{try{await window.SoknaFinanceTransport.post('',{action:'discount_correction',session_id:sid,request_id:'qa49-duplicate-attempt'});return ''}catch(e){return e.code}},sid);
-           ck(rejected==='request_pending'&&posts===0,'no duplicate financial POST to real Public');
-           sync(false,4);x=await state(false,4);ck(!x.correct&&x.pending==='qa49-pending-synthetic','current peer return retains same request and enables resolution only');
-           const second=await c.newPage();await second.goto(base+'/staff/operator/');await second.waitForFunction(()=>!!window.SoknaHallTransport);
-           const other=await second.evaluate(async sid=>{await window.SoknaHallTransport.request('/api/hall?action=snapshot');const h=window.SoknaHallTransport;return {pending:h.pendingCorrectionForSession(sid)?.request_id,correct:h.canCorrectDiscount(sid)}},sid);
-           ck(other.pending==='qa49-pending-synthetic'&&!other.correct,'second real browser tab retains same pending identity');
-           await second.close();await p.screenshot({path:W+'/receipts/mixed-peer.png',animations:'disabled'});p.off('request',listener);
-           console.log('GROUP PASS actual older/current signed projections and real browser guard');
-          }finally{await c.close();await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
-          JS
-          node "$W/ui.cjs" | tee "$W/receipts/mixed.txt"
+           }finally{await b.close();}
+           if(failed)process.exitCode=1;
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          UI46B
+          node "$W/ui46b.cjs" | tee "$W/receipts/results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC49D-REAL-MIXED-PEER-RECEIPTS
-          path: ${{ runner.temp }}/cc49/receipts
+          name: SOKNA-CC46B-REPORT-UI-EXACT-RECEIPTS
+          path: ${{ runner.temp }}/cc46b/receipts
           retention-days: 30
