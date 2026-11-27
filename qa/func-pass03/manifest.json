@@ -1,0 +1,35 @@
+{
+  "source_sha256": "d35cc979a0e0f56cef8c00839617cfac200dede6d100efc5256c10f358b5c631",
+  "source_files": 883,
+  "base_sha256": "70e6ac17a2be2a33668d4aa2a406f17d6b3624f026b779305b14f593bc28b315",
+  "changes": {
+    "local/public/assets/staff-app/hall-workspace.js": {
+      "before": "ed2106dd83bba8d8fac1e817b90061a4d8a6d14809e269a09cbe2ef5d0b37bfd",
+      "after": "2b1b8b71ed9367d39568f480e027a2f1a96364fc531a4e9c8081ad2420869cc7"
+    },
+    "local/public/operator/api.php": {
+      "before": "517bd011a7a1d3d5ff696bdf237a2dd83359c7a81ec153cb9b1f6d24cae3e22d",
+      "after": "93d18019012fb3482c203378aa43d5ac7fed968ca3a9a0b96e2cb2174056462e"
+    },
+    "local/src/Domain/LanStaff/LanStaffGatewayService.php": {
+      "before": "cd8dcbc1415438f8448c1b5ada3899e98e787d2c60baa9c40756df0f52d93725",
+      "after": "c1332c7a0b369c290c85e2b5d2e8431b320e794955bd9aa6dc7388108cfcd463"
+    },
+    "local/src/Domain/Orders/OrderWorkspaceService.php": {
+      "before": "74c1f0ea7d38ec30138ed2200ad7efff53d4f464e9f174042dbb8d93be2f3025",
+      "after": "8f3949b7e40be27b090dd0c52f97510a6216ec5072fcf48bf804dafa6df6e49a"
+    },
+    "public/assets/staff-app/hall-workspace.js": {
+      "before": "9b91d4748ec30e9ae210fb5a4a81af0a771a8b4c813aff9b57fe7c212db698c6",
+      "after": "0e6063c6f3e9dd706de76e4db8e4f5b2eb317ee181e090079cfbb55a7f21b079"
+    },
+    "public/assets/staff-app/public-hall-transport.js": {
+      "before": "411721fb57eea922fd8661b25db9ebce7d0be5383a474fd22dcb9101e4090db9",
+      "after": "57efb9fa3533aebacb6b53fb9aa4c9129adfaebb4ef6bf32654115fd8f6582ac"
+    }
+  },
+  "trees": {
+    "local": "fd462a73151275f40a89274e011ecc276ad88e691dd9a464ccc14a0ab748d712",
+    "public": "effbc82533d90c586c398eac0445a1cc6e7eaec3433e4f86eafdb31e80bd4693"
+  }
+}
