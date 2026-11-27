@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-40 missing financial correction audit backup recovery (QA ONLY)
+name: SOKNA RELEASE PRIORITY-41B interrupted business restore commit boundaries (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,7 +7,7 @@ permissions:
   contents: read
   actions: read
 jobs:
-  audit-restore:
+  restore-boundaries:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
@@ -34,67 +34,90 @@ jobs:
           name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Verify actual frozen Local web archive then exercise new audit recovery scope
+      - name: Exact Local archive and real commit boundary faults
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc40"; mkdir -p "$W/local"
+          W="$RUNNER_TEMP/cc41b"; mkdir -p "$W/local" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           echo "f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f  $A" | sha256sum -c -
-          unzip -tq "$A"
           unzip -q "$A" -d "$W/local"
           export QA_WORK="$W" TMPDIR="$W"
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/fixture-results.txt"
-          cat > "$W/gate40.php" <<'SOKNA_CC40_PHP'
+          php qa/cp160/fixture.php "$W/local" > "$W/receipts/fixture.txt"
+          cat > "$W/gate41b.php" <<'SOKNA_CC41B_PHP'
           <?php
           declare(strict_types=1);
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
-          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}
-          $mode=$argv[2]??'seed';$pass='synthetic-cc40-backup-password';$path=$W.'/cc40-business.skbf';$fpath=$W.'/cc40-fixture.json';
-          function digest(PDO $p,string $t){$order=$t==='remaining_account_discount_lines'?'grant_id,order_item_id':'id';$rows=$p->query('SELECT * FROM `'.$t.'` ORDER BY '.$order)->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$row)foreach($row as &$v)if($v!==null)$v=(string)$v;unset($v,$row);return ['count'=>count($rows),'sha256'=>hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR))];}
-          function rejects(callable $f,string $code){try{$f();}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);return;}throw new RuntimeException('unexpected success '.$code);}
-          if($mode==='seed'){
-           $fixture=json_decode(file_get_contents($W.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);$sid=(int)$fixture['hall']['partial']['session'];$settle=$c->settlements();$committed='remaining-discount-correction-cc40-committed';$abandoned='remaining-discount-correction-cc40-abandoned';$reason='QA40 restore verification';$before=digest($p,'settlement_records');$beforeLines=digest($p,'settlement_record_lines');
-           $preview=$settle->previewRemainingDiscountCorrection($sid,'fixed',26000,$admin);$r=$settle->adjustRemainingDiscount($sid,'fixed',26000,$preview['expected_signature'],$reason,$committed,$admin);ck((int)$r['revision_id']>0&&$r['discount_amount']===26000,'actual financial correction recorded');
-           $status=$settle->remainingDiscountCorrectionStatus($sid,$committed,$admin);$decision=$settle->abandonRemainingDiscountCorrection($sid,$abandoned,$admin);ck($status['state']==='committed'&&$decision['state']==='abandoned','actual terminal decisions before backup');
-           ck(digest($p,'settlement_records')===$before&&digest($p,'settlement_record_lines')===$beforeLines,'original paid documents unchanged by correction');
-           $tables=['remaining_account_discount_grants','remaining_account_discount_lines','remaining_account_discount_revisions','settlement_records','settlement_record_lines','settlement_tender_allocations','audit_log'];$f=['source'=>$cfg['installation']['id'],'sid'=>$sid,'committed'=>$committed,'abandoned'=>$abandoned,'status'=>$status,'decision'=>$decision,'reason'=>$reason,'tables'=>[],'paid'=>$settle->account($sid)['paid_total'],'remaining'=>$settle->account($sid)['remaining_total']];
-           foreach($tables as $t){$f['tables'][$t]=digest($p,$t);ck($f['tables'][$t]['count']>0,'nonempty '.$t);}
-           $r=$c->businessBackup()->createEncrypted($path,$pass,(int)$admin['id']);$f['sha']=hash_file('sha256',$path);ck($r['sha256']===$f['sha'],'encrypted backup exact bytes');file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));exit;
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);
+          require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
+          function ck($ok,$msg){if(!$ok)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          function scalar(PDO $p,string $s){return $p->query($s)->fetchColumn();}
+          function digest(PDO $p,string $t){$rows=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$r)foreach($r as &$v)if($v!==null)$v=(string)$v;unset($v,$r);return [count($rows),hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR))];}
+          function tree(string $d){$out=[];if(is_dir($d))foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($d,FilesystemIterator::SKIP_DOTS)) as $f)if($f->isFile())$out[substr($f->getPathname(),strlen($d)+1)]=hash_file('sha256',$f->getPathname());ksort($out);return $out;}
+          class BoundaryPDO extends PDO {
+           public string $mode='';public string $dest='';public string $marker='';
+           public function commit():bool {
+            if($this->mode==='')return parent::commit();
+            if(!is_dir($this->dest.'/guest-media')||!$this->inTransaction())throw new RuntimeException('not at real media-promoted commit boundary');
+            if($this->mode==='after'&&!parent::commit())throw new RuntimeException('real commit failed');
+            file_put_contents($this->marker,$this->mode);fflush(STDOUT);
+            posix_kill(getmypid(),SIGKILL);throw new RuntimeException('SIGKILL failed');
+           }
           }
-          $f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);ck(hash_file('sha256',$path)===$f['sha'],'original encrypted bytes unchanged');
-          // Exactly isolated DB cloned schema in disposable CI only; no external endpoint configured.
-          // Copy only actual schema and migration ledger, never source business rows.
-          $p->exec('CREATE DATABASE sokna_cc40_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-          $t=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cc40_restore;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
-          $t->exec('SET FOREIGN_KEY_CHECKS=0');foreach($p->query('SHOW FULL TABLES WHERE Table_type=\'BASE TABLE\'')->fetchAll(PDO::FETCH_NUM) as $row){$name=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$name))throw new RuntimeException('unexpected table');$ddl=$p->query('SHOW CREATE TABLE `'.$name.'`')->fetch(PDO::FETCH_NUM)[1];$t->exec($ddl);}
-          foreach(['schema_migrations','schema_migration_statements'] as $name){$rows=$p->query('SELECT * FROM `'.$name.'`')->fetchAll(PDO::FETCH_ASSOC);foreach($rows as $row){$cols=array_keys($row);$t->prepare('INSERT INTO `'.$name.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}}$t->exec('SET FOREIGN_KEY_CHECKS=1');
-          ck($t->query('SELECT DATABASE()')->fetchColumn()==='sokna_cc40_restore'&&$t->query('SELECT COUNT(*) FROM users')->fetchColumn()==0,'separate empty target database');
-          $destId='qa40-target-independent';$dest=$W.'/cc40-dest-data';if(!is_dir($dest))mkdir($dest,0700,true);$o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$destId);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$destId,$auth,null,$dest);
-          $manifest=$b->inspectEncrypted($path,$pass);ck($manifest['stream_verified']===true&&$manifest['target_ready']===true&&$manifest['target_kind']==='empty'&&$manifest['source_installation_id']===$f['source'],'actual target inspection ready, source identity verified');
-          $r=$b->restoreEncryptedToEmptyTarget($path,$pass,0);ck($r['restored']===true&&$r['source_installation_id']===$f['source'],'real encrypted restore completed');ck($r['public_authority_fence_confirmed']===false&&$r['public_authority_fence_error']==='public_not_configured','no false peer confirmation when Public not configured');ck($auth->phase()==='reenroll_required','target authority fenced independently');ck(scalar($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$destId,'destination machine identity preserved');
-          foreach($f['tables'] as $table=>$digest){ck(digest($t,$table)===$digest,'restored immutable rows '.$table);ck(digest($p,$table)===$digest,'source unchanged '.$table);}
-          $targetCfg=$cfg;$targetCfg['db']['name']='sokna_cc40_restore';$targetCfg['app']['data_dir']=$dest;$targetCfg['installation']['id']=$destId;$targetCfg['public']['base_url']='';$targetCfg['public']['shared_secret']='';
-          $tc=\Sokna\Local\Core\Bootstrap::fromArray($targetCfg);$ts=$tc->settlements();$sid=$f['sid'];
-          ck($ts->remainingDiscountCorrectionStatus($sid,$f['committed'],$admin)===$f['status'],'restored committed status and exact original revision ID');
-          ck($ts->remainingDiscountCorrectionStatus($sid,$f['abandoned'],$admin)===$f['decision'],'restored abandonment decision');
-          $a=$ts->account($sid);ck($a['paid_total']===$f['paid']&&$a['remaining_total']===$f['remaining'],'restored financial account exact paid and remaining values');
-          $r=$ts->adjustRemainingDiscount($sid,'fixed',26000,str_repeat('0',64),$f['reason'],$f['committed'],$admin);ck($r['idempotent']===true&&$r['revision_id']===$f['status']['result']['revision_id'],'committed correction replay returns same revision, no mutation');
-          rejects(fn()=>$ts->adjustRemainingDiscount($sid,'fixed',26000,str_repeat('0',64),$f['reason'],$f['abandoned'],$admin),'discount_correction_abandoned');
-          ck($ts->abandonRemainingDiscountCorrection($sid,$f['abandoned'],$admin)===$f['decision'],'abandon replay no duplicate audit');
-          foreach($f['tables'] as $table=>$d){ck(digest($t,$table)===$d,'after replay exact rows '.$table);ck(digest($p,$table)===$d,'source remains unchanged '.$table);}
-          echo "GROUP PASS HALL-20261126-DISCOUNT-UI-02 exact correction audit restoration and safe replay\n";
-          SOKNA_CC40_PHP
-          (php "$W/gate40.php" "$W/local" seed && php "$W/gate40.php" "$W/local" restore) | tee "$W/cc40-results.txt"
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();$mode=$argv[2];$pass='synthetic-cc41b-backup-password';$backup=$W.'/cc41b.skbf';$state=$W.'/cc41b.json';
+          $tables=['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','guest_media_assets','remaining_account_discount_revisions'];
+          if($mode==='seed'){
+           $admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);ck($admin!==false,'admin fixture');
+           $fixture=json_decode(file_get_contents($W.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);$sid=(int)$fixture['hall']['partial']['session'];$s=$c->settlements();$pr=$s->previewRemainingDiscountCorrection($sid,'fixed',26000,$admin);$r=$s->adjustRemainingDiscount($sid,'fixed',26000,$pr['expected_signature'],'QA41B commit boundary','remaining-discount-correction-cc41b',$admin);ck((int)$r['revision_id']>0,'financial revision fixture');
+           $f=['tables'=>[],'media'=>tree($cfg['app']['data_dir'].'/guest-media')];ck(count($f['media'])>0,'real nonempty source media');
+           foreach($tables as $t)$f['tables'][$t]=digest($p,$t);
+           $r=$c->businessBackup()->createEncrypted($backup,$pass,(int)$admin['id']);$f['hash']=hash_file('sha256',$backup);ck($r['sha256']===$f['hash'],'backup bytes');
+           file_put_contents($state,json_encode($f,JSON_THROW_ON_ERROR));exit;
+          }
+          $f=json_decode(file_get_contents($state),true,512,JSON_THROW_ON_ERROR);
+          $boundary=$argv[3];if(!in_array($boundary,['before','after'],true))exit(2);
+          $db='sokna_cc41b_'.$boundary;$dest=$W.'/cc41b-'.$boundary;$marker=$W.'/boundary-'.$boundary;
+          if($mode==='prepare'){
+           $p->exec('CREATE DATABASE '.$db.' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          }
+          $t=new BoundaryPDO('mysql:host=127.0.0.1;port=3306;dbname='.$db.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+          if($mode==='prepare'){
+           $t->exec('SET FOREIGN_KEY_CHECKS=0');foreach($p->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as $row){$n=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$n))exit(2);$t->exec($p->query('SHOW CREATE TABLE `'.$n.'`')->fetch(PDO::FETCH_NUM)[1]);}
+           foreach(['schema_migrations','schema_migration_statements'] as $n)foreach($p->query('SELECT * FROM `'.$n.'`')->fetchAll(PDO::FETCH_ASSOC) as $row){$cols=array_keys($row);$t->prepare('INSERT INTO `'.$n.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}
+           $t->exec('SET FOREIGN_KEY_CHECKS=1');mkdir($dest,0700,true);ck((int)scalar($t,'SELECT COUNT(*) FROM users')===0,'empty independent database');exit;
+          }
+          $o=new \Sokna\Local\Core\Observability($dest);$id='qa41b-'.$boundary;$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$id);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$id,$auth,null,$dest);
+          if($mode==='fault'){
+           $t->mode=$boundary;$t->dest=$dest;$t->marker=$marker;
+           $b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('boundary was not interrupted');
+          }
+          if($mode!=='verify')exit(2);
+          ck(file_get_contents($marker)===$boundary,'exact boundary marker');
+          ck(tree($dest.'/guest-media')===$f['media'],'promoted media preserved exact');
+          foreach($f['tables'] as $n=>$d){ck(digest($p,$n)===$d,'source unchanged '.$n);$v=digest($t,$n);ck($boundary==='before'?$v[0]===0:$v===$d,'target expected '.$n);}
+          ck(hash_file('sha256',$backup)===$f['hash'],'backup unchanged');
+          try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('unexpected retry');}catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){echo 'RETRY_REJECTION '.$e->errorCode."\n";ck(in_array($e->errorCode,['target_not_empty','target_changed','restore_interrupted'],true),'unsafe repeated restore denied');}
+          ck(tree($dest.'/guest-media')===$f['media'],'retry preserves media');
+          if($boundary==='after')ck($auth->phase()==='reenroll_required','committed authority fenced');
+          foreach($f['tables'] as $n=>$d){$v=digest($t,$n);ck($boundary==='before'?$v[0]===0:$v===$d,'no retry mutation '.$n);}
+          echo "GROUP PASS real PDO commit boundary $boundary; no production authorization\n";
+          SOKNA_CC41B_PHP
+          php -l "$W/gate41b.php"
+          php "$W/gate41b.php" "$W/local" seed | tee "$W/receipts/seed.txt"
+          for boundary in before after; do
+            php "$W/gate41b.php" "$W/local" prepare "$boundary"
+            set +e
+            php "$W/gate41b.php" "$W/local" fault "$boundary" > "$W/receipts/fault-$boundary.txt" 2>&1
+            rc=$?
+            set -e
+            test "$rc" = 137
+            php "$W/gate41b.php" "$W/local" verify "$boundary" | tee "$W/receipts/verify-$boundary.txt"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC40-FINANCIAL-AUDIT-RESTORE-RECEIPTS-QA-ONLY
-          path: |
-            ${{ runner.temp }}/cc40/*-results.txt
-            ${{ runner.temp }}/cc40/cc40-fixture.json
+          name: SOKNA-CC41B-BUSINESS-COMMIT-BOUNDARIES
+          path: ${{ runner.temp }}/cc41b/receipts
           retention-days: 7
-          if-no-files-found: warn
