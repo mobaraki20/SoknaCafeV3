@@ -1,0 +1,16 @@
+--- a/local/src/Domain/Recovery/BusinessBackupService.php
++++ b/local/src/Domain/Recovery/BusinessBackupService.php
+@@ -261,6 +261,13 @@
+                 $actualHash=hash_final($hashCtx[$table]??hash_init('sha256'));
+                 if(($counts[$table]??0)!==$expectedCount||!preg_match('/^[a-f0-9]{64}$/',$expectedHash)||!hash_equals($expectedHash,$actualHash))
+                     throw new RecoveryException('backup_integrity','یکپارچگی داده پشتیبان تأیید نشد.',422,['table'=>$table]);
++            }
++            // The business backup identifies its source, but the receiving installation
++            // owns its machine identity. Keep its DB binding aligned with its private
++            // config and install.lock, atomically with the restored business rows.
++            if(in_array('settings',$restoreTables,true)&&$this->sourceInstallationId!==''){
++                $identity=$this->pdo->prepare("INSERT INTO settings(setting_key,setting_value) VALUES('installation.id',?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
++                $identity->execute([$this->sourceInstallationId]);
+             }
+             // A14: a business restore is a new authority event. Never let restored
+             // transport cursors/outbox become current Public authority. Fence communication
