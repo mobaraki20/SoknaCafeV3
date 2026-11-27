@@ -1,4 +1,4 @@
-name: SOKNA CASE-CLOSURE-28 admin staff finance search (QA ONLY)
+name: SOKNA CASE-CLOSURE-29 normalized finance search and unresolved gate acceptance (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -918,7 +918,39 @@ jobs:
               assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
               print('PASS EXACT CASE-CLOSURE-28',host,n,actual)
           PYCODE
-      - name: Admin staff finance and search acceptance
+      - name: Apply exact CASE-CLOSURE-29 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          cat > "$W/cc29.patch" <<'SOKNA_QA_CC29_PATCH'
+          --- a/local/src/Search/SearchNormalizer.php
+          +++ b/local/src/Search/SearchNormalizer.php
+          @@ -25,8 +25,11 @@
+                   $pairs=['ي'=>'ی','ى'=>'ی','ئ'=>'ی','ك'=>'ک','ة'=>'ه','ۀ'=>'ه',"\u{200C}"=>' ',"\u{200F}"=>' ',"\u{200E}"=>' '];
+                   foreach(preg_split('//u','۰۱۲۳۴۵۶۷۸۹',-1,PREG_SPLIT_NO_EMPTY) as $i=>$digit)$pairs[$digit]=(string)$i;
+                   foreach(preg_split('//u','٠١٢٣٤٥٦٧٨٩',-1,PREG_SPLIT_NO_EMPTY) as $i=>$digit)$pairs[$digit]=(string)$i;
+          +        // Match the PHP query normalization: adjacent separators (including
+          +        // ZWNJ followed by a space) must collapse to one space on both sides.
+          +        foreach(["\u{064B}","\u{064C}","\u{064D}","\u{064E}","\u{064F}","\u{0650}","\u{0651}","\u{0652}"] as $mark)$pairs[$mark]=' ';
+                   foreach($pairs as $from=>$to)$column="REPLACE($column,'$from','$to')";
+          -        return $column;
+          +        return "LOWER(TRIM(REGEXP_REPLACE($column,'[[:space:]]+',' ')))";
+               }
+           
+               public static function length(string $value): int
+          SOKNA_QA_CC29_PATCH
+          (cd "$W"; git apply --check cc29.patch; git apply cc29.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc29-source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]); H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local': 'ffdd30dd61155f670b46f457ca0164768db8582d0878411ad1886c2af0546556', 'public': '21815114deed0c12042750de55e1e8c3add5d3468081b5e1031a0ca0cd38d09c'}
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-29',host,n,actual)
+          PYCODE
+      - name: Corrected search and unresolved finance acceptance
         shell: bash
         run: |
           set -euo pipefail
@@ -926,85 +958,59 @@ jobs:
           export QA_WORK="$W" TMPDIR="$W"
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          cat > "$W/gate28.php" <<'SOKNA_QA_CC28_gate28_php'
+          cat > "$W/gate29.php" <<'SOKNA_QA_CC29_gate29_php'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
           $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);$bar=$p->query("SELECT id,role FROM users WHERE username='qa-bar-a' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin||!$bar)exit(2);$fail=0;
           function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function group($n,$fn){global $fail;try{$fn();echo "GROUP PASS $n\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL '.$n.' '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}function reject($fn,$code){try{$fn();throw new RuntimeException('expected '.$code);}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);}}
-          $mode=$argv[2]??'seed';$fpath=$W.'/cc28-fixture.json';
+          $mode=$argv[2]??'seed';$fpath=$W.'/cc29-fixture.json';
           if($mode==='verify'){
            $f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);
-           group('STAFF-L054 persisted actual dated benefit forms',function()use($p,$f){
-            $q=$p->prepare('SELECT valid_from,valid_until,policy_id,notes FROM staff_benefit_profiles WHERE personnel_id=?');$q->execute([$f['personnel']]);$r=$q->fetch(PDO::FETCH_ASSOC);ck($r&&$r['valid_from']==='2026-03-21'&&$r['valid_until']==='2026-03-22'&&(int)$r['policy_id']===$f['policy']&&$r['notes']==='QA28 dated profile','profile exact dates stored in MariaDB');
-            $q=$p->prepare("SELECT valid_from,valid_until,fixed_amount,benefit_type FROM staff_benefit_overrides WHERE personnel_id=? AND reason='QA28 dated override'");$q->execute([$f['personnel']]);$r=$q->fetch(PDO::FETCH_ASSOC);ck($r&&$r['valid_from']==='2026-03-21 08:15:00'&&$r['valid_until']==='2026-03-22 09:30:00'&&(int)$r['fixed_amount']===15000&&$r['benefit_type']==='fixed','override exact times and toman persisted');
-           });
-           group('ADM-L442 preview is read only',function()use($p,$f){ck((int)scalar($p,"SELECT COUNT(*) FROM notification_outbox WHERE event_key LIKE 'manual.%'")=== $f['outbox_count'],'preview has no notification outbox side effect');});
-           exit($fail?1:0);
+           group('FIN-L220 persisted explicit future now policies',function()use($p,$f){foreach(['2026-03-21 04:00:00','2030-01-02 09:15:00'] as $at){ck((int)scalar($p,'SELECT COUNT(*) FROM tax_item_policy_versions WHERE item_id=? AND policy=? AND effective_from=?',[$f['item'],'exempt',$at])===1,'DB exact '.$at);}ck((int)scalar($p,"SELECT COUNT(*) FROM tax_item_policy_versions WHERE item_id=? AND policy='exempt' AND effective_from BETWEEN DATE_SUB(NOW(),INTERVAL 5 MINUTE) AND DATE_ADD(NOW(),INTERVAL 5 MINUTE)",[$f['item']])===1,'DB now policy in actual time window');});exit($fail?1:0);
           }
           $f=[];$fixture=json_decode(file_get_contents($W.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);$f['table']=(int)$fixture['hall']['partial']['table'];$f['session']=(int)$fixture['hall']['partial']['session'];
           // Only synthetic rows in disposable fixture; use existing settled document and immutable production API.
           $f['invoice']=(int)scalar($p,'SELECT id FROM settlement_records ORDER BY id LIMIT 1');
-          $p->prepare('UPDATE settlement_records SET table_name_snapshot=? WHERE id=?')->execute(['QA28 كيك‌ ۱۲۳',$f['invoice']]);
+          $p->prepare('UPDATE settlement_records SET table_name_snapshot=? WHERE id=?')->execute(['QA29 كيك‌ ۱۲۳',$f['invoice']]);
           $f['invoice_number']=(string)scalar($p,'SELECT invoice_number FROM settlement_records WHERE id=?',[$f['invoice']]);
-          $p->prepare('INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,?,1)')->execute(['qa28-waiter',password_hash('synthetic-member-only',PASSWORD_DEFAULT),'QA28 waiter','waiter']);
-          $f['counts']=[];foreach(['','admin','operator','waiter'] as $role)$f['counts'][$role]=(int)($role===''?scalar($p,'SELECT COUNT(*) FROM users WHERE active=1'):scalar($p,'SELECT COUNT(*) FROM users WHERE active=1 AND role=?',[$role]));
-          $f['outbox_count']=(int)scalar($p,"SELECT COUNT(*) FROM notification_outbox WHERE event_key LIKE 'manual.%'");
-          $p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('module.staff_consumption.enabled','1') ON DUPLICATE KEY UPDATE setting_value='1'");
-          $f['personnel']=(int)scalar($p,'SELECT id FROM personnel WHERE active=1 AND archived_at IS NULL ORDER BY id LIMIT 1');
-          if($f['personnel']<1)throw new RuntimeException('fixture has no active personnel');
-          $f['policy']=(int)$c->staffBenefitManagement()->savePolicy(['policy_key'=>'qa28-date-policy','name'=>'QA28 dated policy','active'=>true,'is_default'=>false],$admin)['id'];
-          $f['policy_rule']=(int)$c->staffBenefitManagement()->saveRule(['policy_id'=>$f['policy'],'scope_type'=>'all','benefit_type'=>'fixed','fixed_amount'=>10000,'active'=>true],$admin)['id'];
-          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA28 menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA28 category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];
-          $p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES('qa28-quick',?,'QA28 unique quick item',12000,1,1,'active',1,1,'hot_bar')")->execute([$cid]);$f['item']=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$f['item']]);
+          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA29 menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA29 category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];
+          $p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES('qa29-quick',?,'QA29 unique quick item',12000,1,1,'active',1,1,'hot_bar')")->execute([$cid]);$f['item']=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$f['item']]);
           $f['order']=(int)scalar($p,'SELECT id FROM orders WHERE session_id=? ORDER BY id LIMIT 1',[$f['session']]);$f['order_number']=(int)scalar($p,'SELECT business_order_number FROM orders WHERE id=?',[$f['order']]);
           file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));
-          group('HELP-L568 financial search Persian Arabic numerals and role',function()use($c,$p,$admin,$bar,$f){$cashier=$p->query("SELECT id,role FROM users WHERE username='qa-cashier'")->fetch(PDO::FETCH_ASSOC);foreach(['qa28 کیک 123','qa28 كيك ١٢٣','QA28 کیک ۱۲۳'] as $term){$res=$c->globalSearch()->search($term,$cashier,20);ck(!$res['partial']&&in_array('finance:invoice:'.$f['invoice'],array_column($res['results'],'id'),true),'financial SQL normalized '.$term);} $term='qa28 کیک 123';$res=$c->globalSearch()->search($term,$bar,20);ck(!in_array('finance:invoice:'.$f['invoice'],array_column($res['results'],'id'),true),'no invoice disclosure to preparation role');});
-          group('FIN-L220 real business day cutoff and explicit instant',function()use($c,$p){$p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('business_day_cutoff','04:00') ON DUPLICATE KEY UPDATE setting_value='04:00'");$b=$c->businessClock();ck($b->assignment('2026-03-21 03:59:59')['business_date']==='2026-03-20','previous business date before cutoff');ck($b->assignment('2026-03-21 04:00:00')['business_date']==='2026-03-21','new business date at cutoff');ck($b->assignment('2026-03-21T00:29:59Z')['business_date']==='2026-03-20','explicit UTC instant projected before Tehran cutoff');ck($b->assignment('2026-03-21T00:30:00Z')['business_date']==='2026-03-21','explicit UTC instant projected at cutoff');});
+          group('HELP-L568 financial search Persian Arabic numerals and role',function()use($c,$p,$admin,$bar,$f){$cashier=$p->query("SELECT id,role FROM users WHERE username='qa-cashier'")->fetch(PDO::FETCH_ASSOC);foreach(['qa29 کیک 123','qa29 كيك ١٢٣','QA29 کیک ۱۲۳'] as $term){$res=$c->globalSearch()->search($term,$cashier,20);if($res['partial'])echo 'SEARCH PARTIAL '.json_encode(array_keys($res['errors']))."\n";ck(!$res['partial']&&in_array('finance:invoice:'.$f['invoice'],array_column($res['results'],'id'),true),'financial SQL normalized '.$term);} $term='qa29 کیک 123';$res=$c->globalSearch()->search($term,$bar,20);ck(!in_array('finance:invoice:'.$f['invoice'],array_column($res['results'],'id'),true),'no invoice disclosure to preparation role');});
+          group('HELP-L568 normalization collation and literal terms',function()use($p){$norm=\Sokna\Local\Search\SearchNormalizer::class;foreach(['utf8mb4_unicode_ci','utf8mb4_general_ci','utf8mb4_bin'] as $coll){$p->exec("DROP TEMPORARY TABLE IF EXISTS qa29_norm");$p->exec("CREATE TEMPORARY TABLE qa29_norm (id INT PRIMARY KEY,t VARCHAR(160) CHARACTER SET utf8mb4 COLLATE $coll)");$inputs=["  QA29 كيك‌  ۱۲۳ ","qa29 کیک ١٢٣","QA29 كيكَ ۱۲۳","QA29 کیک		۱۲۳", "QA29 کیک %_۱۲۳"];foreach($inputs as $i=>$v)$p->prepare('INSERT INTO qa29_norm VALUES(?,?)')->execute([$i+1,$v]);$expr=$norm::sqlText('t');$rows=$p->query("SELECT id,$expr AS normalized FROM qa29_norm ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);foreach($rows as $i=>$row)ck($row['normalized']===$norm::normalize($inputs[$i]),'exact PHP/SQL '.$coll.' row '.($i+1));$st=$p->prepare("SELECT id FROM qa29_norm WHERE $expr LIKE ? ORDER BY id");$st->execute([$norm::likeContains('qa29 کیک 123')]);ck(array_map('intval',$st->fetchAll(PDO::FETCH_COLUMN))===[1,2,3,4],'all four normalized forms '.$coll);$st->execute([$norm::likeContains('%_123')]);ck(array_map('intval',$st->fetchAll(PDO::FETCH_COLUMN))===[5],'literal percent and underscore '.$coll);$p->exec('DROP TEMPORARY TABLE qa29_norm');}});
           exit($fail?1:0);
           
-          SOKNA_QA_CC28_gate28_php
-          cat > "$W/gate28.cjs" <<'SOKNA_QA_CC28_gate28_cjs'
-          const fs=require('fs'),crypto=require('crypto'),{execFileSync}=require('child_process'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',local='http://127.0.0.1:18765';let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};const f=()=>JSON.parse(fs.readFileSync(W+'/cc28-fixture.json'));const pageURL=(t)=>base+'/menu?installation='+encodeURIComponent(f().installation)+'&table='+encodeURIComponent(t)+'&menu='+encodeURIComponent(f().menu);async function post(path,data){let r=await fetch(base+'/api/guest/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:f().installation,...data})});return {http:r.status,...await r.json()}};async function group(name,fn){try{await fn();console.log('GROUP PASS '+name)}catch(e){fail++;console.log('GROUP FAIL '+name+' '+e.stack)}};const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          SOKNA_QA_CC29_gate29_php
+          cat > "$W/gate29.cjs" <<'SOKNA_QA_CC29_gate29_cjs'
+          const fs=require('fs'),crypto=require('crypto'),{execFileSync}=require('child_process'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',local='http://127.0.0.1:18765';let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};const f=()=>JSON.parse(fs.readFileSync(W+'/cc29-fixture.json'));const pageURL=(t)=>base+'/menu?installation='+encodeURIComponent(f().installation)+'&table='+encodeURIComponent(t)+'&menu='+encodeURIComponent(f().menu);async function post(path,data){let r=await fetch(base+'/api/guest/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:f().installation,...data})});return {http:r.status,...await r.json()}};async function group(name,fn){try{await fn();console.log('GROUP PASS '+name)}catch(e){fail++;console.log('GROUP FAIL '+name+' '+e.stack)}};const sleep=ms=>new Promise(r=>setTimeout(r,ms));
           async function auth(p,base,user){await p.goto(base+(base===local?'/login.php':'/staff/login'));const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key=base===local?user:'user:'+JSON.parse(fs.readFileSync(W+'/cp144-fixture.json')).users.find(u=>u.name===user).id;if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${key}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user+' '+base);}
           async function wait(fn,n,ms=12000){let end=Date.now()+ms;while(Date.now()<end){if(await fn()){ck(true,n);return}await sleep(150)}throw Error(n)}
           const en=s=>String(s).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d));
           (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:1280,height:900},locale:'fa-IR'});p.setDefaultTimeout(15000);const x=f();try{await auth(p,local,'qa-target');
-          await group('ADM-L442 actual read-only recipient preview across existing groups',async()=>{
-           await p.goto(local+'/admin/?tab=notifications');const box=p.locator('[data-admin-notification-compose]'),role=box.locator('select[name=role]'),label=box.locator('[data-notification-preview-count]');await box.waitFor({state:'visible'});
-           for(const r of ['', 'admin','operator','waiter']){const u=local+'/notifications/api.php?action=compose_preview&role='+encodeURIComponent(r);const res=await p.request.get(u);const j=await res.json();ck(res.ok()&&j.success&&j.result.role===r&&j.result.recipients===x.counts[r]&&Object.keys(j.result).length===2,'exact count, no recipient details '+(r||'all'));await role.selectOption(r);await wait(async()=>en(await label.textContent()).startsWith(String(x.counts[r])+' '),'visible matching count '+(r||'all'));}
-           let r=await p.request.get(local+'/notifications/api.php?action=compose_preview&role=invalid');ck(r.status()===422,'invalid audience rejected');
-           await p.route('**/notifications/api.php?*',async route=>{const u=new URL(route.request().url());if(u.searchParams.get('action')==='compose_preview'&&u.searchParams.get('role')==='admin'){await route.abort('failed');}else await route.continue()});await role.selectOption('admin');await wait(async()=>String(await label.textContent()).includes('قابل تأیید نیست'),'failed count explicitly unknown');await p.unroute('**/notifications/api.php?*');await role.selectOption('operator');await wait(async()=>en(await label.textContent()).startsWith(String(x.counts.operator)+' '),'count restored on role change');await p.screenshot({path:W+'/cc28-notification.png'});
-           const q=await b.newPage();try{await auth(q,local,'qa-cashier');r=await q.request.get(local+'/notifications/api.php?action=compose_preview&role=admin');ck(r.status()===403,'nonadmin count forbidden');}finally{await q.close()}
-          });
-          async function openBenefit(name){await p.goto(local+'/staff-consumption/');await p.locator('[data-tab=management]').click();await p.locator(`[data-benefit-tab="${name}"]`).click();await p.locator(`[data-benefit-new="${name}"]`).click();const form=p.locator(`[data-${name}-form]`);await form.waitFor({state:'visible'});await wait(async()=>await form.locator('select[name=personnel_id] option').count()>1,'loaded personnel options '+name);await form.locator('select[name=personnel_id]').selectOption(String(x.personnel));return form}
-          async function dateField(form,name,date,time){const wrap=form.locator(`input[name=${name}]+.sc-jalali-control`);await wrap.waitFor({state:'visible'});await wrap.locator('.sc-jalali-date').fill(date);if(time)await wrap.locator('.sc-jalali-time').fill(time);await form.locator('textarea').first().focus();}
-          async function submitForm(form,action){const response=p.waitForResponse(r=>r.request().method()==='POST'&&r.url().includes('/staff-consumption/api.php')&&r.request().postDataJSON()?.action===action);await form.locator('button[type=submit]').click();const r=await response;const j=await r.json();ck(r.ok()&&j.success===true,'actual '+action+' HTTP success');await form.waitFor({state:'hidden'});}
-          await group('STAFF-L054 actual profile Jalali date form',async()=>{const form=await openBenefit('profile');await form.locator('select[name=policy_id]').selectOption(String(x.policy));await dateField(form,'valid_from','۱۴۰۵/۰۱/۰۱');await dateField(form,'valid_until','۱۴۰۵/۰۱/۰۲');ck(await form.locator('input[name=valid_from]').inputValue()==='2026-03-21'&&await form.locator('input[name=valid_until]').inputValue()==='2026-03-22','profile Jalali converted to exact date');await form.locator('textarea[name=notes]').fill('QA28 dated profile');await submitForm(form,'profile_save');});
-          await group('STAFF-L054 actual override Jalali date time and toman form',async()=>{const form=await openBenefit('override');await form.locator('select[name=benefit_type]').selectOption('fixed');await form.locator('input[name=fixed_amount]').fill('۱۵۰۰۰');await dateField(form,'valid_from','۱۴۰۵/۰۱/۰۱','۰۸:۱۵');await dateField(form,'valid_until','۱۴۰۵/۰۱/۰۲','۰۹:۳۰');ck(await form.locator('input[name=valid_from]').inputValue()==='2026-03-21T08:15'&&await form.locator('input[name=valid_until]').inputValue()==='2026-03-22T09:30','override exact date and clock');await form.locator('textarea[name=reason]').fill('QA28 dated override');await p.screenshot({path:W+'/cc28-benefit-override.png'});await submitForm(form,'override_save');});
-          await group('HELP-L561 real quick order search target after table pick',async()=>{const res=await p.request.get(local+'/search/api.php?q='+encodeURIComponent('QA28 unique quick item'));const j=await res.json();const a=j.search?.results?.find(r=>r.id==='catalog:item:'+x.item)?.actions?.find(a=>a.href.includes('/staff/?item='));ck(res.ok()&&!!a,'exact quick order action from real search');await p.goto(local+a.href);const pick=p.locator(`[data-pick-table="${x.table}"]`);await pick.waitFor({state:'visible'});await pick.click();const item=p.locator(`[data-order-add="${x.item}"]`);await item.waitFor({state:'visible'});ck((await p.locator('[data-order-search]').inputValue()).includes('unique quick item'),'item retained after selecting table and loading draft');ck(await p.locator('[data-order-row]').count()===0,'no automatic order insertion');await p.screenshot({path:W+'/cc28-quick-order.png'});});
-          await group('HELP-L564 real order search destination for cashier',async()=>{const q=await b.newPage();try{await auth(q,local,'qa-cashier');const r=await q.request.get(local+'/search/api.php?q='+encodeURIComponent(String(x.order_number)));const j=await r.json();const a=j.search?.results?.find(v=>v.id==='order:'+x.order)?.actions?.[0];ck(r.ok()&&a?.href==='/operator/?table_id='+x.table,'real order maps to exact table');await q.goto(local+a.href);await q.locator(`[data-order-round="${x.order}"]`).waitFor({state:'visible'});ck(true,'actual account and order rendered');}finally{await q.close()}});
-          await group('FIN-L220 real explicit and future item tax policy time',async()=>{await p.goto(local+'/finance/');const csrf=await p.locator('[data-finance-workspace]').getAttribute('data-csrf');for(const at of ['2026-03-21 04:00:00','2030-01-02 09:15:00']){const r=await p.request.post(local+'/finance/api.php',{data:{action:'tax_policy',item_id:x.item,policy:'exempt',effective_from:at,csrf_token:csrf}});const j=await r.json();ck(r.ok()&&j.success&&j.result.effective_from===at,'exact explicit effective timestamp '+at)} });
+          await group('HELP-L561 real quick order search target after table pick',async()=>{const res=await p.request.get(local+'/search/api.php?q='+encodeURIComponent('QA29 unique quick item'));const j=await res.json();const a=j.search?.results?.find(r=>r.id==='catalog:item:'+x.item)?.actions?.find(a=>a.href.includes('/staff/?item='));ck(res.ok()&&!!a,'exact quick order action from real search');await p.goto(local+a.href);const pick=p.locator(`[data-pick-table="${x.table}"]`);await pick.waitFor({state:'visible'});await pick.click();const item=p.locator(`[data-order-add="${x.item}"]`);await item.waitFor({state:'visible'});await wait(async()=>((await p.locator('[data-order-search]').inputValue()).includes('unique quick item'))&&await item.isEnabled(),'item retained after selecting table and completed draft load',16000);ck(await p.locator('[data-order-row]').count()===0,'no automatic order insertion');await p.screenshot({path:W+'/cc29-quick-order.png'});});
+          await group('FIN-L220 real explicit and future item tax policy time',async()=>{await p.goto(local+'/finance/');const csrf=await p.locator('[data-finance-workspace]').getAttribute('data-csrf');for(const at of ['2026-03-21 04:00:00','2030-01-02 09:15:00']){const r=await p.request.post(local+'/finance/api.php',{data:{action:'tax_policy',item_id:x.item,policy:'exempt',effective_from:at,csrf_token:csrf}});const j=await r.json();console.log('TAX RESPONSE '+r.status()+' '+JSON.stringify(j));ck(r.ok()&&j.success&&j.result.effective_from===at.replace(' ','T')+'.000000+03:30','exact offset-bearing effective timestamp '+at)} const start=Date.now();const r=await p.request.post(local+'/finance/api.php',{data:{action:'tax_policy',item_id:x.item,policy:'exempt',effective_from:'',csrf_token:csrf}});const j=await r.json();console.log('TAX NOW RESPONSE '+r.status()+' '+JSON.stringify(j));ck(r.ok()&&j.success&&Math.abs(Date.parse(j.result.effective_from)-start)<120000,'explicit now uses current instant'); });
           }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
           
-          SOKNA_QA_CC28_gate28_cjs
+          SOKNA_QA_CC29_gate29_cjs
           fail=0
-          php "$W/gate28.php" "$W/local" seed | tee "$W/cc28-db-results.txt" || fail=1
-          test -s "$W/cc28-fixture.json"
+          php "$W/gate29.php" "$W/local" seed | tee "$W/cc29-db-results.txt" || fail=1
+          test -s "$W/cc29-fixture.json"
           npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
           trap 'kill "$lp" 2>/dev/null || true' EXIT
           sleep 2
-          node "$W/gate28.cjs" | tee "$W/cc28-browser-results.txt" || fail=1
-          php "$W/gate28.php" "$W/local" verify | tee "$W/cc28-verify-results.txt" || fail=1
+          node "$W/gate29.cjs" | tee "$W/cc29-browser-results.txt" || fail=1
+          php "$W/gate29.php" "$W/local" verify | tee "$W/cc29-verify-results.txt" || fail=1
           exit "$fail"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC28-GROUPED-ACCEPTANCE-QA-ONLY
+          name: SOKNA-CC29-GROUPED-ACCEPTANCE-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
-            ${{ runner.temp }}/cp148-qa/cc28-*.png
+            ${{ runner.temp }}/cp148-qa/cc29-*.png
           retention-days: 7
           if-no-files-found: warn
