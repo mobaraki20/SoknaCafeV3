@@ -1,4 +1,4 @@
-name: SOKNA 49B exact 231gg legacy finance peer and 231gi compatibility (QA only)
+name: SOKNA 50 isolated seeded restore quarantine regression (QA only)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,9 +7,9 @@ permissions:
   contents: read
   actions: read
 jobs:
-  mixed-peer:
+  recovery:
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    timeout-minutes: 10
     services:
       mariadb:
         image: mariadb:11.4
@@ -34,120 +34,149 @@ jobs:
           name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - uses: actions/download-artifact@v4
-        with:
-          run-id: 45764512635
-          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/prior
-      - name: Real signed historical and current finance projection peers
+      - name: Test targeted private-media reconciliation candidate using disposable MariaDB
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc49"; mkdir -p "$W/local" "$W/public" "$W/old/local" "$W/receipts"
+          W="$RUNNER_TEMP/cc50"; mkdir -p "$W/local" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          B="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          O="$RUNNER_TEMP/prior/SOKNA-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR.zip"
-          echo "a179c2b339ba07eaecc847f5821c8af2441c972de5e1fd3aa2af1e07f02adb5f  $O" | sha256sum -c -
-          echo "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca  $B" | sha256sum -c -
+          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
-          unzip -q "$B" -d "$W/public"
+          echo "2b96064e1ba7f1c08a34d1152a7eb9c1dd154fd7bafe1e6b47404f1c4c0bedf5  $W/local/src/Domain/Recovery/BusinessBackupService.php" | sha256sum -c -
+          cat > "$W/seed-quarantine.patch" <<'PATCH50'
+          --- a/local/src/Domain/Recovery/BusinessBackupService.php
+          +++ b/local/src/Domain/Recovery/BusinessBackupService.php
+          @@ -554,8 +554,9 @@
+               /**
+                * Explicit offline operator action, only for a CP122+ interrupted seeded restore.
+                * The immutable original proof must match EVERY table and original image byte.
+          -     * Never infer commit outcome from a marker, never retract promoted media, and
+          -     * never clear an ambiguous or historical unbound operation. Stop other services first.
+          +     * Never infer commit outcome from a marker. If the original database and held
+          +     * seed match exactly, quarantine (never delete) the promoted tree before
+          +     * restoring the original seed. Never clear an ambiguous or unbound operation.
+                */
+               public function reconcileInterruptedSeedOffline(): array
+               {
+          @@ -575,15 +576,30 @@
+                           throw new RecoveryException('restore_interrupted','هویت یا محتوای شاهد عملیات معتبر نیست.',409);
+                       $active=$root.DIRECTORY_SEPARATOR.'guest-media';$hold=$root.DIRECTORY_SEPARATOR.'recovery-seed-hold-'.$id;$held=$hold.DIRECTORY_SEPARATOR.'guest-media';
+                       $tmp=$root.DIRECTORY_SEPARATOR.'recovery-tmp';$plain=$tmp.DIRECTORY_SEPARATOR.'business-restore-'.$id.'.ndjson.gz';$stage=$tmp.DIRECTORY_SEPARATOR.'guest-media-stage-'.$id;
+          -            if(is_link($root)||is_link($hold)||is_link($held)||is_link($active)||is_link($tmp)||is_link($plain)||is_link($stage))throw new RecoveryException('restore_interrupted','مسیر عملیات معتبر نیست؛ فایل‌ها محفوظ هستند.',409);
+          +            $quarantine=$root.DIRECTORY_SEPARATOR.'recovery-promoted-hold-'.$id;$quarantined=$quarantine.DIRECTORY_SEPARATOR.'guest-media';
+          +            if(is_link($root)||is_link($hold)||is_link($held)||is_link($active)||is_link($tmp)||is_link($plain)||is_link($stage)||is_link($quarantine)||is_link($quarantined))throw new RecoveryException('restore_interrupted','مسیر عملیات معتبر نیست؛ فایل‌ها محفوظ هستند.',409);
+          +            if((file_exists($quarantine)&&!is_dir($quarantine))||(file_exists($quarantined)&&!is_dir($quarantined)))throw new RecoveryException('restore_interrupted','مسیر حفاظت تصاویر معتبر نیست؛ فایل‌ها محفوظ هستند.',409);
+                       $this->pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');$this->pdo->beginTransaction();
+                       try{
+          -                // A missing active tree and bound hold is the pre-promotion case.
+          -                // An already-active exact seed is also allowed, e.g. interrupted reconciliation.
+          +                // Prove the original DB and original seed bytes BEFORE moving any tree.
+          +                // The proof includes all tables, not only business markers. A committed
+          +                // restore or changed seed is refused, even if its media looks plausible.
+                           $heldExists=is_dir($held);$activeExists=is_dir($active);
+          -                if((file_exists($active)&&!$activeExists)||(file_exists($held)&&!$heldExists)||($heldExists&&$activeExists))throw new RecoveryException('restore_interrupted','وضعیت تصاویر مبهم است؛ هیچ تصویری جابه‌جا نشد.',409);
+          +                if((file_exists($active)&&!$activeExists)||(file_exists($held)&&!$heldExists))throw new RecoveryException('restore_interrupted','وضعیت تصاویر مبهم است؛ هیچ تصویری جابه‌جا نشد.',409);
+                           $mediaRoot=$heldExists?$hold:$root;
+                           if($this->seedProof(true,$proof['tables'],$mediaRoot)!==$proof)throw new RecoveryException('restore_interrupted','اطلاعات مقصد با شاهد نصب تازه مطابقت ندارد.',409);
+          +                if($heldExists&&$activeExists){
+          +                    // A promoted tree can coexist with the original held seed after
+          +                    // rollback. Preserve it in a separate private, operation-bound
+          +                    // directory; never replace an existing quarantine or delete bytes.
+          +                    if(file_exists($quarantined)||is_link($quarantined)||file_exists($stage)||is_link($stage))throw new RecoveryException('restore_interrupted','وضعیت تصاویر عملیات مبهم است؛ هیچ تصویری جابه‌جا نشد.',409);
+          +                    $promotedProof=MediaSnapshotCodec::scan($root);
+          +                    if(!is_dir($quarantine)&&!@mkdir($quarantine,0700))throw new RecoveryException('restore_media_rollback_failed','پوشه حفاظت تصاویر قابل ایجاد نیست.',500);
+          +                    if(is_link($quarantine)||count(scandir($quarantine)?:['.','..','unreadable'])!==2||!@rename($active,$quarantined))throw new RecoveryException('restore_media_rollback_failed','تصاویر بازیابی‌شده به پوشه حفاظت منتقل نشدند.',500);
+          +                    if(MediaSnapshotCodec::scan($quarantine)!==$promotedProof)throw new RecoveryException('restore_media_rollback_failed','تطبیق تصاویر حفاظت‌شده کامل نشد؛ فایل‌ها محفوظ هستند.',500);
+          +                }
+          +                // Re-entry after quarantine rename is safe: the exact held seed is
+          +                // still required, and the quarantined tree is never touched.
+                           if($heldExists&&!@rename($held,$active))throw new RecoveryException('restore_media_rollback_failed','بازگرداندن تصاویر حفاظت‌شده ممکن نشد.',500);
+                           if($this->seedProof(true,$proof['tables'])!==$proof)throw new RecoveryException('restore_interrupted','تطبیق نهایی مقصد موفق نبود.',409);
+                           // Remove only the decrypted scratch objects bound to THIS operation.
+          @@ -598,7 +614,7 @@
+                           // This transaction contains only locking reads; no business row mutation.
+                           if(!$this->pdo->commit())throw new RecoveryException('restore_interrupted','تأیید نهایی قفل مقصد انجام نشد.',409);
+                           if(!@rename($pending,$receipt))throw new RecoveryException('restore_interrupted','ثبت نتیجه بررسی عملیات کامل نشد.',409);
+          -                return ['reconciled'=>true,'target_matches_original_seed'=>true,'media_restored'=>$heldExists,'retry_requires_new_confirmation'=>true];
+          +                return ['reconciled'=>true,'target_matches_original_seed'=>true,'media_restored'=>$heldExists,'promoted_media_preserved'=>is_dir($quarantined),'retry_requires_new_confirmation'=>true];
+                       }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+                   }finally{if(is_resource($mediaLock))fclose($mediaLock);fclose($lock);}
+               }
+          PATCH50
+          (cd "$W"; git apply --check seed-quarantine.patch; git apply seed-quarantine.patch)
+          echo "3fe943b05bc2ce62eda2e85e25f4c2e0824587a97687563baf187ba9d5a20455  $W/local/src/Domain/Recovery/BusinessBackupService.php" | sha256sum -c -
+          php -l "$W/local/src/Domain/Recovery/BusinessBackupService.php"
+          for mode in rolledback committed; do mkdir -p "$W/target-$mode"; cp -a "$W/local" "$W/target-$mode/local"; done
           export QA_WORK="$W" TMPDIR="$W"
-          python - "$W" "$O" "$A" <<'PY'
-          import pathlib,sys,zipfile,io,hashlib
-          W,old,current=map(pathlib.Path,sys.argv[1:]);H=lambda b:hashlib.sha256(b).hexdigest()
-          with zipfile.ZipFile(old) as z:
-           b=z.read('artifacts/local/web.zip')
-          assert H(b)=='2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6'
-          with zipfile.ZipFile(io.BytesIO(b)) as z:z.extractall(W/'old/local')
-          assert H(current.read_bytes())=='cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a'
-          s=pathlib.Path('qa/cp160/fixture.php').read_text()
-          # Use exactly the old installed schema, with the basic synthetic partial-payment seed; omit unrelated current report setup.
-          start=s.index('// Independent QA-only rows')
-          end=s.index('$iid=(string)',start)
-          s=s[:start]+'$reportDay=$core->time()->civilDate();\n'+s[end:]
-          s=s.replace('sokna_cp150','sokna_cc49_old')
-          (W/'old-fixture.php').write_text(s)
-          PY
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/current-fixture.txt"
-          php "$W/old-fixture.php" "$W/old/local" > "$W/receipts/old-fixture.txt"
-          # Both independent synthetic installations use the same test peer binding for this transition experiment.
-          php -r '$old=require $argv[1];$new=require $argv[2];$old["installation"]["id"]=$new["installation"]["id"];$old["public"]=$new["public"];file_put_contents($argv[1],"<?php return ".var_export($old,true).";");' "$W/old/config.php" "$W/config.php"
-          php qa/cp160/public-fixture.php "$W/public"
-          cat > "$W/peer.php" <<'PHP'
+          php qa/cp160/fixture.php "$W/local" > "$W/receipts/fixture.txt"
+          cat > "$W/gate50.php" <<'PHP50'
           <?php
           declare(strict_types=1);
+          use Sokna\Local\Domain\Recovery\BusinessBackupService;
+          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
+          use Sokna\Local\Domain\Recovery\RecoveryException;
+          use Sokna\Local\Core\Observability;
+          use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
-          [$s,$mode,$root,$cfgPath,$sequence]=$argv;
-          $root=realpath($root);require $root.'/bootstrap.php';
-          $cfg=require $cfgPath;
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||!in_array($cfg['db']['name']??'',['sokna_cp150','sokna_cc49_old'],true)||($cfg['public']['base_url']??'')!=='http://127.0.0.1:18766/public')exit(2);
+          $W=realpath($argv[1]);require $W.'/local/bootstrap.php';$cfg=require $W.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();
           function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}
-          $core=\Sokna\Local\Core\Bootstrap::fromArray($cfg);$p=$core->database();
-          $versions=$p->query('SELECT version FROM schema_migrations ORDER BY version')->fetchAll(PDO::FETCH_COLUMN);
-          $old=str_contains(file_get_contents($root.'/VERSION.txt'),'.231gg-');
-          ck(count($versions)===93,'actual '.($old?'old 93':'current 93').' migration ledger');
-          if($mode==='projection'){
-           $model=$core->publicProjectionBuilder()->remoteModelsFor(['operations'])[0];
-           $state=$model['payload']['finance_projection'];
-           ck($state['status']==='ready','actual financial projection ready');
-           ck(($state['remaining_discount_correction_contract']??0)===($old?0:1),'actual code capability '.($old?'old':'new'));
-           ck(count($model['payload']['settlement_accounts'])>0,'actual accounts projected');
-           $r=$core->publicEdgeSyncClient()->postRaw('/api/v1/local/read-model-v2',['format'=>'sokna-read-model-v2','up_to_sequence'=>(int)$sequence,'model'=>$model],5);
-           ck($r['status']===200&&($r['body']['ack_sequence']??0)===(int)$sequence,'signed real Public acknowledgement '.$sequence);
-           $h=$core->publicEdgePublisher()->syncHeartbeat(5);ck(($h['success']??false)===true,'real signed heartbeat');
-           echo json_encode(['hash'=>$model['source_version'],'finance'=>$state],JSON_THROW_ON_ERROR).PHP_EOL;exit;
-          }
-          if($mode==='downgrade'){
-           ck(!$old,'current installation owns the downgrade decision');
-           $catalog=[];foreach(glob(dirname($root).'/old/local/database/migrations/*.sql') as $file)$catalog[basename($file,'.sql')]=hash_file('sha256',$file);
-           try{\Sokna\Local\Domain\Update\UpdateMigrationPolicy::assertInstalledLineage($versions,$catalog,$root.'/database/migrations');throw new RuntimeException('unsafe downgrade accepted');}
-           catch(\Sokna\Local\Domain\Update\LocalUpdateException $e){ck($e->errorCode==='schema_downgrade_unsupported','actual current ledger rejects incompatible direct rollback');}
-           exit;
-          }
-          exit(2);
-          PHP
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 &
-          sleep 2
-          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
-          cat > "$W/ui.cjs" <<'JS'
-          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs'),{execFileSync}=require('child_process');
-          const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
-          const sid=Number(f.hall.partial.session);
-          function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)}
-          function sync(old,seq){console.log(execFileSync('php',[W+'/peer.php','projection',W+(old?'/old/local':'/local'),W+(old?'/old/config.php':'/config.php'),String(seq)],{encoding:'utf8'}))}
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true}),c=await b.newContext({viewport:{width:1280,height:900},locale:'fa-IR'}),p=await c.newPage();p.setDefaultTimeout(16000);
-          try{
-           sync(true,1);
-           await p.goto(base+'/staff/login');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key='user:'+f.users.find(u=>u.name==='qa-target').id;
-           if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="'+key+'"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}
-           await p.locator('input[name=password]').fill('synthetic-qa-admin-not-real');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);
-           await p.goto(base+'/staff/hall/');await p.waitForFunction(()=>!!window.SoknaHallTransport);
-           async function state(old,seq){
-            const res=await p.request.get(base+'/api/staff/read?model=operations');const r=await res.json();ck(res.ok()&&r.payload.finance_projection.status==='ready','real signed projection visible to logged-in browser '+seq);
-            ck((r.payload.finance_projection.remaining_discount_correction_contract||0)===(old?0:1),'browser sees actual version capability '+seq);
-            const x=await p.evaluate(async sid=>{await window.SoknaHallTransport.request('/api/hall?action=snapshot');const h=window.SoknaHallTransport;return {correct:h.canCorrectDiscount(sid),resolve:h.canResolveCorrection(),abandon:h.canAbandonCorrection(),pending:h.pendingCorrectionForSession(sid)?.request_id||null}},sid);
-            ck(x.resolve===!old&&x.abandon===!old,'real browser correction resolution guarded '+seq);return x;
+          function reject(callable $fn,array $codes,string $label){try{$fn();}catch(RecoveryException $e){ck(in_array($e->errorCode,$codes,true),$label.' '.$e->errorCode);return;}throw new RuntimeException('unexpected success '.$label);}
+          class UncertainResponsePDO extends PDO {
+           public string $scenario='';
+           public function commit():bool {
+            if($this->scenario==='')return parent::commit();
+            $mode=$this->scenario;$this->scenario='';
+            // The actual DB ends its transaction. The synthetic caller receives an
+            // exception instead of the usual response, to exercise both uncertain outcomes.
+            $ok=$mode==='committed'?parent::commit():parent::rollBack();
+            if(!$ok)throw new RuntimeException('fixture database outcome failed');
+            throw new RuntimeException('synthetic acknowledgement unavailable');
            }
-           let x=await state(true,1);ck(!x.correct,'old peer prevents new correction');
-           sync(false,2);x=await state(false,2);ck(x.correct,'current peer enables correction');
-           // Simulate only the browser's persisted uncertain-request receipt, not any server response.
-           const ledger=await p.evaluate(sid=>{const key='sokna:staff-command-ledger:v1:'+((document.body.dataset.appBase||document.body.dataset.basePath||'').replace(/\/$/,'')||'/')+':'+(document.body.dataset.projectionId||'');localStorage.setItem(key,JSON.stringify([{kind:'settlement.discount_correction',session_id:sid,request_id:'qa49-pending-synthetic',keep_until:Number.MAX_SAFE_INTEGER}]));return {key,pending:window.SoknaHallTransport.pendingCorrectionForSession(sid)?.request_id}},sid);
-           ck(ledger.pending==='qa49-pending-synthetic','explicit synthetic uncertain receipt installed');
-           sync(true,3);x=await state(true,3);ck(!x.correct&&x.pending==='qa49-pending-synthetic','actual old projection retains pending identity');
-           let posts=0;const listener=r=>{if(r.method()==='POST'&&r.url().includes('/api/staff/realtime'))posts++};p.on('request',listener);
-           const rejected=await p.evaluate(async sid=>{try{await window.SoknaFinanceTransport.post('',{action:'discount_correction',session_id:sid,request_id:'qa49-duplicate-attempt'});return ''}catch(e){return e.code}},sid);
-           ck(rejected==='request_pending'&&posts===0,'no duplicate financial POST to real Public');
-           sync(false,4);x=await state(false,4);ck(!x.correct&&x.pending==='qa49-pending-synthetic','current peer return retains same request and enables resolution only');
-           await p.screenshot({path:W+'/receipts/mixed-peer.png',animations:'disabled'});p.off('request',listener);
-           console.log('GROUP PASS actual older/current signed projections and real browser guard');
-          }finally{await c.close();await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
-          JS
-          node "$W/ui.cjs" | tee "$W/receipts/mixed.txt"
+          }
+          $backup=$W.'/synthetic-backup.skbf';$pass='synthetic-recovery49-password';$source=$cfg['app']['data_dir'];file_put_contents($source.'/guest-media/qa49-source-only.bin','synthetic media distinction');
+          $sourceMedia=MediaSnapshotCodec::scan($source);$r=$core->businessBackup()->createEncrypted($backup,$pass,0);$hash=hash_file('sha256',$backup);ck($hash===$r['sha256'],'real encrypted backup SHA');
+          $orders=(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn();ck($orders>0,'nonempty synthetic source');
+          foreach(['rolledback','committed'] as $mode){
+           $name='sokna_cc49_'.$mode;$target=$W.'/target-'.$mode;$dest=$target.'/data';
+           $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$target.'/local');
+           $setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>$name,'user'=>'root','pass'=>getenv('QA_DB_PASSWORD')],'create_database'=>true,'admin_user'=>'qa-seed49','admin_password'=>'synthetic-seed-only-password','cafe_name'=>'QA49','table_count'=>3]);
+           $tcfg=require $target.'/config.php';$iid=$tcfg['installation']['id'];$receipt=$dest.'/recovery-fresh-seed-v1.json';$proof=file_get_contents($receipt);$original=MediaSnapshotCodec::scan($dest);ck($proof!==false&&count($original)>0&&$original!==$sourceMedia,'actual pristine seed and different source media '.$mode);
+           $t=new UncertainResponsePDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+           $auth=new PublicAuthorityStateService($t,$iid);$b=new BusinessBackupService($t,new Observability($dest),$iid,$auth,null,$dest);
+           $i=$b->inspectEncrypted($backup,$pass);ck(($i['target_kind']??'')==='verified_fresh_seed'&&$i['target_ready']===true,'real seed proof accepted '.$mode);
+           $t->scenario=$mode;
+           try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('fixture expected exception');}catch(RuntimeException $e){ck($e->getMessage()==='synthetic acknowledgement unavailable','actual transaction ended without success response '.$mode);}
+           $used=glob($receipt.'.used-*');ck(count($used)===1&&!is_file($receipt)&&file_get_contents($used[0])===$proof,'original proof remains consumed '.$mode);
+           $op=substr($used[0],-16);ck(preg_match('/^[a-f0-9]{16}$/D',$op)===1,'operation identity '.$mode);
+           $hold=$dest.'/recovery-seed-hold-'.$op;$quarantine=$dest.'/recovery-promoted-hold-'.$op;
+           ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($hold)===$original,'both trees exact before reconciliation '.$mode);
+           ck((int)$t->query('SELECT COUNT(*) FROM orders')->fetchColumn()===($mode==='committed'?$orders:0),'actual DB outcome '.$mode);
+           reject(fn()=>$b->restoreEncryptedToEmptyTarget($backup,$pass,0),['restore_interrupted'],'direct retry denied '.$mode);
+           if($mode==='rolledback'){
+            $result=$b->reconcileInterruptedSeedOffline();
+            ck($result['reconciled']===true&&$result['target_matches_original_seed']===true&&$result['promoted_media_preserved']===true&&$result['retry_requires_new_confirmation']===true,'safe offline reconciliation with explicit retry confirmation');
+            ck(MediaSnapshotCodec::scan($dest)===$original&&MediaSnapshotCodec::scan($quarantine)===$sourceMedia,'exact original restored and promoted bytes preserved');
+            ck(file_get_contents($receipt)===$proof&&!file_exists($used[0]),'exact original proof rearmed');
+            $i=$b->inspectEncrypted($backup,$pass);ck($i['target_ready']===true,'explicit new inspection permitted');
+            $rr=$b->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($rr['restored']===true&&$auth->phase()==='reenroll_required','new confirmed actual restore');
+            ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($quarantine)===$sourceMedia,'new restore and protected quarantine exact');
+           }else{
+            reject(fn()=>$b->reconcileInterruptedSeedOffline(),['target_not_empty','restore_interrupted'],'committed target reconciliation refused');
+            ck(MediaSnapshotCodec::scan($dest)===$sourceMedia&&MediaSnapshotCodec::scan($hold)===$original&&!file_exists($quarantine)&&file_get_contents($used[0])===$proof,'committed result and original tree retained untouched');
+            ck($auth->phase()==='reenroll_required','committed Local remains fenced');
+           }
+           ck(hash_file('sha256',$backup)===$hash&&MediaSnapshotCodec::scan($source)===$sourceMedia&&(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn()===$orders,'source and encrypted backup unchanged '.$mode);
+          }
+          echo "GROUP PASS seeded restore reconciliation after uncertain response, real DB outcomes\n";
+          PHP50
+          php -l "$W/gate50.php"
+          php "$W/gate50.php" "$W" | tee "$W/receipts/results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC49B-REAL-MIXED-PEER-RECEIPTS
-          path: ${{ runner.temp }}/cc49/receipts
+          name: SOKNA-CC50-SEEDED-RESTORE-QUARANTINE-RECEIPTS
+          path: ${{ runner.temp }}/cc50/receipts
           retention-days: 30
