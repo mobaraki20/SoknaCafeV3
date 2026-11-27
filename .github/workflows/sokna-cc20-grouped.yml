@@ -14,10 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {origin: C2, fault: APACHE_STOPPED, ledger: '91'}
-          - {origin: C2, fault: DATABASE_BACKUP_VERIFIED, ledger: '91'}
-          - {origin: C2, fault: POINTER_SWITCHED, ledger: '91'}
-          - {origin: C2, fault: COMMITTED, ledger: '91'}
+          - {origin: C2, fault: APACHE_STOPPED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
+          - {origin: C2, fault: DATABASE_BACKUP_VERIFIED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
+          - {origin: C2, fault: POINTER_SWITCHED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
+          - {origin: C2, fault: COMMITTED, ledger: '91', run: '45389831526', artifact: SOKNA-C2-CONTROLLED-OPERATOR-UPDATE, file: SOKNA-LOCAL-231GC-UNIVERSAL-UPDATE.zip}
     env:
       SOKNA_R186_CI_ONLY: 'YES'
       SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
