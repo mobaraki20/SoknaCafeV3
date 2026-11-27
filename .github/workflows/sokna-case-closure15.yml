@@ -1,0 +1,255 @@
+name: SOKNA CASE-CLOSURE-15 archives and print acceptance (QA ONLY)
+on:
+  push:
+    branches: [qa/func-pass02-db-20261127]
+    paths: [.github/workflows/sokna-case-closure15.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download pinned Local baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45764512635
+          name: SOKNA-CP98-LOCAL-231GG-CONTROLLED-CAFE-OPERATOR
+          path: ${{ runner.temp }}/cp148-input/local
+      - name: Download pinned Public baseline
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          path: ${{ runner.temp }}/cp148-input/public
+      - name: Reconstruct exact CP160 baseline then current 42-file cumulative delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          mkdir -p "$W"
+          python3 qa/cp148/prepare-source.py "$W" "$RUNNER_TEMP/cp148-input" | tee "$W/source-results.txt"
+          python3 qa/cp150/apply-cp150.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp151/apply-cp151.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152/apply-cp152.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152b/apply-cp152b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152c/apply-cp152c.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp152d/apply-cp152d.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp153/apply-cp153.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp154/apply-cp154.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp155/apply-cp155.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp156/apply-cp156.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp157/apply-cp157.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp157b/apply-cp157b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp158/apply-cp158.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp159/apply-cp159.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp159b/apply-cp159b.py "$W" | tee -a "$W/source-results.txt"
+          python3 qa/cp160/apply-cp160.py "$W" | tee -a "$W/source-results.txt"
+          base64 -d qa/func-pass02/overlay.b64 > "$W/overlay.patch.gz"
+          echo 'ff19835c97d8f5c7d1dbd0fb625f7b7717d26e2a9b5f9c84803ae990cef0f1c4  '"$W/overlay.patch.gz" | sha256sum -c -
+          gzip -dc "$W/overlay.patch.gz" > "$W/overlay.patch"
+          (cd "$W"; git apply --check overlay.patch; git apply overlay.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(625,'0d946221bea6cfc1df61faf91b562f568a43caf09a5e44291baa5a87eee8f977'),'public':(258,'5cf7bcd726b3c22d37269341702cbf99ef0c8ce174fcbeef2d29e1760a7eaf20')}
+          for host,(n,sha) in expected.items():
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==sha,(host,len(paths),actual)
+              print('PASS EXACT FUNC-PASS-02',host,n,actual)
+          PY
+      - name: Apply exact six-file incremental change and verify every file
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/func-pass03/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/func-pass03/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/fp3-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/func-pass03/manifest.json'))
+          for host,n in [('local',625),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT FUNC-PASS-03',host,n,actual)
+          PYCODE
+          base64 -d qa/case-closure07/overlay.b64 > "$W/cc07.patch.gz"
+          echo '4939a176c2983a84acade25002d00ca365cfecf029b8bba4ba4d73f2d9cece3d  '"$W/cc07.patch.gz" | sha256sum -c -
+          gzip -dc "$W/cc07.patch.gz" > "$W/cc07.patch"
+          (cd "$W"; git apply --check cc07.patch; git apply cc07.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc07-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure07/manifest.json'))
+          for host,n in [('local',625),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-06',host,n,actual)
+          PYCODE
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure08/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure08/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc08-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure08/manifest.json'))
+          for host,n in [('local',625),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-08',host,n,actual)
+          PYCODE
+      - name: Apply exact CASE-CLOSURE-09 delta and verify complete source
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure09/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure09/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc09-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure09/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-09',host,n,actual)
+          PYCODE
+      - name: Apply exact recovery identity fix and verify every file
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure10b/identity.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure10b/identity.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc10b-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure10b/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-10',host,n,actual)
+          PYCODE
+      - name: Apply exact CASE-CLOSURE-11 delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure11/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure11/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc11-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure11/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-11',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-12 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure12/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure12/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc12-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure12/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-12',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-13 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure13/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure13/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc13-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure13/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-13',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-14 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure14/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure14/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc14-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure14/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-14',host,n,actual)
+          PYCODE
+      - name: Apply CASE-CLOSURE-15 and verify exact tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/case-closure15/overlay.patch"; git apply "$GITHUB_WORKSPACE/qa/case-closure15/overlay.patch")
+          python3 - "$W" <<'PYCODE' | tee "$W/cc15-source-results.txt"
+          import pathlib,hashlib,sys,json
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          m=json.load(open('qa/case-closure15/manifest.json'))
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==m['trees'][host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-15',host,n,actual)
+          PYCODE
+      - name: Independent full archives and print acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          export QA_WORK="$W" TMPDIR="$W"
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
+          fail=0
+          node qa/case-closure15/contracts.cjs "$W" | tee "$W/cc15-contracts-results.txt" || fail=1
+          php qa/case-closure15/accept.php "$W/local" | tee "$W/cc15-db-results.txt" || fail=1
+          php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-fixture-results.txt"
+          npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
+          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-server.log" 2>&1 & pp=$!
+          rp=''; trap 'kill "$lp" "$pp" $rp 2>/dev/null || true' EXIT
+          sleep 2
+          php qa/case-closure15/accept.php "$W/local" sync | tee "$W/cc15-sync-results.txt" || fail=1
+          php qa/case-closure15/accept.php "$W/local" relay >"$W/cc15-relay-results.txt" 2>&1 & rp=$!
+          node qa/case-closure15/browser.cjs | tee "$W/cc15-browser-results.txt" || fail=1
+          php qa/case-closure15/accept.php "$W/local" prefs | tee "$W/cc15-prefs-results.txt" || fail=1
+          exit "$fail"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CASE-CLOSURE15-ARCHIVES-PRINT-QA-ONLY
+          path: |
+            ${{ runner.temp }}/cp148-qa/*-results.txt
+            ${{ runner.temp }}/cp148-qa/cc15-*.png
+          retention-days: 7
+          if-no-files-found: warn

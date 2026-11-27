@@ -1,0 +1,38 @@
+{
+  "source_sha256": "5db5bf657c89bb0908085221b10c58be092ddc623845513509c9332621e2c765",
+  "previous_sha256": "6ac440db12b4f76d135adfa84ba3784e8f4ffde9ef309cd688e64b656a412872",
+  "changed": [
+    "local/public/assets/operations-workspace.js",
+    "local/public/assets/printing-workspace.js",
+    "local/public/operations/api.php",
+    "local/public/printing/index.php",
+    "local/resources/shared-staff-ui/operations-workspace.php",
+    "local/src/Domain/Operations/OperationsWorkspaceService.php",
+    "local/src/Domain/Orders/OrderStaffActionService.php",
+    "local/src/Domain/Printing/PrintManagementService.php",
+    "local/src/Relay/OperationsRealtimeAdapter.php",
+    "public/assets/operations-workspace.js",
+    "public/resources/shared-staff-ui/operations-workspace.php",
+    "public/src/Realtime/RealtimeService.php",
+    "public/src/Remote/RemoteStaffPageRenderer.php"
+  ],
+  "trees": {
+    "local": "e6935899338ff5576e7db41d40f0d6bbb6bcda5cc5be26a634798a42410fa446",
+    "public": "7a5a3869015ee6d087731de20b1b85fbc2e9eb30ebc9c1c5c6f981d5ebc42513"
+  },
+  "files": {
+    "local/public/assets/operations-workspace.js": "4746dcf7169756385b921c5be4d1480595ff41bb8648ba3fe7efbf57263daf39",
+    "local/public/assets/printing-workspace.js": "023f8b8675dbfae4a9ee62070bad9b33ccd27fc166b19508a37e6592d65f7ae1",
+    "local/public/operations/api.php": "13d98513f0fa07864a1f851f5c2e377b2977863894d053ac02da3ad34b1129fb",
+    "local/public/printing/index.php": "97a48e3aa5ef9c6d3eb0023a3a26419cbac8a5e8926924998110d96d52f7afb6",
+    "local/resources/shared-staff-ui/operations-workspace.php": "90cac69902496b312b3ba080842629893913747e911e1847db7738f3e884ae3f",
+    "local/src/Domain/Operations/OperationsWorkspaceService.php": "069fefeb4061716191978b38f65d595242480af22d67e479639018250fbb09ce",
+    "local/src/Domain/Orders/OrderStaffActionService.php": "6290811668583a59bf7aaf9202f1ac6df63fedf6cf5b871fa2a122b1ff20016b",
+    "local/src/Domain/Printing/PrintManagementService.php": "9a7493adcb892ba1017f115bf20f3acb43ad1a558304057ccd493405e862f957",
+    "local/src/Relay/OperationsRealtimeAdapter.php": "80cf58621291e142164cdf0779cc4fe84a8f38bd5b7e7a52b7e995c19be938b6",
+    "public/assets/operations-workspace.js": "e9e8ab05d49395e9d18f0d03718364cd19ae3e37bb59f091d86e4b72b3d2c280",
+    "public/resources/shared-staff-ui/operations-workspace.php": "a7b00dbb77be254b80061e0a942ab8a499ef00b6ad906bf7f87bb865e4e9dec9",
+    "public/src/Realtime/RealtimeService.php": "44c1ed7acadd9859e74c10e297d4073a1bd7571e85eba7d95cc3649199ef46d7",
+    "public/src/Remote/RemoteStaffPageRenderer.php": "b5f0bf7363972f71daa071331b1d4a1df9b0d68c486c50a02560cd4820c2489b"
+  }
+}
