@@ -1,4 +1,4 @@
-name: SOKNA CASE-CLOSURE-31 remaining viewport and search load (QA ONLY)
+name: SOKNA CASE-CLOSURE-32 recovery inspection and native backup interruption (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -1028,81 +1028,249 @@ jobs:
               assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
               print('PASS EXACT CASE-CLOSURE-30',host,n,actual)
           PYCODE
-      - name: Remaining preview and actual search workload acceptance
+      - name: Apply exact CASE-CLOSURE-32 candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          cat > "$W/cc32.patch" <<'SOKNA_QA_CC32_PATCH'
+          --- a/local/public/assets/system-diagnostics.js
+          +++ b/local/public/assets/system-diagnostics.js
+          @@ -136,7 +136,7 @@
+           }
+           function paintBackupHistory(kind,message=''){
+            const state=backupHistories[kind],body=$(kind==='manual'?'[data-backups]':'[data-uploaded-backups]'),more=$(`[data-backup-history-more="${kind}"]`),notice=$(`[data-backup-history-status="${kind}"]`);if(!body||!more||!notice)return;
+          - body.replaceChildren();for(const b of state.rows){const tr=el('tr');tr.dataset.backupId=b.id;const name=el('td');name.dataset.label='شناسه فایل';const id=el('strong','',b.id);id.dir='ltr';name.append(id,el('div','sc-muted',(L.instantDateTime||L.dateTime)(b.modified_at)),el('small','sc-muted',`${kind==='manual'?'ساخته‌شده در سامانه':'بارگذاری‌شده'} · بررسی و مبدأ فایل تأیید نشده`));const size=el('td','',`${L.integer(b.size_bytes)} بایت`);size.dataset.label='حجم';const action=el('td');action.dataset.label='عمل';const a=el('a','sc-button sc-button--secondary','دانلود');a.href=appPath(`/system/recovery-download.php?id=${encodeURIComponent(b.id)}`);action.append(a);tr.append(name,size,action);body.append(tr);}
+          + body.replaceChildren();for(const b of state.rows){const tr=el('tr');tr.dataset.backupId=b.id;const name=el('td');name.dataset.label='شناسه فایل';const id=el('strong','',b.id);id.dir='ltr';name.append(id,el('div','sc-muted',(L.instantDateTime||L.dateTime)(b.modified_at)),el('small','sc-muted',`${kind==='manual'?'ساخته‌شده در سامانه':'بارگذاری‌شده'} · بررسی و مبدأ فایل تأیید نشده`));const size=el('td','',`${L.integer(b.size_bytes)} بایت`);size.dataset.label='حجم';const action=el('td');action.dataset.label='عمل';const a=el('a','sc-button sc-button--secondary','دانلود');a.href=appPath(`/system/recovery-download.php?id=${encodeURIComponent(b.id)}`);const inspect=el('button','sc-button sc-button--secondary','بررسی فایل');inspect.type='button';inspect.dataset.backupSelect=b.id;inspect.disabled=restoreBusy||restoreComplete||!!sectionError('recovery');inspect.addEventListener('click',()=>selectHistoryBackup(b.id));action.append(a,inspect);tr.append(name,size,action);body.append(tr);}
+            if(!state.rows.length){const tr=el('tr'),td=el('td','sc-empty',message||'فایلی در این فهرست نیست.');td.colSpan=3;tr.append(td);body.append(tr);}
+            notice.textContent=message||`${L.integer(state.rows.length)} فایل · ${state.next?'ادامه موجود است':'پایان فهرست'}`;more.hidden=!state.next;more.disabled=false;
+           }
+          @@ -564,18 +564,34 @@
+            await submitAutoBackup(e.currentTarget,'backup_automation_disable',{});
+           });
+           $('[data-backup-create]')?.addEventListener('click',async e=>{await SoknaUI.busy(e.currentTarget,async()=>{const pass=$('[data-backup-pass]').value;try{const j=await post({action:'backup_create',passphrase:pass});$('[data-backup-pass]').value='';await refresh('نسخه پشتیبان ساخته شد.');location.href=appPath(j.backup.download)}catch(err){toast(err.message,'danger','عملیات انجام نشد')}})});
+          +// History rows are not verification receipts. Select a stored ID, then require
+          +// fresh password/stream verification; never reuse an old target-ready result.
+          +function selectHistoryBackup(id){
+          + if(restoreBusy||restoreComplete||sectionError('recovery')||typeof id!=='string'||!/^(?:business|uploaded)-[A-Za-z0-9._-]{1,70}$/.test(id))return;
+          + ++restoreEpoch;restoreChecked=false;restoreFileName=id;
+          + const input=$('[data-recovery-upload] input[type=file]');if(input)input.value='';
+          + $('[data-restore-id]').value=id;$('[data-restore-pass]').value='';
+          + restoreMessage(`فایل ${id} انتخاب شد. رمز را وارد کن و محتوا را بررسی کن.`);syncRestoreControls();$('[data-restore-pass]')?.focus();
+          +}
+          +function verifiedBackupMessage(m,id){
+          + if(m.stream_verified!==true)return 'اعتبار کامل فایل تأیید نشد.';
+          + const source=typeof m.source_installation_id==='string'&&/^[a-zA-Z0-9._:-]{1,128}$/.test(m.source_installation_id)?m.source_installation_id:'در مانفیست قابل تأیید نیست';
+          + const created=validEvidenceInstant(m.created_at)!==null?(L.instantDateTime||L.dateTime)(m.created_at):'نامعلوم';
+          + const result=m.target_ready===true?'محتوای فایل و بررسی اولیه مقصد تأیید شد. شرایط مقصد هنگام بازیابی دوباره بررسی می‌شود.':'محتوای فایل تأیید شد، اما مقصد آماده نیست. '+(m.target_issue?.message||'');
+          + return `${result} · فایل: ${id} · مبدأ در مانفیست رمزگشایی‌شده: ${source} · تاریخ ایجاد: ${created}`;
+          +}
+           function syncRestoreControls(){
+            const blocked=restoreBusy||restoreComplete||!!sectionError('recovery');
+            const id=$('[data-restore-id]')?.value||'',pass=$('[data-restore-pass]')?.value||'';
+          - controlsDisabled(['[data-recovery-upload] button','[data-recovery-upload] input','[data-restore-pass]','[data-backup-create]'],blocked);
+          + controlsDisabled(['[data-recovery-upload] button','[data-recovery-upload] input','[data-restore-pass]','[data-backup-create]','[data-backup-select]'],blocked);
+            if($('[data-backup-inspect]'))$('[data-backup-inspect]').disabled=blocked||!id||!pass;
+            if($('[data-backup-restore]'))$('[data-backup-restore]').disabled=blocked||!id||!pass||!restoreChecked;
+           }
+           function restoreMessage(message,tone='info'){const box=$('[data-backup-manifest]');if(!box)return;box.className=`sc-alert sc-alert--${tone}`;box.textContent=message;}
+          -$('[data-recovery-upload] input[type=file]')?.addEventListener('change',()=>{restoreChecked=false;restoreFileName='';$('[data-restore-id]').value='';restoreMessage('فایل جدید را بارگذاری کن.');syncRestoreControls()});
+          -$('[data-restore-pass]')?.addEventListener('input',()=>{restoreChecked=false;restoreMessage($('[data-restore-id]').value?'رمز را وارد کن و فایل را بررسی کن.':'ابتدا فایل را بارگذاری کن.');syncRestoreControls()});
+          -$('[data-recovery-upload]')?.addEventListener('submit',async e=>{e.preventDefault();if(restoreBusy||restoreComplete)return;const form=e.currentTarget,body=new FormData(form),epoch=++restoreEpoch;restoreChecked=false;restoreFileName='';$('[data-restore-id]').value='';restoreBusy=true;syncRestoreControls();restoreMessage('در حال بارگذاری فایل…');try{const j=await request(appPath('/system/recovery-upload.php'),{method:'POST',headers:{'X-CSRF-Token':csrf},body});if(epoch!==restoreEpoch)return;$('[data-restore-id]').value=j.backup.id;restoreFileName=j.backup.file_name||j.backup.id;restoreMessage('فایل بارگذاری شد. رمز را وارد کن و فایل را بررسی کن.');if(activeTab()==='recovery')void loadRecovery();}catch(err){restoreMessage(err.status===413?'حجم فایل از سقف بارگذاری بیشتر است.':err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+          -$('[data-backup-inspect]')?.addEventListener('click',async()=>{if(restoreBusy||restoreComplete||!$('[data-restore-id]').value||!$('[data-restore-pass]').value)return;const epoch=++restoreEpoch;restoreChecked=false;restoreBusy=true;syncRestoreControls();restoreMessage('در حال بررسی رمز، محتوا و سازگاری مقصد…');try{const j=await post({action:'backup_inspect',id:$('[data-restore-id]').value,passphrase:$('[data-restore-pass]').value});if(epoch!==restoreEpoch)return;const m=j.manifest||{};restoreChecked=m.stream_verified===true&&m.target_ready===true;restoreMessage(restoreChecked?'محتوای فایل و بررسی اولیه مقصد تأیید شد. شرایط مقصد هنگام بازیابی دوباره بررسی می‌شود.':m.stream_verified===true?'محتوای فایل تأیید شد، اما مقصد آماده نیست. '+(m.target_issue?.message||''):'اعتبار کامل فایل تأیید نشد.',restoreChecked?'success':'warning')}catch(err){restoreMessage(err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+          +$('[data-recovery-upload] input[type=file]')?.addEventListener('change',()=>{++restoreEpoch;restoreChecked=false;restoreFileName='';$('[data-restore-id]').value='';$('[data-restore-pass]').value='';restoreMessage('فایل جدید را بارگذاری کن.');syncRestoreControls()});
+          +$('[data-restore-pass]')?.addEventListener('input',()=>{++restoreEpoch;restoreChecked=false;restoreMessage($('[data-restore-id]').value?'رمز را وارد کن و فایل را بررسی کن.':'ابتدا فایل را بارگذاری کن.');syncRestoreControls()});
+          +$('[data-recovery-upload]')?.addEventListener('submit',async e=>{e.preventDefault();if(restoreBusy||restoreComplete)return;const form=e.currentTarget,body=new FormData(form),epoch=++restoreEpoch;restoreChecked=false;restoreFileName='';$('[data-restore-id]').value='';restoreBusy=true;syncRestoreControls();restoreMessage('در حال بارگذاری فایل…');try{const j=await request(appPath('/system/recovery-upload.php'),{method:'POST',headers:{'X-CSRF-Token':csrf},body});if(epoch!==restoreEpoch)return;$('[data-restore-id]').value=j.backup.id;restoreFileName=j.backup.file_name||j.backup.id;restoreMessage('فایل بارگذاری شد. رمز را وارد کن و فایل را بررسی کن.');if(activeTab()==='recovery')void loadRecovery();}catch(err){if(epoch===restoreEpoch)restoreMessage(err.status===413?'حجم فایل از سقف بارگذاری بیشتر است.':err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+          +$('[data-backup-inspect]')?.addEventListener('click',async()=>{if(restoreBusy||restoreComplete||!$('[data-restore-id]').value||!$('[data-restore-pass]').value)return;const epoch=++restoreEpoch;restoreChecked=false;restoreBusy=true;syncRestoreControls();restoreMessage('در حال بررسی رمز، محتوا و سازگاری مقصد…');try{const id=$('[data-restore-id]').value;const j=await post({action:'backup_inspect',id,passphrase:$('[data-restore-pass]').value});if(epoch!==restoreEpoch||id!==$('[data-restore-id]').value)return;const m=j.manifest||{};restoreChecked=m.stream_verified===true&&m.target_ready===true;restoreMessage(verifiedBackupMessage(m,id),restoreChecked?'success':'warning')}catch(err){if(epoch===restoreEpoch)restoreMessage(err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+           $('[data-backup-restore]')?.addEventListener('click',async()=>{if(restoreBusy||restoreComplete||!restoreChecked)return;const epoch=restoreEpoch;restoreBusy=true;syncRestoreControls();try{if(!await SoknaUI.confirm('بازیابی اطلاعات',`فایل ${restoreFileName} روی مقصد تأییدشده بازیابی می‌شود. ادامه می‌دهی؟`,true)||epoch!==restoreEpoch||!restoreChecked)return;restoreChecked=false;restoreMessage('در حال بازیابی اطلاعات…');const j=await post({action:'backup_restore',id:$('[data-restore-id]').value,passphrase:$('[data-restore-pass]').value});restoreComplete=true;$('[data-restore-pass]').value='';const r=j.restore||{};restoreMessage('اطلاعات بازیابی شد. هویت دستگاه باید دوباره تنظیم شود. '+(r.public_authority_fence_confirmed?'محدودیت اتصال وب عمومی تأیید شد.':'محدودیت اتصال وب عمومی تأیید نشده؛ اتصال را بررسی کن.')+(r.media_warning?' این نسخه قدیمی شامل فایل تصاویر خصوصی نیست.':''),'warning');const link=el('a','sc-button sc-button--secondary','ورود مجدد');link.href=appPath('/logout.php?restored=1');$('[data-backup-manifest]').append(document.createElement('br'),link)}catch(err){restoreMessage(err.message,'danger')}finally{restoreBusy=false;syncRestoreControls()}});
+           syncRestoreControls();
+           root.addEventListener('sokna:tabchange',event=>{const tab=event.detail?.tab;if(tab!=='recovery'&&!restoreComplete){++restoreEpoch;restoreChecked=false;restoreFileName='';const id=$('[data-restore-id]');if(id)id.value='';const pass=$('[data-restore-pass]');if(pass)pass.value='';restoreMessage('برای بازیابی دوباره فایل را بارگذاری و بررسی کن.');syncRestoreControls()}if(tab==='updates')loadUpdates();else if(tab==='recovery')loadRecovery();else if(tab==='health')loadHealth()});
+          --- a/local/src/Domain/Recovery/RecoveryWorkspaceService.php
+          +++ b/local/src/Domain/Recovery/RecoveryWorkspaceService.php
+          @@ -29,7 +29,7 @@
+               public function create(string $passphrase,int $actorId): array{$id='business-'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(3));$path=$this->dir().'/'.$id.'.skbf';$meta=$this->backup->createEncrypted($path,$passphrase,$actorId);$set=['format'=>'sokna-recovery-set-v1','created_at'=>$meta['created_at'],'business_backup'=>['path'=>basename($path),'sha256'=>$meta['sha256']],'source_installation_id'=>$meta['source_installation_id'],'excluded_machine_identity'=>$meta['excluded_machine_identity']];file_put_contents($this->dir().'/'.$id.'.recovery.json',json_encode($set,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR)."\n",LOCK_EX);return ['id'=>$id,'size_bytes'=>$meta['size'],'sha256'=>$meta['sha256'],'download'=>'/system/recovery-download.php?id='.rawurlencode($id)];}
+               public function inspect(string $id,string $passphrase): array{return $this->backup->inspectEncrypted($this->path($id),$passphrase);}
+               public function restore(string $id,string $passphrase,int $actorId): array{return $this->backup->restoreEncryptedToEmptyTarget($this->path($id),$passphrase,$actorId);}
+          -    public function path(string $id): string{if(!preg_match('/^(?:business-)?[A-Za-z0-9._-]{6,80}$/',$id))throw new RecoveryException('invalid_backup','شناسه پشتیبان معتبر نیست.',422);$p=$this->dir().'/'.$id.(str_ends_with($id,'.skbf')?'':'.skbf');if(!is_file($p))throw new RecoveryException('backup_missing','فایل پشتیبان پیدا نشد.',404);return $p;}
+          +    public function path(string $id): string{if(!preg_match('/^(?:business-)?[A-Za-z0-9._-]{6,80}$/',$id))throw new RecoveryException('invalid_backup','شناسه پشتیبان معتبر نیست.',422);$p=$this->dir().'/'.$id.(str_ends_with($id,'.skbf')?'':'.skbf');if(is_link($p)||!is_file($p))throw new RecoveryException('backup_missing','فایل پشتیبان پیدا نشد.',404);return $p;}
+               public function incomingDir(): string{$p=$this->dir().'/incoming';if(!is_dir($p))@mkdir($p,0700,true);return $p;}
+               public function registerIncoming(string $tmp,string $name): array{$id='uploaded-'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(3));$dst=$this->dir().'/'.$id.'.skbf';if(!@rename($tmp,$dst))throw new RecoveryException('upload_failed','ذخیره فایل بازیابی انجام نشد.',500);@chmod($dst,0600);return ['id'=>$id,'file_name'=>$name,'size_bytes'=>(int)filesize($dst),'sha256'=>hash_file('sha256',$dst)];}
+               private function dir(): string{$p=$this->observability->dataRoot().'/recovery/business';if(!is_dir($p)&&!@mkdir($p,0700,true)&&!is_dir($p))throw new RecoveryException('recovery_storage','فضای بازیابی آماده نیست.',500);return $p;}
+          SOKNA_QA_CC32_PATCH
+          (cd "$W"; git apply --check cc32.patch; git apply cc32.patch)
+          python3 - "$W" <<'PYCODE' | tee "$W/cc32-source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]); H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local': 'a4c22e6999d69e2321580605320f28e314c81dcb5e371f185fa0bd8f0ae1bdba', 'public': '21815114deed0c12042750de55e1e8c3add5d3468081b5e1031a0ca0cd38d09c'}
+          for host,n in [('local',626),('public',258)]:
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==expected[host],(host,len(paths),actual)
+              print('PASS EXACT CASE-CLOSURE-32',host,n,actual)
+          PYCODE
+      - name: Recovery UI, real encrypted stream, HTTP large upload and process interruption
         shell: bash
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/cp148-qa"
           export QA_WORK="$W" TMPDIR="$W"
-          php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
-          cat > "$W/gate30.php" <<'SOKNA_QA_CC30_gate30_php'
+          cat > "$W/gate32.php" <<'SOKNA_QA_CC32_gate32_php'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
-          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);$bar=$p->query("SELECT id,role FROM users WHERE username='qa-bar-a' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin||!$bar)exit(2);$fail=0;
-          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function group($n,$fn){global $fail;try{$fn();echo "GROUP PASS $n\n";}catch(Throwable $e){++$fail;echo 'GROUP FAIL '.$n.' '.get_class($e).' '.($e->errorCode??'').' '.$e->getMessage()."\n";}}function scalar(PDO $p,string $sql,array $args=[]){$s=$p->prepare($sql);$s->execute($args);return $s->fetchColumn();}function reject($fn,$code){try{$fn();throw new RuntimeException('expected '.$code);}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);}}
-          $mode=$argv[2]??'seed';$fpath=$W.'/cc30-fixture.json';$g=$c->guestContent();$mediaRoot=rtrim($cfg['app']['data_dir'],'/\\').'/guest-media';
-          function makeImage($file,$r,$g,$b){$im=imagecreatetruecolor(480,360);imagefill($im,0,0,imagecolorallocate($im,$r,$g,$b));imagepng($im,$file);imagedestroy($im);}
-          if($mode==='publish'){$pub=$c->publicEdgePublisher();for($i=0;$i<8;$i++){$r=$pub->syncGuestPublication(10);$s=$r['state'];if(($s['media_ready']??false)===true&&($s['critical_ready']??false)===true)break;}ck(($s['media_ready']??false)===true&&($s['critical_ready']??false)===true,'real preview fixture signed publication');exit;}
-          if(in_array($mode,['break','restore'],true)){$f=json_decode(file_get_contents($fpath),true,512,JSON_THROW_ON_ERROR);$path=$mediaRoot.'/'.$f['card_path'];if($mode==='break'){ck(is_file($path)&&rename($path,$path.'.qa30-bak'),'actual card file temporarily unavailable');}else{ck(is_file($path.'.qa30-bak')&&rename($path.'.qa30-bak',$path),'actual card file restored');}exit;}
-          if($mode==='busy') {reject(fn()=>$g->garbageCollect($admin,false),'media_busy');reject(fn()=>$g->importUpload($W.'/qa30-gc.png','qa30-gc.png','QA30 GC',$admin),'media_busy');exit;}
-          $f=[];$cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA30 preview menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA30 preview category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];$other=(int)$cat->saveMenu(['name'=>'QA30 second menu','status'=>'active'],$admin)['id'];$othercat=(int)$cat->saveCategory(['name'=>'QA30 second category','active'=>true,'menu_ids'=>[$other]],$admin)['id'];
-          foreach([['visible',$mid,$cid,1,12345],['hidden',$mid,$cid,0,23456],['other',$other,$othercat,1,34567]] as [$label,$m,$k,$vis,$price]){$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES(?,?,?,?,1,1,'active',?,1,'hot_bar')")->execute(['qa30-'.$label,$k,'QA30 '.$label,$price,$vis]);$id=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$m,$id]);$f[$label]=$id;}
-          $f['menu_id']=$mid;$f['other_menu']=$other;$f['menu']=(string)scalar($p,'SELECT menu_key FROM menus WHERE id=?',[$mid]);$f['token']=(string)scalar($p,'SELECT access_token FROM cafe_tables WHERE active=1 ORDER BY id DESC LIMIT 1');$f['installation']=json_decode(file_get_contents($W.'/cp144-fixture.json'),true)['installation'];
-          makeImage($W.'/qa30-preview.png',31,101,171);$upload=$g->importUpload($W.'/qa30-preview.png','qa30-preview.png','QA30 real preview',$admin);$f['media_key']=$upload['media_key'];$g->assignMediaToItem($f['visible'],$f['media_key'],$admin);$f['card_path']=(string)scalar($p,"SELECT d.path_relpath FROM guest_media_derivatives d JOIN guest_media_assets a ON a.id=d.media_id WHERE a.media_key=? AND d.variant_key='guest-card'",[$f['media_key']]);$f['card_hash']=hash_file('sha256',$mediaRoot.'/'.$f['card_path']);file_put_contents($fpath,json_encode($f,JSON_THROW_ON_ERROR));
-          group('HELP-L568 realistic multi-provider SQL load',function()use($p,$c,$admin,$bar,$cid,$mid){
-          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA31 load menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA31 load category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];
-          $p->beginTransaction();try{
-           $a=$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES(?,?,?,12000,1,1,'active',1,1,'hot_bar')");
-           $b=$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)');
-           $d=$p->prepare("INSERT INTO inventory_items(item_code,name,base_unit,active) VALUES(?,?,'count',1)");
-           $e=$p->prepare('INSERT INTO subscribers(name,mobile,mobile_normalized,active) VALUES(?,?,?,1)');
-           for($i=0;$i<1500;$i++){$name='QA31 كيك‌ '.$i;$code='qa31-'.$i;$a->execute([$code,$cid,$name]);$item=(int)$p->lastInsertId();$b->execute([$mid,$item]);$d->execute([$code,$name]);$inv=(int)$p->lastInsertId();$phone=sprintf('00031%06d',$i);$e->execute([$name,$phone,$phone]);$sub=(int)$p->lastInsertId();}
-           $p->prepare("UPDATE users SET display_name='QA31 كيك‌ 1499' WHERE id=?")->execute([$bar['id']]);$p->commit();
-           }catch(Throwable $e){if($p->inTransaction())$p->rollBack();throw $e;}
-           $wanted=['catalog:item:'.$item,'inventory:item:'.$inv,'subscriber:'.$sub,'user:'.$bar['id']];$timings=[];
-           foreach(['QA31 کیک 1499','qa31 كيك ١٤٩٩','QA31 کیک ۱۴۹۹'] as $term){$t=hrtime(true);$r=$c->globalSearch()->search($term,$admin,20);$timings[]=(hrtime(true)-$t)/1e6;$ids=array_column($r['results'],'id');ck(!$r['partial']&&!array_diff($wanted,$ids),'all four actual providers exact result at load '.$term);}
-           $r=$c->globalSearch()->search('QA31 کیک 1499',$bar,20);ck(!in_array('subscriber:'.$sub,array_column($r['results'],'id'),true)&&!in_array('user:'.$bar['id'],array_column($r['results'],'id'),true),'role restriction under load');
-           for($i=0;$i<12;$i++){$t=hrtime(true);$r=$c->globalSearch()->search('QA31 کیک',$admin,14);$timings[]=(hrtime(true)-$t)/1e6;ck(!$r['partial']&&$r['count']<=14&&$r['provider_limit_reached'],'bounded broad search '.$i);}
-           sort($timings);echo 'MEASUREMENT records=4500 queries='.count($timings).' median_ms='.$timings[(int)floor(count($timings)/2)].' max_ms='.max($timings)."\n";
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();$admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
+          function ck($v,$n){if(!$v)throw new RuntimeException($n);echo "PASS $n\n";}function reject($fn,$code){try{$fn();throw new RuntimeException('expected '.$code);}catch(Throwable $e){ck(($e->errorCode??'')===$code,'reject '.$code);}}
+          $r=$c->recoveryWorkspace();$pass='synthetic-cc32-backup-password';$dir=$c->observability()->dataRoot().'/recovery/business';$fixture=$W.'/cc32-fixture.json';
+          if(($argv[2]??'seed')==='verify'){
+           $f=json_decode(file_get_contents($fixture),true,512,JSON_THROW_ON_ERROR);ck((int)$p->query('SELECT COUNT(*) FROM users')->fetchColumn()===$f['users'],'existing users unchanged');ck((int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn()===$f['orders'],'existing orders unchanged');ck(hash_file('sha256',$r->path($f['id']))===$f['sha256'],'original ciphertext unchanged');ck(glob($r->incomingDir().'/*.tmp')===[],'incoming scratch cleaned');echo "GROUP PASS SYS-L514 SYS-L545 unchanged business and clean incoming after inspection\n";exit;
+          }
+          $backup=$r->create($pass,(int)$admin['id']);$id=$backup['id'];$path=$r->path($id);$hash=hash_file('sha256',$path);ck($hash===$backup['sha256']&&filesize($path)===$backup['size_bytes'],'actual encrypted file identity');
+          $manifest=$r->inspect($id,$pass);$source=$manifest['source_installation_id'];ck($manifest['stream_verified']===true&&$manifest['target_ready']===false&&is_string($source)&&$source!=='','actual verified manifest and nonempty target not ready');
+          // A sidecar is deliberately inconsistent: it must never attest the encrypted content.
+          file_put_contents($dir.'/'.$id.'.recovery.json',json_encode(['source_installation_id'=>'untrusted-sidecar-cc32','stream_verified'=>true]));
+          $m=$r->backupPage('manual');$row=array_values(array_filter($m['rows'],fn($v)=>$v['id']===$id))[0];ck($row['verification']==='not_verified'&&$row['source_installation_id']===null,'history never trusts sidecar');
+          $raw=file_get_contents($path);file_put_contents($W.'/cc32-valid.skbf',$raw);$raw[strlen($raw)-2]=chr(ord($raw[strlen($raw)-2])^1);file_put_contents($W.'/cc32-corrupt.skbf',$raw);
+          file_put_contents($W.'/cc32-large.skbf',random_bytes(8*1024*1024));
+          $fake='business-cc32-symlink';if(symlink($path,$dir.'/'.$fake.'.skbf')){reject(fn()=>$r->path($fake),'backup_missing');ck(!in_array($fake,array_column($r->backupPage('manual')['rows'],'id'),true),'symlink omitted from history');}
+          $f=['id'=>$id,'source'=>$source,'sha256'=>$hash,'users'=>(int)$p->query('SELECT COUNT(*) FROM users')->fetchColumn(),'orders'=>(int)$p->query('SELECT COUNT(*) FROM orders')->fetchColumn(),'large_sha'=>hash_file('sha256',$W.'/cc32-large.skbf')];file_put_contents($fixture,json_encode($f,JSON_THROW_ON_ERROR));echo "GROUP PASS SYS-L514 real encrypted backup and provenance\n";
+          SOKNA_QA_CC32_gate32_php
+          cat > "$W/gate32.cjs" <<'SOKNA_QA_CC32_gate32_cjs'
+          const fs=require('fs'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,local='http://127.0.0.1:18765',f=JSON.parse(fs.readFileSync(W+'/cc32-fixture.json'));const pass='synthetic-cc32-backup-password';let fail=0;
+          function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};async function group(n,fn){try{await fn();console.log('GROUP PASS '+n)}catch(e){fail++;console.log('GROUP FAIL '+n+' '+e.stack)}};
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));async function wait(fn,n,ms=20000){let end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){ck(true,n);return;}}catch{}await sleep(100)}throw Error(n)}
+          async function auth(p,user){await p.goto(local+'/login.php');const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});if(await h.inputValue()!==user){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${user}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user);}
+          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:1280,height:1000},locale:'fa-IR'});p.setDefaultTimeout(20000);
+          try{await auth(p,'qa-target');await p.goto(local+'/system/');await p.locator('[data-tab="recovery"]').click();const manifest=p.locator('[data-backup-manifest]'),restore=p.locator('[data-backup-restore]'),inspect=p.locator('[data-backup-inspect]'),password=p.locator('[data-restore-pass]'),selected=p.locator('[data-restore-id]');
+          await wait(async()=>await p.locator(`[data-backup-select="${f.id}"]`).isVisible(),'actual manual history row');
+          await group('SYS-L514 real UI verified manifest and not-ready target',async()=>{
+          const row=p.locator(`[data-backup-id="${f.id}"]`);ck((await row.innerText()).includes('تأیید نشده'),'history unverified before password');await row.locator('[data-backup-select]').click();ck(await selected.inputValue()===f.id&&await password.inputValue()===''&&await restore.isDisabled(),'selection requires fresh password and inspection');await password.fill('wrong-synthetic-password');await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'wrong password visible failure');ck(await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'no origin leaked with wrong password');await password.fill(pass);await inspect.click();await wait(async()=>{const t=await manifest.innerText();return t.includes(f.source)&&t.includes(f.id)&&t.includes('مقصد آماده نیست')},'real decrypted source and target refusal visible');ck(!(await manifest.innerText()).includes('untrusted-sidecar-cc32')&&await restore.isDisabled(),'forged sidecar ignored, populated target blocked');await p.screenshot({path:W+'/cc32-manifest.png'});await password.fill('different-password');ck(!(await manifest.innerText()).includes(f.source)&&await restore.isDisabled(),'password change invalidates evidence');
           });
-          exit($fail?1:0);
-          SOKNA_QA_CC30_gate30_php
-          cat > "$W/gate30.cjs" <<'SOKNA_QA_CC30_gate30_cjs'
-          const fs=require('fs'),crypto=require('crypto'),{execFileSync}=require('child_process'),{chromium}=require(process.env.RUNNER_TEMP+'/pw/node_modules/playwright');const W=process.env.QA_WORK,base='http://127.0.0.1:18766/public',local='http://127.0.0.1:18765';let fail=0;function ck(v,n){if(!v)throw Error(n);console.log('PASS '+n)};const f=()=>JSON.parse(fs.readFileSync(W+'/cc30-fixture.json'));const pageURL=(t)=>base+'/menu?installation='+encodeURIComponent(f().installation)+'&table='+encodeURIComponent(t)+'&menu='+encodeURIComponent(f().menu);async function post(path,data){let r=await fetch(base+'/api/guest/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:f().installation,...data})});return {http:r.status,...await r.json()}};async function group(name,fn){try{await fn();console.log('GROUP PASS '+name)}catch(e){fail++;console.log('GROUP FAIL '+name+' '+e.stack)}};const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-          async function auth(p,base,user){await p.goto(base+(base===local?'/login.php':'/staff/login'));const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});const key=base===local?user:'user:'+JSON.parse(fs.readFileSync(W+'/cp144-fixture.json')).users.find(u=>u.name===user).id;if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator(`[data-login-account][data-account-key="${key}"]`).click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);ck(!p.url().includes('/login'),'login '+user+' '+base);}
-          const run=(mode)=>console.log(execFileSync('php',[W+'/gate30.php',W+'/local',mode],{encoding:'utf8',timeout:50000}));
-          async function wait(fn,n,ms=20000){let end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){ck(true,n);return;}}catch{}await sleep(200)}throw Error(n)}
-          const en=s=>String(s).replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[,٬]/g,'');
-          (async()=>{const b=await chromium.launch({channel:'chrome',headless:true});const p=await b.newPage({viewport:{width:960,height:1000},locale:'fa-IR'});p.setDefaultTimeout(15000);const x=f();const frame=()=>p.frameLocator('[data-theme-preview]');const card=()=>frame().locator('.sg-item').filter({hasText:'QA30 visible'});async function loadPreview(){await p.goto(local+'/guest-content/');const s=p.locator('[data-theme-preview-menu]');await wait(async()=>await s.locator(`option[value="${x.menu_id}"]`).count()===1,'actual menu options');const groups=p.locator('[data-menu-groups-visible]');if(await groups.count()&&!(await groups.isChecked()))await groups.check();await s.selectOption(String(x.menu_id));await wait(async()=>await card().count()===1,'selected catalog rendered in actual iframe');}
-          try{await auth(p,local,'qa-target');await loadPreview();
-          await group('GUEST-L335 remaining embedded viewport geometry',async()=>{
-          const stage=p.locator('[data-theme-preview-stage]'),fr=p.locator('[data-theme-preview]'),hint=p.locator('[data-theme-preview-narrow-hint]');
-          async function metrics(){return await stage.evaluate(e=>{const f=e.querySelector('iframe'),s=e.querySelector('[data-theme-preview-scaler]'),h=e.querySelector('[data-theme-preview-narrow-hint]');return {stage:e.clientWidth,inner:e.clientWidth-parseFloat(getComputedStyle(e).paddingInlineStart)-parseFloat(getComputedStyle(e).paddingInlineEnd),narrow:e.dataset.previewNarrow,width:f.offsetWidth,cssWidth:getComputedStyle(f).width,scale:parseFloat(e.style.getPropertyValue('--sc-theme-preview-scale')),visible:getComputedStyle(s).display!=='none',hint:!h.hidden,frameRect:f.getBoundingClientRect().width,scalerRect:s.getBoundingClientRect().width}})}
-          for(const w of [390,768,1080]){await p.locator(`[data-theme-preview-size="${w}"]`).click();await sleep(600);let m=await metrics();console.log('METRIC wide '+w+' '+JSON.stringify(m));ck(m.visible&&!m.hint,'real preview visible '+w);ck(Math.abs(m.width-w)<3,'actual iframe CSS viewport '+w);await wait(async()=>Math.abs(await frame().locator('html').evaluate(e=>e.ownerDocument.defaultView.innerWidth)-w)<3,'actual embedded viewport '+w);ck(await frame().locator('html').evaluate(e=>e.scrollWidth<=e.clientWidth+2),'no embedded horizontal overflow '+w);ck(m.frameRect<=m.inner+2,'scaled frame fits '+w);await p.screenshot({path:W+'/cc31-wide-'+w+'.png'});}
-          await p.setViewportSize({width:390,height:844});await p.locator('[data-theme-preview-size="1080"]').click();await wait(async()=>{let m=await metrics();return m.narrow==='true'&&m.hint&&!m.visible},'small display explicitly warns instead of clipping desktop preview');await p.screenshot({path:W+'/cc31-narrow-warning.png'});await p.locator('[data-theme-preview-size="390"]').click();await wait(async()=>{let m=await metrics();return m.visible&&!m.hint&&Math.abs(m.width-390)<3},'mobile returns to real preview');ck(await p.locator('html').evaluate(e=>e.scrollWidth<=e.clientWidth+2),'outer mobile no horizontal overflow');await p.screenshot({path:W+'/cc31-mobile.png'});
+          async function upload(file){await p.locator('[data-recovery-upload] input[type=file]').setInputFiles(W+'/'+file);const resp=p.waitForResponse(r=>r.url().includes('/system/recovery-upload.php')&&r.request().method()==='POST');await p.locator('[data-recovery-upload] button[type=submit]').click();const rr=await resp,j=await rr.json();ck(rr.status()===200&&j.success&&j.backup.id.startsWith('uploaded-'),'actual upload '+file);await wait(async()=>await selected.inputValue()===j.backup.id&&!await password.isDisabled(),'new uploaded ID selected '+file);return j.backup;}
+          await group('SYS-L542 SYS-L545 actual large multipart and separate identities',async()=>{
+          let large=await upload('cc32-large.skbf');ck(large.size_bytes===8*1024*1024&&large.sha256===f.large_sha,'exact 8 MiB multipart content');await password.fill(pass);await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'large invalid payload is not a valid backup');ck(await restore.isDisabled(),'invalid payload cannot restore');
+          let x=await upload('cc32-valid.skbf'),y=await upload('cc32-valid.skbf');ck(x.id!==y.id&&x.sha256===f.sha256&&y.sha256===f.sha256,'same upload filename gets independent immutable IDs');await wait(async()=>await p.locator(`[data-backup-select="${x.id}"]`).isVisible()&&await p.locator(`[data-backup-select="${y.id}"]`).isVisible(),'uploaded history holds both independent IDs');await p.locator(`[data-backup-select="${x.id}"]`).click();ck(await selected.inputValue()===x.id&&await password.inputValue()==='','select previous upload by immutable ID');await password.fill(pass);await inspect.click();await wait(async()=>{const t=await manifest.innerText();return t.includes(f.source)&&t.includes(x.id)},'uploaded actual manifest confirmed');ck(await restore.isDisabled(),'existing target still blocks restore');await p.screenshot({path:W+'/cc32-uploaded.png'});
+          });
+          await group('SYS-L546 actual corrupted ciphertext and stale inspection navigation',async()=>{
+          let x=await upload('cc32-corrupt.skbf');await password.fill(pass);await inspect.click();await wait(async()=>await manifest.getAttribute('class').then(x=>x.includes('--danger')),'tampered ciphertext rejected in real UI');ck(await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'tamper cannot reuse valid manifest');await p.screenshot({path:W+'/cc32-corrupt.png'});
+          await p.locator(`[data-backup-select="${f.id}"]`).click();await password.fill(pass);
+          // Delay only delivery of actual authenticated server response, then change tab.
+          let release;const barrier=new Promise(r=>release=r);let captured=false;const handler=async route=>{if(route.request().method()!=='POST'||!route.request().postData()?.includes('backup_inspect'))return route.continue();const actual=await route.fetch();captured=true;await barrier;await route.fulfill({response:actual})};await p.route('**/system/api.php',handler);await inspect.click();await wait(async()=>captured,'actual inspection response intercepted after server completion');await p.locator('[data-tab="health"]').click();release();await p.unroute('**/system/api.php',handler);await p.locator('[data-tab="recovery"]').click();await wait(async()=>!await password.isDisabled(),'return to recovery after delayed actual response');ck(await selected.inputValue()===''&&await password.inputValue()===''&&await restore.isDisabled()&&!(await manifest.innerText()).includes(f.source),'late verified response cannot rearm after leaving tab');
           });
           }finally{await b.close()}process.exitCode=fail?1:0;})().catch(e=>{console.error(e);process.exitCode=1});
-          SOKNA_QA_CC30_gate30_cjs
+          SOKNA_QA_CC32_gate32_cjs
+          cat > "$W/crypto32.php" <<'SOKNA_QA_CC32_crypto32_php'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
+          $root=realpath($argv[1]??'');$work=realpath($argv[2]??'');if(!$root||!$work||!str_starts_with(basename($work),'sokna-cc32-crypto-'))exit(2);
+          require $root.'/RecoveryException.php';require $root.'/BusinessBackupService.php';
+          $r=new ReflectionClass(\Sokna\Local\Domain\Recovery\BusinessBackupService::class);$s=$r->newInstanceWithoutConstructor();$mode=$argv[3]??'';
+          $src=match($argv[4]??''){'small'=>$work.'/old-plain.bin','large'=>$work.'/large-plain.bin',default=>null};if(!$src)exit(2);
+          $dest=$work.'/business-cc32-protected.skbf';$pass='synthetic-cc32-crypto-only';
+          if($mode==='encrypt'){$r->getMethod('encryptFile')->invoke($s,$src,$dest,$pass);}
+          elseif($mode==='decrypt'){$out=$work.'/verified-plain.bin';if(is_file($out))unlink($out);$r->getMethod('decryptFile')->invoke($s,$dest,$out,$pass);if(hash_file('sha256',$out)!==hash_file('sha256',$src))exit(3);unlink($out);}
+          else exit(2);
+          SOKNA_QA_CC32_crypto32_php
+          cat > "$W/crypto32.py" <<'SOKNA_QA_CC32_crypto32_py'
+          import sys,os,subprocess,tempfile,time,pathlib,hashlib,platform
+          if os.environ.get('SOKNA_QA_DISPOSABLE')!='YES': raise SystemExit(2)
+          root=pathlib.Path(sys.argv[1]).resolve();helper=pathlib.Path(sys.argv[2]).resolve();sha=lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+          def ck(ok,name):
+           if not ok: raise RuntimeError(name)
+           print('PASS '+name,flush=True)
+          with tempfile.TemporaryDirectory(prefix='sokna-cc32-crypto-') as wd:
+           w=pathlib.Path(wd);(w/'old-plain.bin').write_bytes(b'old verified synthetic plaintext\n'*1000)
+           with (w/'large-plain.bin').open('wb') as out:
+            block=os.urandom(1024*1024)
+            for i in range(128):out.write(block)
+           def command(mode,kind):return ['php',str(helper),str(root),str(w),mode,kind]
+           def run(mode,kind):subprocess.run(command(mode,kind),check=True,timeout=90)
+           run('encrypt','small');run('decrypt','small');dest=w/'business-cc32-protected.skbf';before=sha(dest);ck(dest.exists(),'initial actual encrypted backup verified '+platform.system())
+           p=subprocess.Popen(command('encrypt','large'))
+           try:
+            stop=time.monotonic()+30;part=None
+            while time.monotonic()<stop and p.poll() is None:
+             for x in w.glob('*.part'):
+              try:
+               if x.stat().st_size>=1024*1024:part=x;break
+              except FileNotFoundError:pass
+             if part:break
+             time.sleep(.001)
+            ck(part is not None and p.poll() is None,'observed real partial ciphertext during write')
+            p.kill();p.wait(timeout=15);ck(p.returncode!=0,'actual encryption process interrupted')
+           finally:
+            if p.poll() is None:p.kill();p.wait()
+           ck(sha(dest)==before,'previous verified ciphertext unchanged after process kill');run('decrypt','small');ck(True,'previous ciphertext still decrypts')
+           ck(len(list(w.glob('*.skbf')))==1,'only original committed backup visible')
+           run('encrypt','large');run('decrypt','large');ck(sha(dest)!=before,'retry publishes complete new ciphertext and decrypts exactly');ck(len(list(w.glob('*.skbf')))==1,'retry has one final backup only')
+           print('GROUP PASS SYS-L525 native atomic encryption process interruption '+platform.system(),flush=True)
+          SOKNA_QA_CC32_crypto32_py
+          mkdir -p "$W/cc32-windows-input"
+          cp "$W/local/src/Domain/Recovery/BusinessBackupService.php" "$W/local/src/Domain/Recovery/RecoveryException.php" "$W/crypto32.py" "$W/crypto32.php" "$W/cc32-windows-input/"
+          (cd "$W/cc32-windows-input"; sha256sum BusinessBackupService.php RecoveryException.php crypto32.py crypto32.php > SHA256SUMS.txt)
           fail=0
-          php "$W/gate30.php" "$W/local" seed | tee "$W/cc31-db-results.txt" || fail=1
-          test -s "$W/cc30-fixture.json"
-          php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-fixture-results.txt"
+          python3 "$W/crypto32.py" "$W/local/src/Domain/Recovery" "$W/crypto32.php" | tee "$W/cc32-linux-results.txt" || fail=1
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
+          php "$W/gate32.php" "$W/local" | tee "$W/cc32-db-results.txt" || fail=1
+          test -s "$W/cc32-fixture.json"
           npm install --prefix "$RUNNER_TEMP/pw" playwright --no-audit --no-fund
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
-          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-server.log" 2>&1 & pp=$!
-          trap 'kill "$lp" "$pp" 2>/dev/null || true' EXIT
+          PHP_CLI_SERVER_WORKERS=6 php -d upload_max_filesize=16M -d post_max_size=20M -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-server.log" 2>&1 & lp=$!
+          trap 'kill "$lp" 2>/dev/null || true' EXIT
           sleep 2
-          node "$W/gate30.cjs" | tee "$W/cc31-browser-results.txt" || fail=1
+          node "$W/gate32.cjs" | tee "$W/cc32-browser-results.txt" || fail=1
+          php "$W/gate32.php" "$W/local" verify | tee "$W/cc32-verify-results.txt" || fail=1
           exit "$fail"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC31-GROUPED-ACCEPTANCE-QA-ONLY
+          name: SOKNA-CC32-GROUPED-ACCEPTANCE-QA-ONLY
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
-            ${{ runner.temp }}/cp148-qa/cc31-*.png
+            ${{ runner.temp }}/cp148-qa/cc32-*.png
+          retention-days: 7
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CC32-EXACT-CRYPTO-WINDOWS-QA-INPUT
+          path: ${{ runner.temp }}/cp148-qa/cc32-windows-input/
+          retention-days: 7
+          if-no-files-found: error
+  native-windows-backup:
+    needs: acceptance
+    if: ${{ always() && needs.acceptance.result != 'cancelled' }}
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-CC32-EXACT-CRYPTO-WINDOWS-QA-INPUT
+          path: windows-qa
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium
+          coverage: none
+      - name: Verify exact source and actual native Windows ciphertext interruption
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-Content windows-qa/SHA256SUMS.txt | ForEach-Object {
+            $parts = $_.Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+            if ((Get-FileHash (Join-Path 'windows-qa' $parts[1]) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $parts[0]) { throw 'source digest mismatch' }
+          }
+          php -v
+          php -r "if(PHP_OS_FAMILY!=='Windows'||!extension_loaded('sodium'))exit(2);"
+          if ($LASTEXITCODE -ne 0) { throw 'native Windows PHP sodium missing' }
+          python windows-qa/crypto32.py windows-qa windows-qa/crypto32.php | Tee-Object -FilePath windows-qa/cc32-native-windows-results.txt
+          if ($LASTEXITCODE -ne 0) { throw 'native backup acceptance failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-CC32-NATIVE-WINDOWS-RESULTS-QA-ONLY
+          path: windows-qa/cc32-native-windows-results.txt
           retention-days: 7
           if-no-files-found: warn
