@@ -1,4 +1,4 @@
-name: SOKNA RELEASE PRIORITY-41C interrupted business restore commit boundaries (QA ONLY)
+name: SOKNA RELEASE PRIORITY-42 grouped actual peer and remote table race (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,11 +7,11 @@ permissions:
   contents: read
   actions: read
 jobs:
-  restore-boundaries:
+  acceptance:
     strategy:
       fail-fast: false
       matrix:
-        boundary: [before, after]
+        scope: [peer, relay]
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
@@ -38,90 +38,112 @@ jobs:
           name: SOKNA-CC36-FOUR-EXACT-QA-ARCHIVES-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Exact Local archive and real commit boundary faults
+      - name: Exact Local and Public archives; new independent acceptance gates
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc41b"; mkdir -p "$W/local" "$W/receipts"
+          W="$RUNNER_TEMP/cc42"; mkdir -p "$W/local" "$W/public" "$W/receipts"
           A="$RUNNER_TEMP/candidate/LOCAL-231GH-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
+          B="$RUNNER_TEMP/candidate/PUBLIC-35IZ-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
           echo "f52ca7cd1db3652c8ad5f5b31dc780ccf08c80a674cb67e03a1a5b219c66220f  $A" | sha256sum -c -
+          echo "9317be75ca5d31b2577aee7e5adb07f14dbb69053f47c647b8d705970d84d5fd  $B" | sha256sum -c -
           unzip -q "$A" -d "$W/local"
+          unzip -q "$B" -d "$W/public"
           export QA_WORK="$W" TMPDIR="$W"
           php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/fixture.txt"
-          cat > "$W/gate41b.php" <<'SOKNA_CC41B_PHP'
+          php qa/cp160/fixture.php "$W/local" > "$W/receipts/local-fixture.txt"
+          php qa/cp160/public-fixture.php "$W/public" > "$W/receipts/public-fixture.txt"
+          cat > "$W/gate42.php" <<'SOKNA_CC42_PHP'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $root=realpath($argv[1]);if(!$root||basename($root)!=='local')exit(2);
           require $root.'/bootstrap.php';$W=dirname($root);$cfg=require $W.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['pass']??'')!==getenv('QA_DB_PASSWORD'))exit(2);
+          if(($cfg['db']['name']??'')!=='sokna_cp150'||($cfg['db']['host']??'')!=='127.0.0.1')exit(2);
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();
           function ck($ok,$msg){if(!$ok)throw new RuntimeException($msg);echo "PASS $msg\n";}
-          function scalar(PDO $p,string $s){return $p->query($s)->fetchColumn();}
-          function digest(PDO $p,string $t){$rows=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);foreach($rows as &$r)foreach($r as &$v)if($v!==null)$v=(string)$v;unset($v,$r);return [count($rows),hash('sha256',json_encode($rows,JSON_THROW_ON_ERROR))];}
-          function tree(string $d){$out=[];if(is_dir($d))foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($d,FilesystemIterator::SKIP_DOTS)) as $f)if($f->isFile())$out[substr($f->getPathname(),strlen($d)+1)]=hash_file('sha256',$f->getPathname());ksort($out);return $out;}
-          class BoundaryPDO extends PDO {
-           public string $mode='';public string $dest='';public string $marker='';
-           public function commit():bool {
-            if($this->mode==='')return parent::commit();
-            if(!is_dir($this->dest.'/guest-media')||!$this->inTransaction())throw new RuntimeException('not at real media-promoted commit boundary');
-            if($this->mode==='after'&&!parent::commit())throw new RuntimeException('real commit failed');
-            file_put_contents($this->marker,$this->mode);fflush(STDOUT);
-            posix_kill(getmypid(),SIGKILL);throw new RuntimeException('SIGKILL failed');
+          function s(PDO $p,string $sql,array $args=[]){$q=$p->prepare($sql);$q->execute($args);return $q->fetchColumn();}
+          function connection(string $db):PDO{if(!preg_match('/^sokna_(cp150_public|cc42_[a-z]+)$/D',$db))exit(2);return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$db.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);}
+          function cloneSchema(PDO $p,string $db):PDO{
+           if(!preg_match('/^sokna_cc42_[a-z]+$/D',$db))exit(2);$p->exec('CREATE DATABASE '.$db.' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$t=connection($db);$t->exec('SET FOREIGN_KEY_CHECKS=0');
+           foreach($p->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as $row){$n=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$n))exit(2);$t->exec($p->query('SHOW CREATE TABLE '.$n)->fetch(PDO::FETCH_NUM)[1]);}
+           foreach(['schema_migrations','schema_migration_statements'] as $n)foreach($p->query('SELECT * FROM '.$n)->fetchAll(PDO::FETCH_ASSOC) as $row){$cols=array_keys($row);$t->prepare('INSERT INTO '.$n.' ('.implode(',',$cols).') VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}
+           $t->exec('SET FOREIGN_KEY_CHECKS=1');return $t;
+          }
+          function http(string $path,?array $data=null,string $cookie='',bool $form=false):array{
+           $h=curl_init('http://127.0.0.1:18766/public'.$path);curl_setopt_array($h,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_TIMEOUT=>12,CURLOPT_HTTPHEADER=>['Content-Type: '.($form?'application/x-www-form-urlencoded':'application/json')],CURLOPT_COOKIE=>$cookie]);if($data!==null)curl_setopt($h,CURLOPT_POSTFIELDS,$form?http_build_query($data):json_encode($data,JSON_THROW_ON_ERROR));$raw=curl_exec($h);if($raw===false)throw new RuntimeException(curl_error($h));$status=curl_getinfo($h,CURLINFO_RESPONSE_CODE);$split=curl_getinfo($h,CURLINFO_HEADER_SIZE);$head=substr($raw,0,$split);$body=json_decode(substr($raw,$split),true);curl_close($h);preg_match('/^Set-Cookie:\s*(sokna_staff=[^;\r\n]+)/mi',$head,$m);return ['status'=>$status,'body'=>$body,'cookie'=>$m[1]??''];
+          }
+          $mode=$argv[2]??'';
+          $admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);if(!$admin)exit(2);
+          if($mode==='prep-peer'){
+           $q=connection('sokna_cp150_public');$pc=require $W.'/public/config.php';
+           foreach(['reachable','unreachable'] as $name){$id='qa42-'.$name;$secret=bin2hex(random_bytes(32));$q->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_state) VALUES(?,?,1,1,1,'active')")->execute([$id,$id]);$pc['relay']['installation_secrets'][$id]=$secret;}
+           file_put_contents($W.'/public/config.php','<?php return '.var_export($pc,true).';');
+           exit;
+          }
+          if($mode==='peer'){
+           $q=connection('sokna_cp150_public');$pc=require $W.'/public/config.php';$backup=$W.'/peer.skbf';$pass='synthetic-cc42-peer-password';$r=$c->businessBackup()->createEncrypted($backup,$pass,(int)$admin['id']);$hash=hash_file('sha256',$backup);ck($hash===$r['sha256'],'source encrypted input intact');
+           $sourceId=$cfg['installation']['id'];
+           $sourceRow=fn()=>s($q,'SELECT CONCAT(authority_state,":",remote_enabled,":",order_intake_enabled) FROM installations WHERE installation_id=?',[$sourceId]);
+           $src=$sourceRow();
+           foreach(['reachable','unreachable'] as $name){
+            $id='qa42-'.$name;$db='sokna_cc42_'.$name;$t=cloneSchema($p,$db);$dest=$W.'/data-'.$name;mkdir($dest,0700,true);
+            $tcfg=$cfg;$tcfg['db']['name']=$db;$tcfg['app']['data_dir']=$dest;$tcfg['installation']['id']=$id;$tcfg['public']['base_url']=$name==='reachable'?'http://127.0.0.1:18766/public':'http://127.0.0.1:18769/public';$tcfg['public']['shared_secret']=$pc['relay']['installation_secrets'][$id];
+            $o=new \Sokna\Local\Core\Observability($dest);$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$id);$cl=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient(\Sokna\Local\Core\Config::fromArray($tcfg),null,$o,$auth);
+            ck($cl->configured(),'configured distinct target '.$name);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$id,$auth,$cl,$dest);
+            $r=$b->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($r['restored']===true,'real restore '.$name);ck($auth->phase()==='reenroll_required','local fence '.$name);ck(s($t,"SELECT setting_value FROM settings WHERE setting_key='installation.id'")===$id,'independent installation '.$name);
+            ck($r['public_authority_fence_confirmed']===($name==='reachable'),'truthful fence receipt '.$name);
+            $state=s($q,'SELECT CONCAT(authority_state,":",remote_enabled,":",order_intake_enabled) FROM installations WHERE installation_id=?',[$id]);ck($state===($name==='reachable'?'reenroll_pending:0:0':'active:1:1'),'actual peer database '.$name);
+            try{$cl->postRaw('/api/v1/local/realtime/exchange',[],2);throw new RuntimeException('fenced local accepted relay');}catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){ck($e->errorCode==='public_authority_reenrollment_required','relay blocked even without peer '.$name);}
+            ck($sourceRow()===$src,'source Public identity and authority untouched '.$name);
            }
+           ck(hash_file('sha256',$backup)===$hash,'backup unchanged');echo "GROUP PASS SYS-L524 reachable and unreachable real peer\n";exit;
           }
-          $c=sokna_local_bootstrap($cfg);$p=$c->database();$mode=$argv[2];$pass='synthetic-cc41b-backup-password';$backup=$W.'/cc41b.skbf';$state=$W.'/cc41b.json';
-          $tables=['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','guest_media_assets','remaining_account_discount_revisions'];
-          if($mode==='seed'){
-           $admin=$p->query("SELECT id,role FROM users WHERE username='qa-target' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);ck($admin!==false,'admin fixture');
-           $fixture=json_decode(file_get_contents($W.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);$sid=(int)$fixture['hall']['partial']['session'];$s=$c->settlements();$pr=$s->previewRemainingDiscountCorrection($sid,'fixed',26000,$admin);$r=$s->adjustRemainingDiscount($sid,'fixed',26000,$pr['expected_signature'],'QA41B commit boundary','remaining-discount-correction-cc41b',$admin);ck((int)$r['revision_id']>0,'financial revision fixture');
-           $f=['tables'=>[],'media'=>tree($cfg['app']['data_dir'].'/guest-media')];ck(count($f['media'])>0,'real nonempty source media');
-           foreach($tables as $t)$f['tables'][$t]=digest($p,$t);
-           $r=$c->businessBackup()->createEncrypted($backup,$pass,(int)$admin['id']);$f['hash']=hash_file('sha256',$backup);ck($r['sha256']===$f['hash'],'backup bytes');
-           file_put_contents($state,json_encode($f,JSON_THROW_ON_ERROR));exit;
+          if($mode==='relay-child'){
+           $r=$c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);echo json_encode($r,JSON_THROW_ON_ERROR);exit;
           }
-          $f=json_decode(file_get_contents($state),true,512,JSON_THROW_ON_ERROR);
-          $boundary=$argv[3];if(!in_array($boundary,['before','after'],true))exit(2);
-          $db='sokna_cc41b_'.$boundary;$dest=$W.'/cc41b-'.$boundary;$marker=$W.'/boundary-'.$boundary;
-          if($mode==='prepare'){
-           $p->exec('CREATE DATABASE '.$db.' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+          if($mode==='disable-child'){
+           $f=json_decode(file_get_contents($argv[3]),true,512,JSON_THROW_ON_ERROR);
+           try{$r=$c->adminControls()->saveTable(['id'=>$f['table'],'name'=>$f['name'],'table_number'=>$f['number'],'active'=>false],$admin);echo json_encode(['ok'=>true,'result'=>$r]);}catch(Throwable $e){echo json_encode(['ok'=>false,'code'=>$e->errorCode??'','message'=>$e->getMessage()]);}exit;
           }
-          $t=new BoundaryPDO('mysql:host=127.0.0.1;port=3306;dbname='.$db.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
-          if($mode==='prepare'){
-           $t->exec('SET FOREIGN_KEY_CHECKS=0');foreach($p->query("SHOW FULL TABLES WHERE Table_type='BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as $row){$n=$row[0];if(!preg_match('/^[a-zA-Z0-9_]+$/D',$n))exit(2);$t->exec($p->query('SHOW CREATE TABLE `'.$n.'`')->fetch(PDO::FETCH_NUM)[1]);}
-           foreach(['schema_migrations','schema_migration_statements'] as $n)foreach($p->query('SELECT * FROM `'.$n.'`')->fetchAll(PDO::FETCH_ASSOC) as $row){$cols=array_keys($row);$t->prepare('INSERT INTO `'.$n.'` (`'.implode('`,`',$cols).'`) VALUES ('.implode(',',array_fill(0,count($row),'?')).')')->execute(array_values($row));}
-           $t->exec('SET FOREIGN_KEY_CHECKS=1');mkdir($dest,0700,true);ck((int)scalar($t,'SELECT COUNT(*) FROM users')===0,'empty independent database');exit;
-          }
-          $o=new \Sokna\Local\Core\Observability($dest);$id='qa41b-'.$boundary;$auth=new \Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService($t,$id);$b=new \Sokna\Local\Domain\Recovery\BusinessBackupService($t,$o,$id,$auth,null,$dest);
-          if($mode==='fault'){
-           $t->mode=$boundary;$t->dest=$dest;$t->marker=$marker;
-           $b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('boundary was not interrupted');
-          }
-          if($mode!=='verify')exit(2);
-          ck(file_get_contents($marker)===$boundary,'exact boundary marker');
-          ck(tree($dest.'/guest-media')===$f['media'],'promoted media preserved exact');
-          foreach($f['tables'] as $n=>$d){ck(digest($p,$n)===$d,'source unchanged '.$n);$v=digest($t,$n);ck($boundary==='before'?$v[0]===0:$v===$d,'target expected '.$n);}
-          ck(hash_file('sha256',$backup)===$f['hash'],'backup unchanged');
-          try{$b->restoreEncryptedToEmptyTarget($backup,$pass,0);throw new RuntimeException('unexpected retry');}catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){echo 'RETRY_REJECTION '.$e->errorCode."\n";ck($e->errorCode===($boundary==='before'?'restore_media_not_empty':'target_not_empty'),'unsafe repeated restore denied with exact guard');}
-          ck(tree($dest.'/guest-media')===$f['media'],'retry preserves media');
-          if($boundary==='after')ck($auth->phase()==='reenroll_required','committed authority fenced');
-          foreach($f['tables'] as $n=>$d){$v=digest($t,$n);ck($boundary==='before'?$v[0]===0:$v===$d,'no retry mutation '.$n);}
-          echo "GROUP PASS real PDO commit boundary $boundary; no production authorization\n";
-          SOKNA_CC41B_PHP
-          php -l "$W/gate41b.php"
-          php "$W/gate41b.php" "$W/local" seed | tee "$W/receipts/seed.txt"
-          for boundary in '${{ matrix.boundary }}'; do
-            php "$W/gate41b.php" "$W/local" prepare "$boundary"
-            set +e
-            php "$W/gate41b.php" "$W/local" fault "$boundary" > "$W/receipts/fault-$boundary.txt" 2>&1
-            rc=$?
-            set -e
-            test "$rc" = 137
-            php "$W/gate41b.php" "$W/local" verify "$boundary" | tee "$W/receipts/verify-$boundary.txt"
-          done
+          if($mode!=='relay')exit(2);
+          $cat=$c->catalogAdmin();$mid=(int)$cat->saveMenu(['name'=>'QA42 menu','status'=>'active'],$admin)['id'];$cid=(int)$cat->saveCategory(['name'=>'QA42 category','active'=>true,'menu_ids'=>[$mid]],$admin)['id'];$p->prepare("INSERT INTO items(item_code,category_id,name,price,active,available,lifecycle_status,guest_visible,staff_visible,preparation_station) VALUES('qa42-race',?,'QA42 race item',10000,1,1,'active',1,1,'hot_bar')")->execute([$cid]);$item=(int)$p->lastInsertId();$p->prepare('INSERT INTO menu_items(menu_id,item_id) VALUES(?,?)')->execute([$mid,$item]);$p->exec("INSERT INTO settings(setting_key,setting_value) VALUES('orders_accepting.cafe','1'),('orders_accepting.bar','1'),('orders_accepting.kitchen','1'),('printing.quick.auto_preparation','0') ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
+          $login=http('/staff/login',['installation_id'=>$cfg['installation']['id'],'username'=>'qa-target','password'=>'synthetic-qa-admin-not-real'],'',true);ck($login['status']===303&&$login['cookie']!=='','actual Public admin session');$cookie=$login['cookie'];
+          function spawn(string $mode,string $file=''){global $root;$a=[PHP_BINARY,__FILE__,$root,$mode];if($file!=='')$a[]=$file;$pr=proc_open($a,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes);if(!is_resource($pr))throw new RuntimeException('spawn');fclose($pipes[0]);return [$pr,$pipes];}
+          function result(array $a){[$pr,$pipes]=$a;$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);$rc=proc_close($pr);if($rc!==0)throw new RuntimeException('child '.$rc.' '.$err);return json_decode($out,true,512,JSON_THROW_ON_ERROR);}
+          function waitSleep(PDO $p){$end=microtime(true)+7;while(microtime(true)<$end){if((int)s($p,"SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE DB='sokna_cp150' AND STATE='User sleep'")>0)return true;usleep(30000);}return false;}
+          function terminal(string $id,string $cookie){$end=microtime(true)+18;while(microtime(true)<$end){$r=http('/api/staff/realtime/result?request_id='.rawurlencode($id),null,$cookie);if($r['status']===200&&in_array($r['body']['state']??'',['committed','rejected'],true))return $r['body'];usleep(150000);}throw new RuntimeException('no terminal relay result');}
+          $p->exec("CREATE TRIGGER qa42_order_hold BEFORE INSERT ON orders FOR EACH ROW BEGIN IF NEW.table_id IN (SELECT id FROM cafe_tables WHERE table_number=9421) THEN DO SLEEP(2); END IF; END");
+          $p->exec("CREATE TRIGGER qa42_disable_hold BEFORE UPDATE ON cafe_tables FOR EACH ROW BEGIN IF OLD.active=1 AND NEW.active=0 AND OLD.table_number=9422 THEN DO SLEEP(2); END IF; END");
+          try{
+           foreach([9421,9422] as $n){
+            $name='QA42 table '.$n;$tid=(int)$c->adminControls()->saveTable(['name'=>$name,'table_number'=>$n,'active'=>true],$admin)['id'];$f=['name'=>$name,'table'=>$tid,'number'=>$n];$file=$W.'/race-'.$n.'.json';file_put_contents($file,json_encode($f));
+            $id='qa42-public-draft-finalize-'.$n;$now=time();$e=['request_id'=>$id,'kind'=>'table_draft.finalize_atomic','created_at'=>gmdate('c',$now),'expires_at'=>gmdate('c',$now+100),'payload'=>['table_id'=>$tid,'expected_version'=>0,'expected_session_id'=>0,'items'=>[['id'=>$item,'quantity'=>1,'expected_price'=>10000]]]];
+            $queued=http('/api/staff/realtime',$e,$cookie);ck(in_array($queued['status'],[200,202],true)&&($queued['body']['ok']??false)===true,'real Public accepted command '.$n);
+            if($n===9421){$relay=spawn('relay-child');ck(waitSleep($p),'remote order transaction holds lock');$dis=spawn('disable-child',$file);}else{$dis=spawn('disable-child',$file);ck(waitSleep($p),'disable transaction holds lock');$relay=spawn('relay-child');}
+            $d=result($dis);$rr=result($relay);ck(($rr['processed']??0)>=1,'signed HTTP relay processed queued command '.$n);
+            $c->publicEdgeRelay()->syncRealtimeExchange(8,5,(int)(microtime(true)*1000)+10000);
+            $r=terminal($id,$cookie);$active=(int)s($p,'SELECT active FROM cafe_tables WHERE id=?',[$tid]);$count=(int)s($p,'SELECT COUNT(*) FROM orders WHERE table_id=?',[$tid]);$sessions=(int)s($p,"SELECT COUNT(*) FROM table_sessions WHERE table_id=? AND status IN('active','pending')",[$tid]);
+            if($n===9421){ck($r['state']==='committed'&&!$d['ok']&&$d['code']==='table_live','remote order wins and disable rejected');ck($active===1&&$count===1&&$sessions===1,'one order and session preserved');}
+            else{ck($r['state']==='rejected'&&$d['ok']&&in_array($r['error_code']??'',['invalid_table','table_inactive'],true),'disable wins and remote rejected');ck($active===0&&$count===0&&$sessions===0,'no orphan order or session');}
+            ck((int)s($p,'SELECT COUNT(*) FROM lan_staff_realtime_receipts WHERE request_id=?',[$id])===1,'one durable receipt '.$n);
+           }
+          }finally{$p->exec('DROP TRIGGER qa42_order_hold');$p->exec('DROP TRIGGER qa42_disable_hold');}
+          echo "GROUP PASS ADM-L454 signed Public staff relay races\n";
+          SOKNA_CC42_PHP
+          php -l "$W/gate42.php"
+          if [[ '${{ matrix.scope }}' == peer ]]; then
+            php "$W/gate42.php" "$W/local" prep-peer
+          fi
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 & pp=$!
+          trap 'kill "$pp" 2>/dev/null || true' EXIT
+          sleep 2
+          kill -0 "$pp"
+          php qa/cp160/worker.php "$W/local" init | tee "$W/receipts/signed-sync.txt"
+          php "$W/gate42.php" "$W/local" '${{ matrix.scope }}' | tee "$W/receipts/results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC41C-BUSINESS-COMMIT-${{ matrix.boundary }}
-          path: ${{ runner.temp }}/cc41b/receipts
+          name: SOKNA-CC42-${{ matrix.scope }}-RECEIPTS
+          path: ${{ runner.temp }}/cc42/receipts
           retention-days: 7
