@@ -1,4 +1,4 @@
-name: SOKNA 46B final report UI only on registered exact bytes
+name: SOKNA 47 exact frozen Public dual-route upgrade QA only
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -7,9 +7,9 @@ permissions:
   contents: read
   actions: read
 jobs:
-  acceptance:
+  public-dual:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 8
     services:
       mariadb:
         image: mariadb:11.4
@@ -24,114 +24,86 @@ jobs:
       QA_DB_PASSWORD: synthetic-cp116-ci-only
       SOKNA_QA_DISPOSABLE: YES
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: 6983e9d52435a746325f60ace428b8548bcc8fc0
-          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           run-id: 46056788008
           name: SOKNA-CC43-EXACT-FROZEN-CANDIDATES-QA-NOT-INSTALL
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/candidate
-      - name: Exact current report UI gate (no repeated API acceptance)
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior
+      - name: Actual disposable dual route from 35iy; unchanged exact 35ja QA archive
         shell: bash
         run: |
           set -euo pipefail
-          W="$RUNNER_TEMP/cc46b"; mkdir -p "$W/local" "$W/public" "$W/receipts"
-          A="$RUNNER_TEMP/candidate/LOCAL-231GI-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          B="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
-          echo "cb0becfba394ae320c389817eb75cf28ae26c09b579f8f3cc64e1a66b98c892a  $A" | sha256sum -c -
-          echo "fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca  $B" | sha256sum -c -
-          unzip -q "$A" -d "$W/local"
-          unzip -q "$B" -d "$W/public"
-          export QA_WORK="$W" TMPDIR="$W"
-          php qa/cp148/preflight.php
-          php qa/cp160/fixture.php "$W/local" > "$W/receipts/setup.txt"
-          cat > "$W/roles44b.php" <<'PHP'
+          W="$RUNNER_TEMP/cc47"; mkdir -p "$W/receipts"
+          P="$RUNNER_TEMP/candidate/PUBLIC-35JA-UPDATE-QA-DO-NOT-INSTALL.zip"
+          C="$RUNNER_TEMP/candidate/PUBLIC-35JA-CLEAN-WEB-QA-DO-NOT-INSTALL.zip"
+          python - "$W" "$RUNNER_TEMP/prior/SOKNA-PUBLIC-35IY-35IP-CAFE-QA.zip" "$C" <<'PY'
+          import pathlib,zipfile,hashlib,json,sys
+          w,prior,clean=map(pathlib.Path,sys.argv[1:]);H=lambda b:hashlib.sha256(b).hexdigest()
+          with zipfile.ZipFile(prior) as z:
+           p={n[8:]:z.read(n) for n in z.namelist() if n.startswith('payload/') and not n.endswith('/')}
+          assert H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(p.items())).encode())=='c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6'
+          with zipfile.ZipFile(clean) as z:
+           assert H(clean.read_bytes())=='fd320cacb1518c1937d3251b8a950a5019cca7267eb60e3f2bfc7b1511f744ca'
+           protected={n:z.read(n) for n in z.namelist() if n=='emergency.php' or n.startswith('src/Emergency/')}
+          assert len(protected)==6
+          (w/'protected.json').write_text(json.dumps({n:H(v) for n,v in protected.items()}))
+          for route in ['routine','emergency']:
+           d=w/('public-'+route);d.mkdir()
+           for n,v in (p|protected).items():
+            f=d/n;f.parent.mkdir(parents=True,exist_ok=True);f.write_bytes(v)
+          PY
+          cat > "$W/gate.php" <<'PHP'
           <?php
-          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
-          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
-          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $core=sokna_local_bootstrap($cfg);$p=$core->database();$ids=[];
-          foreach(['qa-supervisor'=>['shift_supervision','remote_access'],'qa-cost-supervisor'=>['shift_supervision','inventory_cost_view','inventory_view','remote_access'],'qa-report-only-staff'=>['staff_consumption_reports','remote_access']] as $name=>$caps){
-           $hash=password_hash('synthetic-member-only',PASSWORD_DEFAULT);
-           $p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,$hash,$name]);$id=(int)$p->lastInsertId();$ids[$name]=$id;
-           foreach($caps as $cap)$p->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$id,$cap]);
-           $p->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")->execute([$id,$hash]);
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
+          use Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge as Bridge;
+          use Sokna\PublicEdge\Core\Migrations;
+          use Sokna\PublicEdge\Health\PublicHealthService;
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
+          [$script,$phase,$web,$pkg,$route]=$argv;
+          if(!in_array($route,['routine','emergency'],true)||!in_array($phase,['stage','commit'],true)||basename($web)!=='public-'.$route)exit(2);
+          function ck($v,$msg){if(!$v)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          $version='3.0.0-g3.6-workspace.35ja-cc43-qa';$tree='de0dab93feff00ebfa29dfe72b45466fc362be212483e44f388f673b5b5c878f';
+          ck(hash_file('sha256',$pkg)==='3b297bb2561caeb9fd1dcb57d165270d6e4f4ba476d432b2672c6d2162c42077','frozen candidate hash');
+          foreach(['src/Shared/IranTime.php','src/Emergency/PublicUpdateException.php','src/Update/RoutinePublicUpdateService.php','src/Core/Migrations.php','src/Core/SafeErrors.php','src/Health/PublicHealthService.php','src/Update/IndependentEmergencyRoutineBridge.php'] as $n)require $web.'/'.$n;
+          $storage=$web.'/storage';if(!is_dir($storage))mkdir($storage,0700,true);
+          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_47_'.$route.';charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());$b=new Bridge($r,$storage,fn()=>$m->pendingVersions(),fn()=>$h->status()['body']);
+          if($phase==='stage'){
+           ck(count($m->migrate())===12,'real prior schema');
+           $db->exec("INSERT INTO installations(installation_id) VALUES('qa47-preserve')");
+           $old=$r->currentVersion();$oldTree=$r->managedTreeDigest();ck($oldTree==='c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6','exact 35iy baseline');
+           $s=$route==='routine'?$r->stageUploadedDeltaZip($pkg,'qa47',true):$b->stageUploadedZip($pkg,'qa47');
+           ck($s['package_sha256']===hash_file('sha256',$pkg)&&$s['version']===$version,'same actual ZIP staged '.$route);
+           ck($r->currentVersion()===$old&&$r->managedTreeDigest()===$oldTree,'stage leaves active tree unchanged');
+           $a=$route==='routine'?$r->activateStaged('qa47'):$b->activateStaged('qa47');
+           ck($a['current_version']===$version&&$r->managedTreeDigest()===$tree&&is_array($a['pending_verification'])&&is_file($r->maintenanceLockPath()),'activated exact tree stays pending');
+          }else{
+           ck($r->currentVersion()===$version&&$r->managedTreeDigest()===$tree&&$m->pendingVersions()===[],'fresh process target and ledger');
+           $s=$route==='routine'?$r->commitActivation('qa47',fn($v)=>$h->status()['body']):$b->commitPending('qa47');
+           ck($s['active_version']===$version&&$s['pending_verification']===null&&$s['db_forward_fence']===null&&!is_file($r->maintenanceLockPath()),'fresh process exact commit '.$route);
+           ck(count($m->verifiedAppliedVersions())===12&&(int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='qa47-preserve'")->fetchColumn()===1,'preserved prior DB row and exact migration ledger');
+           $pins=json_decode(file_get_contents(dirname($web).'/protected.json'),true,512,JSON_THROW_ON_ERROR);
+           foreach($pins as $n=>$v)ck(hash_file('sha256',$web.'/'.$n)===$v,'unchanged protected '.$n);
+           echo "GROUP PASS exact frozen 35ja ".$route."\n";
           }
-          $f=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
-          $byName=array_column($core->publicProjectionBuilder()->authProjections(),null,'username');
-          foreach($ids as $name=>$id){$v=$byName[$name];$f['users'][]=['id'=>$id,'name'=>$name,'role'=>$v['role'],'password'=>'synthetic-member-only','caps'=>$v['capabilities'],'areas'=>$v['preparation_areas'],'hash'=>$v['password_hash']];}
-          file_put_contents($w.'/cp144-fixture.json',json_encode($f,JSON_THROW_ON_ERROR));
           PHP
-          php "$W/roles44b.php" "$W"
-          php qa/cp160/public-fixture.php "$W/public"
-          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" > "$W/receipts/local-http.log" 2>&1 &
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/receipts/public-http.log" 2>&1 &
-          sleep 2
-          php qa/cp160/worker.php "$W/local" init
-          cat > "$W/ui46b.cjs" <<'UI46B'
-          const {chromium}=require(process.env.QA_WORK+'/pw/node_modules/playwright'),fs=require('fs');
-          const W=process.env.QA_WORK,f=JSON.parse(fs.readFileSync(W+'/cp144-fixture.json'));
-          const L='http://127.0.0.1:18765',P='http://127.0.0.1:18766/public';
-          function ck(x,m){if(!x)throw Error(m);console.log('PASS '+m)}
-          async function auth(p,base,user){
-           await p.goto(base+(base===L?'/login.php':'/staff/login'));
-           const h=p.locator('[data-login-selection]');await h.waitFor({state:'attached'});
-           const key=base===L?user:'user:'+f.users.find(u=>u.name===user).id;
-           if(await h.inputValue()!==key){await p.locator('.sc-login-flow-change').click();await p.locator('[data-login-account][data-account-key="'+key+'"]').click();await p.locator('.sc-login-stable-picker').waitFor({state:'hidden'});}
-           await p.locator('input[name=password]').fill(user==='qa-target'?'synthetic-qa-admin-not-real':'synthetic-member-only');
-           await Promise.all([p.waitForNavigation(),p.locator('form[data-login-form] button[type=submit]').click()]);
-           ck(!p.url().includes('/login'),'authenticated '+user+' '+base);
-          }
-          (async()=>{
-           const b=await chromium.launch({channel:'chrome',headless:true});let failed=0;
-           try{
-           for(const base of [L,P])for(const [user,allowed,width] of [['qa-supervisor',false,390],['qa-cashier',false,1280],['qa-cost-supervisor',true,390],['qa-target',true,1280]]){
-            const label=(base===L?'local':'public')+'-'+user+'-'+width;
-            const ctx=await b.newContext({viewport:{width,height:900},locale:'fa-IR'});
-            const p=await ctx.newPage();p.setDefaultTimeout(16000);
-            try{
-             await auth(p,base,user);
-             await p.goto(base+(base===L?'/reports/':'/staff/reports/'));
-             await p.locator('[data-summary] [data-report-kpi="net_sales"]').waitFor({state:'visible'});
-             for(const k of ['inventory','margin']){
-              await p.locator('#report-tab-'+k).click();
-              const s=p.locator('[data-report-section="'+k+'"]');await s.waitFor({state:'visible'});
-              const m=s.locator('[data-report-unavailable]');
-              if(allowed){
-               ck(!await m.isVisible(),'authorized '+k+' '+label);
-               const metric=s.locator(k==='inventory'?'[data-inventory-metrics]':'[data-margin-coverage]');
-               await metric.waitFor({state:'visible'});
-               ck((await metric.innerText()).trim().length>0,'real contents '+k+' '+label);
-              }else{
-               await m.waitFor({state:'visible'});
-               ck((await m.innerText()).includes('مجوز مشاهده بهای مواد'),'permission message '+k+' '+label);
-               ck(await s.evaluate(el=>[...el.children].filter(c=>!c.hasAttribute('data-report-unavailable')).every(c=>c.hidden)),'restricted children hidden '+k+' '+label);
-              }
-              await p.screenshot({path:W+'/receipts/'+label+'-'+k+'.png',animations:'disabled'});
-             }
-             await p.locator('#report-tab-overview').click();
-             ck(await p.locator('[data-summary] [data-report-kpi="net_sales"]').isVisible(),'sales still visible '+label);
-             if(base===L){
-              const analytics=p.locator('[data-export-analytical]');
-              ck((await analytics.count()>0)===allowed,'export control permission '+label);
-             }
-             ck(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'viewport fits '+label);
-             console.log('GROUP PASS REP-L281 '+label);
-            }catch(e){failed++;console.log('GROUP FAIL REP-L281 '+label+' '+e.stack);await p.screenshot({path:W+'/receipts/'+label+'-failure.png',animations:'disabled'}).catch(()=>{});}
-            finally{await ctx.close();}
-           }
-           }finally{await b.close();}
-           if(failed)process.exitCode=1;
-          })().catch(e=>{console.error(e);process.exitCode=1});
-          UI46B
-          node "$W/ui46b.cjs" | tee "$W/receipts/results.txt"
+          php -l "$W/gate.php"
+          mysql --protocol=TCP -h127.0.0.1 -uroot -p"$QA_DB_PASSWORD" -e 'CREATE DATABASE sokna_ci_47_routine CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE DATABASE sokna_ci_47_emergency CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+          for route in routine emergency; do
+            php "$W/gate.php" stage "$W/public-$route" "$P" "$route" | tee "$W/receipts/$route-stage.txt"
+            php "$W/gate.php" commit "$W/public-$route" "$P" "$route" | tee "$W/receipts/$route-commit.txt"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC46B-REPORT-UI-EXACT-RECEIPTS
-          path: ${{ runner.temp }}/cc46b/receipts
+          name: SOKNA-CC47-EXACT-PUBLIC-DUAL-ROUTE
+          path: ${{ runner.temp }}/cc47/receipts
           retention-days: 30
