@@ -1,0 +1,30 @@
+{
+  "source_sha256": "5b30f2e43362972e2c543c2c54f06fc90f0b94ce2aad03b9ede1f18727147672",
+  "previous_sha256": "ceefeec0374cae35c6d278117145a569827501ebf66e2dbebb2f579e6102d62b",
+  "changed": [
+    "local/bootstrap.php",
+    "local/public/assets/admin-notifications.js",
+    "local/public/assets/marketing-workspace.js",
+    "local/public/assets/printing-workspace.js",
+    "local/public/marketing/api.php",
+    "local/public/notifications/api.php",
+    "local/src/Core/ManualMutationReceipt.php",
+    "local/src/Domain/Marketing/MarketingService.php",
+    "local/src/Domain/Notifications/NotificationService.php"
+  ],
+  "trees": {
+    "local": "1c32d829e30172dac37e91934966c565ab41a4e4e8e0144803673f8f7144ed0f",
+    "public": "2d3338a4331642ab1a93c9ba1679ececba0c402dfca60d8b67802eee9c855669"
+  },
+  "files": {
+    "local/bootstrap.php": "a7c249e067afcf574ab9727021981bc15b3e9eb03f112bee414caa287c286a08",
+    "local/public/assets/admin-notifications.js": "4ef85c0ad1c0b4ec3c552b6f8cab89f9a54dca928a9c4a9180c544f98cb7befe",
+    "local/public/assets/marketing-workspace.js": "93c61465aeb6409384fcc641d90c68837ccb501af84944bd0dcfb35c5b1c2c94",
+    "local/public/assets/printing-workspace.js": "945a7fe1e187dcd1fb2fcf0d0f0ac18af31699902595598145b80b06b2995ad6",
+    "local/public/marketing/api.php": "c386828666f55142bcfca2a595b747565e009596481d7df75704a8493a9c9c88",
+    "local/public/notifications/api.php": "d3a7268c23ff62a27254a15935dae8214c342c8088dbb1d008dbba0f1a3c5449",
+    "local/src/Core/ManualMutationReceipt.php": "0df7df041d08b0c4e6720448bf7bc24ac8ac9f7d51f154f1a8c766811e54fd23",
+    "local/src/Domain/Marketing/MarketingService.php": "2dd2448121223e0fb54a5ec4d5236ca6a47af6c43b91ec43c9184ce666726295",
+    "local/src/Domain/Notifications/NotificationService.php": "f566567fc9450c8a9484fde9aeb1af92f6dbaf46814fa5f63542b557fde7945e"
+  }
+}
