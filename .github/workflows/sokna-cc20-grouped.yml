@@ -1,4 +1,4 @@
-name: SOKNA 44 read-only report acceptance (QA ONLY)
+name: SOKNA 44B remaining report role matrix (QA ONLY)
 on:
   push:
     branches: [qa/func-pass02-db-20261127]
@@ -85,6 +85,24 @@ jobs:
           PATCH44
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local"
+          cat > "$W/roles44b.php" <<'PHP'
+          <?php
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES')exit(2);
+          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$ids=[];
+          foreach(['qa-supervisor'=>['shift_supervision','remote_access'],'qa-cost-supervisor'=>['shift_supervision','inventory_cost_view','inventory_view','remote_access'],'qa-report-only-staff'=>['staff_consumption_reports','remote_access']] as $name=>$caps){
+           $hash=password_hash('synthetic-member-only',PASSWORD_DEFAULT);
+           $p->prepare("INSERT INTO users(username,password_hash,display_name,role,active) VALUES(?,?,?,'operator',1)")->execute([$name,$hash,$name]);$id=(int)$p->lastInsertId();$ids[$name]=$id;
+           foreach($caps as $cap)$p->prepare('INSERT INTO user_capabilities(user_id,capability,enabled) VALUES(?,?,1)')->execute([$id,$cap]);
+           $p->prepare("INSERT INTO remote_user_credentials(user_id,password_hash,credential_version,source_mode) VALUES(?,?,1,'local_password')")->execute([$id,$hash]);
+          }
+          $f=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
+          $byName=array_column($core->publicProjectionBuilder()->authProjections(),null,'username');
+          foreach($ids as $name=>$id){$v=$byName[$name];$f['users'][]=['id'=>$id,'name'=>$name,'role'=>$v['role'],'password'=>'synthetic-member-only','caps'=>$v['capabilities'],'areas'=>$v['preparation_areas'],'hash'=>$v['password_hash']];}
+          file_put_contents($w.'/cp144-fixture.json',json_encode($f,JSON_THROW_ON_ERROR));
+          PHP
+          php "$W/roles44b.php" "$W"
           php qa/cp160/public-fixture.php "$W/public"
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/receipts/local-http.log" 2>&1 &
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/receipts/public-http.log" 2>&1 &
@@ -112,7 +130,7 @@ jobs:
            with zipfile.ZipFile(io.BytesIO(b)) as z:
             return {e.attrib['name'] for e in ET.fromstring(z.read('xl/workbook.xml')).iter() if e.tag.endswith('}sheet')}
           restricted={'Inventory_Cost','Contribution_Margin','Margin_Items','Margin_Categories'}
-          for user,allowed in [('qa-target',True),('qa-cashier',False)]:
+          for user,allowed in [('qa-cost-supervisor',True),('qa-supervisor',False)]:
            for base in [L,P]:
             o=session(base,user);q='?from='+day+'&to='+day
             code,b=get(o,base+('/reports/api.php' if base==L else '/staff/reports-adapter')+q)
@@ -127,12 +145,19 @@ jobs:
              ck(restricted<=names if allowed else not restricted&names,'actual workbook cost sheets '+user)
              code,b=get(o,L+'/reports/export-analytical.php'+q)
              ck(code==200 if allowed else code==403,'analytical authorization '+user)
-          print('GROUP PASS read-only report regression')
+          for base in [L,P]:
+              o=session(base,'qa-report-only-staff');code,b=get(o,base+('/reports/api.php' if base==L else '/staff/reports-adapter'));ck(code==403,'staff-only denied general reporting '+base)
+              if base==P:
+               code,b=get(o,P+'/api/staff/read?model=reports');ck(code==403,'staff-only denied raw report')
+              else:
+               for endpoint in ['/reports/export.php','/reports/export-analytical.php']:
+                code,b=get(o,L+endpoint);ck(code==403,'staff-only denied '+endpoint)
+          print('GROUP PASS remaining report role matrix')
           REPORT44
           python "$W/report44.py" "$W" | tee "$W/receipts/results.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-CC44-REPORT-RECEIPTS
+          name: SOKNA-CC44B-REPORT-ROLE-MATRIX
           path: ${{ runner.temp }}/cc44/receipts
           retention-days: 7
