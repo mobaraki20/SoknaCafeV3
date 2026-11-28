@@ -1,0 +1,97 @@
+name: SOKNA guide native capture
+on:
+  push:
+    branches: [docs/guide-native-capture-20261128]
+    paths: ['.github/workflows/sokna-guide-native-capture.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capture:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 37261818633
+          artifact-ids: 11325361479
+          path: input
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Capture actual released installer and manager
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Get-ChildItem input -Recurse -Filter SOKNA-Prerequisites-Setup-1.0.13.exe | Select-Object -First 1
+          if(!$setup){throw 'Missing exact release'}
+          $hash=(Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -ne '4c0a608250dbd4d57a4ff46a4b4bc095f6f54f854d2a310c77b21ef2453fd048'){throw 'Release hash mismatch'}
+          python -m pip install pywinauto pillow
+          if($LASTEXITCODE){throw 'Python dependencies unavailable'}
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          $env:GUIDE_SETUP=$setup.FullName
+          @'
+          import os, time, subprocess, json, hashlib
+          from pathlib import Path
+          from pywinauto import Desktop
+          from PIL import ImageStat
+          out=Path('evidence')
+          records=[]
+          def wait_window(pid, timeout=40):
+              end=time.monotonic()+timeout
+              while time.monotonic()<end:
+                  wins=[w for w in Desktop(backend='win32').windows() if w.process_id()==pid and w.is_visible() and w.rectangle().width()>250 and w.rectangle().height()>180]
+                  if wins: return max(wins,key=lambda w:w.rectangle().width()*w.rectangle().height())
+                  time.sleep(.5)
+              raise RuntimeError('No real visible window')
+          def shot(w,name):
+              try:w.set_focus()
+              except Exception:pass
+              time.sleep(1)
+              img=w.capture_as_image()
+              if img is None or max(ImageStat.Stat(img.convert('RGB')).stddev)<8:raise RuntimeError('Blank capture')
+              p=out/(name+'.png');img.save(p)
+              records.append(dict(name=p.name,title=w.window_text(),size=img.size,sha256=hashlib.sha256(p.read_bytes()).hexdigest()))
+              print('REAL_CAPTURE',name,w.window_text(),img.size,flush=True)
+          exe=os.environ['GUIDE_SETUP']
+          # Interactive outer wizard. Do not input personal information.
+          outer=subprocess.Popen([exe,'/NORESTART'])
+          try:
+              w=wait_window(outer.pid,20)
+              shot(w,'01-01-outer-wizard')
+          except Exception as e: print('OUTER_CAPTURE_UNAVAILABLE',str(e),flush=True)
+          finally:
+              if outer.poll() is None:outer.terminate();outer.wait(timeout=20)
+          # Install the exact manager on this disposable runner only; no infrastructure mutation.
+          p=subprocess.run([exe,'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'],timeout=90)
+          if p.returncode:raise RuntimeError('Manager setup failed: '+str(p.returncode))
+          manager=Path(os.environ['ProgramFiles'])/'SOKNA Prerequisites'/'SoknaPrerequisitesSetup.exe'
+          if not manager.is_file():raise RuntimeError('Installed manager missing')
+          app=subprocess.Popen([str(manager)])
+          try:
+              w=wait_window(app.pid)
+              shot(w,'01-02-manager-initial')
+              # Read actual tab labels and select each real tab, without changing settings.
+              from pywinauto import Application
+              u=Application(backend='uia').connect(process=app.pid).window(handle=w.handle)
+              tabs=u.descendants(control_type='TabItem')
+              for i,t in enumerate(tabs):
+                  try:
+                      t.select();time.sleep(.7);shot(w,'01-03-tab-%02d'%(i+1))
+                  except Exception as e:print('TAB_CAPTURE_UNAVAILABLE',i,str(e),flush=True)
+              (out/'controls.json').write_text(json.dumps([{'class':c.friendly_class_name(),'text':c.window_text()} for c in w.descendants() if c.friendly_class_name() not in ('Edit','RichEdit')],ensure_ascii=False,indent=2),encoding='utf-8')
+          finally:
+              if app.poll() is None:app.terminate();app.wait(timeout=15)
+              (out/'receipt.json').write_text(json.dumps({'version':'1.0.13','release_sha256':'4c0a608250dbd4d57a4ff46a4b4bc095f6f54f854d2a310c77b21ef2453fd048','run_id':os.environ['GITHUB_RUN_ID'],'scope':'real manager UI only; infrastructure not installed','captures':records},ensure_ascii=False,indent=2),encoding='utf-8')
+          if not any(r['name']=='01-02-manager-initial.png' for r in records):raise RuntimeError('No valid manager screenshot')
+          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\guide_capture.py"
+          python "$env:RUNNER_TEMP\guide_capture.py"
+          if($LASTEXITCODE){throw 'Capture failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-GUIDE-01-REAL-UI-EVIDENCE
+          path: evidence
+          if-no-files-found: warn
