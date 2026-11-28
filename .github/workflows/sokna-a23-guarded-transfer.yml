@@ -1,0 +1,342 @@
+name: A23 guarded transfer regression
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-guarded-transfer.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+          P2="$RUNNER_TEMP/candidate/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip"
+          echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
+          unzip -q "$P2" -d "$W/public"
+          php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
+      - name: Apply exact candidate delta only to disposable verified Public archive
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          cat > "$W/candidate.patch" <<'PATCH'
+          --- a/public/src/Emergency/PublicTakeoverService.php
+          +++ b/public/src/Emergency/PublicTakeoverService.php
+          @@ -1,22 +1,98 @@
+           <?php
+           declare(strict_types=1);
+           namespace Sokna\PublicEdge\Emergency;
+          +
+           use PDO;
+          +use PDOException;
+           use Throwable;
+          +
+           final class PublicTakeoverService
+           {
+               public function __construct(private readonly PDO $pdo,private readonly PairingSecretStore $secrets,private readonly EmergencyAccessService $access){}
+          +
+               public function killSwitch(string $installationId,string $actor='emergency'): array
+               {
+                   $this->validId($installationId);$q=$this->pdo->prepare('UPDATE installations SET remote_enabled=0,order_intake_enabled=0 WHERE installation_id=? AND revoked_at IS NULL');$q->execute([$installationId]);if($q->rowCount()<1)throw new PublicUpdateException('installation_not_found','Installation is not active.',404);$this->access->audit('kill_switch',$installationId,$actor,[]);return ['ok'=>true,'installation_id'=>$installationId,'remote_enabled'=>false,'order_intake_enabled'=>false];
+               }
+          +
+               public function createOffer(string $oldId,string $newId,int $ttlSeconds=1800,string $actor='emergency'): array
+               {
+          -        $this->validId($oldId);$this->validId($newId);if($oldId===$newId)throw new PublicUpdateException('takeover_same_identity','A takeover requires a fresh installation identity.');$ttl=max(300,min(86400,$ttlSeconds));$exists=$this->pdo->prepare('SELECT COUNT(*) FROM installations WHERE installation_id=? AND active=1 AND revoked_at IS NULL');$exists->execute([$oldId]);if((int)$exists->fetchColumn()<1)throw new PublicUpdateException('installation_not_found','Source installation is not active.',404);$code=strtoupper(implode('-',str_split(bin2hex(random_bytes(12)),8)));$this->pdo->prepare("UPDATE installation_takeovers SET status='cancelled' WHERE new_installation_id=? AND status='pending'")->execute([$newId]);$q=$this->pdo->prepare("INSERT INTO installation_takeovers(old_installation_id,new_installation_id,code_hash,status,expires_at) VALUES(?,?,?,'pending',DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))");$q->execute([$oldId,$newId,password_hash($code,PASSWORD_DEFAULT),$ttl]);$this->access->audit('takeover_offer',$oldId,$actor,['new_installation_id'=>$newId,'ttl_seconds'=>$ttl]);return ['ok'=>true,'old_installation_id'=>$oldId,'new_installation_id'=>$newId,'enrollment_code'=>$code,'expires_in_seconds'=>$ttl];
+          +        $this->validId($oldId);$this->validId($newId);
+          +        if($oldId===$newId)throw new PublicUpdateException('takeover_same_identity','A takeover requires a fresh installation identity.');
+          +        $ttl=max(300,min(86400,$ttlSeconds));
+          +        $this->pdo->beginTransaction();
+          +        try {
+          +            $this->lockActiveSource($oldId);
+          +            $this->requireFreshDestination($newId);
+          +            $this->requireNoUnresolvedWork($oldId);
+          +            // Never supersede an outstanding offer for a different source or destination.
+          +            $q=$this->pdo->prepare("SELECT id FROM installation_takeovers WHERE (old_installation_id=? OR new_installation_id=?) AND status='pending' AND expires_at>=UTC_TIMESTAMP() LIMIT 1 FOR UPDATE");
+          +            $q->execute([$oldId,$newId]);
+          +            if($q->fetchColumn()!==false)throw new PublicUpdateException('takeover_offer_pending','An outstanding takeover offer must be resolved or expire first.',409);
+          +            $code=strtoupper(implode('-',str_split(bin2hex(random_bytes(12)),8)));
+          +            $q=$this->pdo->prepare("INSERT INTO installation_takeovers(old_installation_id,new_installation_id,code_hash,status,expires_at) VALUES(?,?,?,'pending',DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))");
+          +            $q->execute([$oldId,$newId,password_hash($code,PASSWORD_DEFAULT),$ttl]);
+          +            $this->pdo->commit();
+          +        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+          +        $this->access->audit('takeover_offer',$oldId,$actor,['new_installation_id'=>$newId,'ttl_seconds'=>$ttl]);
+          +        return ['ok'=>true,'old_installation_id'=>$oldId,'new_installation_id'=>$newId,'enrollment_code'=>$code,'expires_in_seconds'=>$ttl];
+               }
+          +
+               public function complete(string $newId,string $code,string $newSecret,string $displayName=''): array
+               {
+          -        $this->validId($newId);if($code===''||strlen($newSecret)<32)throw new PublicUpdateException('reenroll_invalid','Enrollment credentials are invalid.',401);$this->pdo->beginTransaction();try{$q=$this->pdo->prepare("SELECT * FROM installation_takeovers WHERE new_installation_id=? AND status='pending' AND expires_at>=UTC_TIMESTAMP() ORDER BY id DESC LIMIT 1 FOR UPDATE");$q->execute([$newId]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!$row||!password_verify($code,(string)$row['code_hash']))throw new PublicUpdateException('reenroll_denied','Enrollment code is invalid or expired.',401);$old=(string)$row['old_installation_id'];$src=$this->pdo->prepare('SELECT display_name FROM installations WHERE installation_id=? AND active=1 AND revoked_at IS NULL FOR UPDATE');$src->execute([$old]);$oldRow=$src->fetch(PDO::FETCH_ASSOC);if(!$oldRow)throw new PublicUpdateException('source_revoked','Source installation is no longer active.',409);$name=trim($displayName)!==''?trim($displayName):(string)($oldRow['display_name']??'');$this->pdo->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,revoked_at) VALUES(?,?,1,1,1,NULL) ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),active=1,remote_enabled=1,order_intake_enabled=1,revoked_at=NULL")->execute([$newId,$name]);$this->secrets->put($newId,$newSecret);$this->pdo->prepare('UPDATE installations SET active=0,remote_enabled=0,order_intake_enabled=0,revoked_at=UTC_TIMESTAMP() WHERE installation_id=?')->execute([$old]);$this->pdo->prepare("UPDATE installation_takeovers SET status='completed',completed_at=UTC_TIMESTAMP() WHERE id=?")->execute([(int)$row['id']]);$this->pdo->commit();$this->access->audit('takeover_completed',$newId,'reenroll',['old_installation_id'=>$old]);return ['ok'=>true,'old_installation_id'=>$old,'new_installation_id'=>$newId,'old_revoked'=>true];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+          +        $this->validId($newId);
+          +        if(trim($code)===''||strlen($newSecret)<32)throw new PublicUpdateException('reenroll_invalid','Enrollment credentials are invalid.',401);
+          +        $this->pdo->beginTransaction();
+          +        try {
+          +            $q=$this->pdo->prepare("SELECT * FROM installation_takeovers WHERE new_installation_id=? AND status='pending' AND expires_at>=UTC_TIMESTAMP() ORDER BY id DESC LIMIT 1 FOR UPDATE");
+          +            $q->execute([$newId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +            if(!$row||!password_verify($code,(string)$row['code_hash']))throw new PublicUpdateException('reenroll_denied','Enrollment code is invalid or expired.',401);
+          +            $old=(string)$row['old_installation_id'];$src=$this->lockActiveSource($old);
+          +            $this->requireFreshDestination($newId);
+          +            // The enqueue/claim services lock this same installation row. Do not lose or replay outstanding work.
+          +            $this->requireNoUnresolvedWork($old);
+          +            $epoch=max(1,(int)$src['authority_epoch']);
+          +            if($epoch>=2147483600)throw new PublicUpdateException('authority_epoch_limit','Authority generation is outside the safe recovery window.',409);
+          +            ++$epoch;
+          +            $name=trim($displayName)!==''?trim($displayName):(string)($src['display_name']??'');
+          +            // A plain INSERT is the final uniqueness fence, even if a concurrent pairing wins the race.
+          +            $this->pdo->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,revoked_at,authority_epoch,authority_state,authority_epoch_required,authority_changed_at) VALUES(?,?,1,0,0,NULL,?,'resync_required',1,UTC_TIMESTAMP(6))")->execute([$newId,$name,$epoch]);
+          +            $this->secrets->put($newId,$newSecret);
+          +            $this->pdo->prepare('UPDATE installations SET active=0,remote_enabled=0,order_intake_enabled=0,revoked_at=UTC_TIMESTAMP() WHERE installation_id=?')->execute([$old]);
+          +            $this->pdo->prepare("UPDATE installation_takeovers SET status='completed',completed_at=UTC_TIMESTAMP() WHERE id=?")->execute([(int)$row['id']]);
+          +            $this->pdo->commit();
+          +        }catch(Throwable $e){
+          +            if($this->pdo->inTransaction())$this->pdo->rollBack();
+          +            if($e instanceof PDOException&&(int)($e->errorInfo[1]??0)===1062)throw new PublicUpdateException('takeover_destination_exists','Destination installation already exists.',409);
+          +            throw $e;
+          +        }
+          +        $this->access->audit('takeover_completed',$newId,'reenroll',['old_installation_id'=>$old,'authority_epoch'=>$epoch]);
+          +        return ['ok'=>true,'old_installation_id'=>$old,'new_installation_id'=>$newId,'old_revoked'=>true,'authority_epoch'=>$epoch,'authority_state'=>'resync_required','remote_enabled'=>false,'order_intake_enabled'=>false];
+               }
+          +
+          +    private function lockActiveSource(string $id): array
+          +    {
+          +        $q=$this->pdo->prepare('SELECT display_name,authority_epoch,authority_state FROM installations WHERE installation_id=? AND active=1 AND revoked_at IS NULL FOR UPDATE');
+          +        $q->execute([$id]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +        if(!is_array($row))throw new PublicUpdateException('installation_not_found','Source installation is not active.',404);
+          +        if($row['authority_state']!=='active')throw new PublicUpdateException('authority_state_conflict','Source authority recovery is already in progress.',409);
+          +        return $row;
+          +    }
+          +
+          +    private function requireFreshDestination(string $id): void
+          +    {
+          +        $q=$this->pdo->prepare('SELECT installation_id FROM installations WHERE installation_id=? FOR UPDATE');
+          +        $q->execute([$id]);
+          +        if($q->fetchColumn()!==false)throw new PublicUpdateException('takeover_destination_exists','Destination installation already exists.',409);
+          +    }
+          +
+          +    private function requireNoUnresolvedWork(string $id): void
+          +    {
+          +        foreach(["SELECT id FROM realtime_requests WHERE installation_id=? AND state IN ('queued','claimed','unknown_review') LIMIT 1 FOR UPDATE", "SELECT request_id FROM deferred_work WHERE installation_id=? AND state IN ('pending_sync','needs_review') LIMIT 1 FOR UPDATE"] as $sql){
+          +            $q=$this->pdo->prepare($sql);$q->execute([$id]);
+          +            if($q->fetchColumn()!==false)throw new PublicUpdateException('takeover_unresolved_work','Resolve outstanding Public work before takeover.',409);
+          +        }
+          +    }
+          +
+               private function validId(string $id): void{if(preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$id)!==1)throw new PublicUpdateException('invalid_installation','Installation identity is invalid.');}
+           }
+          --- a/public/src/Authority/AuthorityEpochService.php
+          +++ b/public/src/Authority/AuthorityEpochService.php
+          @@ -8,10 +8,11 @@
+           use Sokna\PublicEdge\Emergency\EmergencyAccessService;
+           use Sokna\PublicEdge\Emergency\PairingSecretStore;
+           use Sokna\PublicEdge\Emergency\PublicUpdateException;
+          +use Sokna\PublicEdge\Guest\GuestMediaStore;
+           
+           final class AuthorityEpochService
+           {
+          -    public function __construct(private readonly PDO $pdo, private readonly PairingSecretStore $secrets, private readonly EmergencyAccessService $access) {}
+          +    public function __construct(private readonly PDO $pdo, private readonly PairingSecretStore $secrets, private readonly EmergencyAccessService $access, private readonly ?GuestMediaStore $media=null) {}
+           
+               public function fenceRestore(string $installationId,int $epoch): array
+               {
+          @@ -107,8 +108,8 @@
+               {
+                   $this->validId($installationId);$this->pdo->beginTransaction();
+                   try{
+          -            $q=$this->pdo->prepare('SELECT authority_epoch,authority_state FROM installations WHERE installation_id=? FOR UPDATE');$q->execute([$installationId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          -            if(!is_array($row))throw new PublicUpdateException('installation_not_found','Installation is not active.',404);
+          +            $q=$this->pdo->prepare('SELECT authority_epoch,authority_state,active,revoked_at FROM installations WHERE installation_id=? FOR UPDATE');$q->execute([$installationId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +            if(!is_array($row)||!(bool)$row['active']||!empty($row['revoked_at']))throw new PublicUpdateException('installation_not_found','Installation is not active.',404);
+                       if((int)$row['authority_epoch']!==$epoch)throw new PublicUpdateException('authority_epoch_mismatch','Authority epoch does not match.',409);
+                       if((string)$row['authority_state']==='active'){
+                           // A lost HTTP acknowledgement of successful activation must
+          @@ -121,10 +122,30 @@
+                       $hb=$this->pdo->prepare('SELECT COUNT(*) FROM installation_heartbeats WHERE installation_id=? AND last_seen_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 SECOND)');$hb->execute([$installationId]);
+                       $models=$this->pdo->prepare('SELECT COUNT(*) FROM remote_read_models WHERE installation_id=?');$models->execute([$installationId]);
+                       if((int)$hb->fetchColumn()<1||(int)$models->fetchColumn()<1)throw new PublicUpdateException('authority_resync_incomplete','Fresh heartbeat and read-model snapshot are required before activation.',409);
+          +            $this->requireCompletedTakeoverSync($installationId,$epoch);
+                       $this->pdo->prepare("UPDATE installations SET authority_state='active',remote_enabled=1,order_intake_enabled=1,authority_changed_at=UTC_TIMESTAMP(6) WHERE installation_id=?")->execute([$installationId]);
+                       $this->pdo->commit();$this->access->audit('authority_activated',$installationId,'signed-local',['authority_epoch'=>$epoch]);
+                       return ['status'=>200,'body'=>['ok'=>true,'installation_id'=>$installationId,'authority_epoch'=>$epoch,'authority_state'=>'active']];
+                   }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+          +    }
+          +
+          +    /** Additional first-activation guard for a newly identified takeover only.
+          +     * Ordinary same-identity recovery/owner move keeps its existing policy. */
+          +    private function requireCompletedTakeoverSync(string $id,int $epoch): void
+          +    {
+          +        $q=$this->pdo->prepare("SELECT id FROM installation_takeovers WHERE new_installation_id=? AND status='completed' LIMIT 1");
+          +        $q->execute([$id]);if($q->fetchColumn()===false)return;
+          +        $incomplete=static function(): never {throw new PublicUpdateException('takeover_resync_incomplete','Full destination synchronization is required before takeover activation.',409);};
+          +        $q=$this->pdo->prepare('SELECT sequence_no FROM auth_snapshot_watermarks WHERE installation_id=? AND authority_epoch=?');$q->execute([$id,$epoch]);
+          +        if((int)$q->fetchColumn()<1)$incomplete();
+          +        $q=$this->pdo->prepare('SELECT 1 FROM guest_availability_state WHERE installation_id=?');$q->execute([$id]);if($q->fetchColumn()===false)$incomplete();
+          +        $q=$this->pdo->prepare('SELECT r.media_manifest_json FROM guest_active_revisions a JOIN guest_publish_revisions r ON r.installation_id=a.installation_id AND r.revision_id=a.revision_id WHERE a.installation_id=?');$q->execute([$id]);$raw=$q->fetchColumn();
+          +        if(!is_string($raw)||$this->media===null)$incomplete();
+          +        $manifest=json_decode($raw,true);if(!is_array($manifest))$incomplete();
+          +        $expected=['operations','preparation','inventory','inventory_cost','operations_workspace','subscribers','reports','notifications','deferred_context','table_draft_context','guest_operational'];
+          +        $q=$this->pdo->prepare('SELECT m.model_key FROM remote_read_models m JOIN remote_projection_model_cursors c ON c.installation_id=m.installation_id AND c.model_key=m.model_key AND c.source_version=m.source_version WHERE m.installation_id=? AND c.authority_epoch=? AND c.last_sequence>0');$q->execute([$id,$epoch]);
+          +        if(array_diff($expected,$q->fetchAll(PDO::FETCH_COLUMN))!==[])$incomplete();
+          +        $status=$this->media->manifestStatus($id,$manifest);if(($status['ok']??false)!==true||($status['complete']??false)!==true)$incomplete();
+               }
+           
+               /** Authenticated, read-only pairing proof for durable Local recovery. */
+          --- a/public/src/Core/Bootstrap.php
+          +++ b/public/src/Core/Bootstrap.php
+          @@ -289,7 +289,7 @@
+           
+               public function authorityEpoch(): AuthorityEpochService
+               {
+          -        return $this->authorityEpochService ??= new AuthorityEpochService($this->database(),$this->pairingSecrets(),$this->emergencyAccess());
+          +        return $this->authorityEpochService ??= new AuthorityEpochService($this->database(),$this->pairingSecrets(),$this->emergencyAccess(),$this->guestMedia());
+               }
+           
+               private function storageRoot(): string
+          PATCH
+          echo "7e6fb74ced33aeff959ced11c8d97a5b930023204d56f72ac2e434900f97c116  $W/candidate.patch" | sha256sum -c
+          cd "$W"
+          sha256sum -c <<'HASHES'
+          100b9cd37384eea6828ed64ddfba9dac968e5912d6b62dafec2a66c55849e986  public/src/Emergency/PublicTakeoverService.php
+          5efac225da0e4a0860b61ff9e6b1bd291ff66ea53336d9089d9d2a17c80edb34  public/src/Authority/AuthorityEpochService.php
+          ce2ec576f17ed466ebefef4bafec0024266ea06e06dc5abaeb33d4928644f208  public/src/Core/Bootstrap.php
+          HASHES
+          patch --batch --forward -p1 < "$W/candidate.patch"
+          sha256sum -c <<'HASHES'
+          47b99e0147742e7f93208c5be3f24602809b36573badc42632f8951acf86abda  public/src/Emergency/PublicTakeoverService.php
+          8d406f4ed6305508676fdb2da05f3f16d868fbac3e6251e3b65740c462840fff  public/src/Authority/AuthorityEpochService.php
+          754c1816285ac99c396ab4c183b51e7c11d7f3400630960e5c8504c7650b040d  public/src/Core/Bootstrap.php
+          HASHES
+          php -l public/src/Emergency/PublicTakeoverService.php
+          php -l public/src/Authority/AuthorityEpochService.php
+          php -l public/src/Core/Bootstrap.php
+      - name: Run guarded transfer checks on independent synthetic installations
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          cat > "$W/takeover-acceptance.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Emergency\PublicUpdateException;
+          use Sokna\PublicEdge\Core\CanonicalJson;
+          use Sokna\PublicEdge\Http\PublicHttpKernel;
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]??'');$temp=realpath(getenv('RUNNER_TEMP'));if(!$w||!$temp||dirname($w)!==$temp||basename($w)!=='a22')exit(2);
+          $root=$w.'/public';require $root.'/bootstrap.php';$cfg=require $root.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150_public'||($cfg['app']['base_url']??'')!=='http://127.0.0.1:18766/public')exit(2);
+          $core=sokna_public_bootstrap($cfg);$p=$core->database();$svc=$core->takeover();$kernel=new PublicHttpKernel($core,$root);$passed=[];
+          function ck(bool $ok,string $m):void{global $passed;if(!$ok)throw new RuntimeException($m);$passed[]=$m;echo "PASS $m\n";}
+          function reject(callable $fn,string $code):void{try{$fn();}catch(PublicUpdateException $e){ck($e->errorCode===$code,'reject '.$code);return;}throw new RuntimeException('unexpected success '.$code);}
+          function q(PDO $p,string $sql,array $args=[]):PDOStatement{$s=$p->prepare($sql);$s->execute($args);return $s;}
+          function row(PDO $p,string $id):array|false{return q($p,'SELECT * FROM installations WHERE installation_id=?',[$id])->fetch(PDO::FETCH_ASSOC);}
+          function record(PDO $p,string $id,string $req,string $state):void{q($p,"INSERT INTO realtime_requests(installation_id,request_id,request_hash,kind,actor_projection_id,envelope_json,state,expires_at) VALUES(?,?,?,'guest.order','guest','{}',?,UTC_TIMESTAMP()+INTERVAL 1 DAY)",[$id,$req,hash('sha256',$req),$state]);}
+          function callSigned(string $id,string $secret,int $epoch,string $route,array $body=[]):array{global $core,$kernel;$path='/api/v1/local/'.$route;$body['authority_epoch']=$epoch;$raw=json_encode($body,JSON_THROW_ON_ERROR);$ts=(string)time();$nonce=bin2hex(random_bytes(16));$sig=$core->signedLocalRequests()->sign($secret,'POST',$path,$ts,$nonce,$raw);$r=$kernel->handle('POST','/public'.$path,[],$raw,['X-Sokna-Installation'=>$id,'X-Sokna-Timestamp'=>$ts,'X-Sokna-Nonce'=>$nonce,'X-Sokna-Signature'=>$sig]);return ['status'=>$r['status'],'body'=>json_decode($r['body']??'',true)];}
+          function ok(array $r,string $m):void{if(!in_array($r['status'],[200,201],true)||($r['body']['ok']??false)!==true)throw new RuntimeException($m.' '.json_encode($r));ck(true,$m);}
+          function denied(array $r,string $code):void{if($r['status']!==409||($r['body']['error']??'')!==$code)throw new RuntimeException('expected '.$code.' '.json_encode($r));ck(true,'route rejected '.$code);}
+          $a='qa-a23-accept-source';$b='qa-a23-accept-foreign';$c='qa-a23-accept-pending';$d='qa-a23-accept-late-target';$e='qa-a23-accept-new';$f='qa-a23-accept-other';
+          $keys=[];foreach([$a,$b,$c,$f] as $id){q($p,"INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_epoch,authority_state) VALUES(?,?,1,1,1,7,'active')",[$id,$id]);$keys[$id]=bin2hex(random_bytes(32));$core->pairingSecrets()->put($id,$keys[$id]);}
+          $beforeA=row($p,$a);$beforeB=row($p,$b);$beforeF=row($p,$f);
+          reject(fn()=>$svc->createOffer($a,$b), 'takeover_destination_exists');
+          reject(fn()=>$svc->createOffer($a,strtoupper($b)), 'takeover_destination_exists');
+          ck(row($p,$a)===$beforeA&&row($p,$b)===$beforeB&&$core->pairingSecrets()->secret($b)===$keys[$b],'existing destination, source and secret unchanged');
+          $offer=$svc->createOffer($a,$d);reject(fn()=>$svc->createOffer($f,$d),'takeover_offer_pending');
+          q($p,"INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_state) VALUES(?,?,1,1,1,'active')",[$d,$d]);$keys[$d]=bin2hex(random_bytes(32));$core->pairingSecrets()->put($d,$keys[$d]);$beforeD=row($p,$d);
+          reject(fn()=>$svc->complete($d,$offer['enrollment_code'],str_repeat('f',64)),'takeover_destination_exists');
+          ck(row($p,$d)===$beforeD&&row($p,$a)===$beforeA&&row($p,$f)===$beforeF&&$core->pairingSecrets()->secret($d)===$keys[$d],'late destination binding leaves every installation unchanged');
+          ck(q($p,'SELECT status FROM installation_takeovers WHERE new_installation_id=?',[$d])->fetchColumn()==='pending','failed completion preserves offer');
+          // Synthetic cancellation is restricted to this failed test fixture, not a product action.
+          q($p,"UPDATE installation_takeovers SET status='cancelled' WHERE old_installation_id=? AND new_installation_id=?",[$a,$d]);
+          record($p,$c,'qa-pending-01','queued');$beforeC=row($p,$c);reject(fn()=>$svc->createOffer($c,'qa-a23-accept-pending-target'),'takeover_unresolved_work');
+          ck(row($p,$c)===$beforeC&&q($p,'SELECT state FROM realtime_requests WHERE installation_id=? AND request_id=?',[$c,'qa-pending-01'])->fetchColumn()==='queued','pending request and source preserved');
+          $offer=$svc->createOffer($a,$e);record($p,$a,'qa-late-pending','queued');$beforePending=q($p,'SELECT * FROM realtime_requests WHERE installation_id=? AND request_id=?',[$a,'qa-late-pending'])->fetch(PDO::FETCH_ASSOC);
+          reject(fn()=>$svc->complete($e,$offer['enrollment_code'],str_repeat('e',64)),'takeover_unresolved_work');
+          ck(row($p,$a)===$beforeA&&row($p,$e)===false&&q($p,'SELECT * FROM realtime_requests WHERE installation_id=? AND request_id=?',[$a,'qa-late-pending'])->fetch(PDO::FETCH_ASSOC)===$beforePending,'request arriving after offer blocks completion without changes');
+          // Mark test-only request resolved to test the positive path. Do not delete it.
+          q($p,"UPDATE realtime_requests SET state='committed' WHERE installation_id=? AND request_id=?",[$a,'qa-late-pending']);$historical=q($p,'SELECT * FROM realtime_requests WHERE installation_id=? AND request_id=?',[$a,'qa-late-pending'])->fetch(PDO::FETCH_ASSOC);
+          reject(fn()=>$svc->complete($e,'wrong-test-code',str_repeat('e',64)),'reenroll_denied');
+          $newSecret=bin2hex(random_bytes(32));$r=$svc->complete($e,$offer['enrollment_code'],$newSecret,'A23 new device');$old=row($p,$a);$new=row($p,$e);
+          ck($r['ok']&&$r['old_revoked']&&$r['authority_epoch']===8&&$r['authority_state']==='resync_required'&&$r['remote_enabled']===false&&$r['order_intake_enabled']===false,'transfer receipt fenced and epoch advanced');
+          ck(!(bool)$old['active']&&!(bool)$old['remote_enabled']&&!(bool)$old['order_intake_enabled']&&!empty($old['revoked_at']),'source revoked');
+          ck((bool)$new['active']&&!(bool)$new['remote_enabled']&&!(bool)$new['order_intake_enabled']&&(int)$new['authority_epoch']===8&&(bool)$new['authority_epoch_required']&&$new['authority_state']==='resync_required','destination remains fenced');
+          ck(q($p,'SELECT * FROM realtime_requests WHERE installation_id=? AND request_id=?',[$a,'qa-late-pending'])->fetch(PDO::FETCH_ASSOC)===$historical,'historical request remains unchanged');
+          ck(row($p,$b)===$beforeB&&row($p,$d)===$beforeD&&$core->pairingSecrets()->secret($e)===$newSecret,'unrelated destinations unchanged and new secret bound');
+          reject(fn()=>$svc->complete($e,$offer['enrollment_code'],bin2hex(random_bytes(32))),'reenroll_denied');
+          $r=callSigned($a,$keys[$a],7,'heartbeat');ck($r['status']===401,'revoked source signed heartbeat denied');
+          denied(callSigned($e,$newSecret,7,'authority/status'),'authority_epoch_mismatch');
+          denied(callSigned($e,$newSecret,8,'realtime/exchange'),'authority_resync_required');
+          $r=callSigned($e,$newSecret,8,'installation',['display_name'=>'A23 new device','remote_enabled'=>true,'order_intake_enabled'=>true]);ok($r,'signed destination projection allowed');ck($r['body']['remote_enabled']===false&&$r['body']['order_intake_enabled']===false,'projection cannot bypass fence');
+          denied(callSigned($e,$newSecret,8,'authority/activate'),'authority_resync_incomplete');
+          $send=fn($route,$body=[])=>callSigned($e,$newSecret,8,$route,$body);
+          ok($send('heartbeat',['local_version'=>'231gl','runtime_status'=>'running']),'signed heartbeat');
+          $models=['operations','preparation','inventory','inventory_cost','operations_workspace','subscribers','reports','notifications','deferred_context','table_draft_context','guest_operational'];
+          $sendModel=function(string $key)use($send){$payload=['synthetic'=>true,'key'=>$key];$body=['format'=>'sokna-read-model-v2','up_to_sequence'=>1,'model'=>['format'=>'sokna-remote-read-v1','model_key'=>$key,'source_version'=>CanonicalJson::sha256($payload),'payload'=>$payload,'generated_at'=>gmdate('c')]];ok($send('read-model-v2',$body),'signed model '.$key);};
+          $sendModel($models[0]);denied($send('authority/activate'),'takeover_resync_incomplete');
+          $users=[['projection_id'=>'user:qa','username'=>'a23-qa','display_name'=>'QA only','role'=>'admin','password_hash'=>password_hash('synthetic-a23-user-only',PASSWORD_DEFAULT),'capabilities'=>[],'preparation_areas'=>[],'active'=>true]];
+          ok($send('auth-projections',['projections'=>$users,'auth_snapshot_epoch'=>8,'auth_snapshot_sequence'=>1]),'signed ordered auth snapshot');
+          $png=base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jX1cAAAAASUVORK5CYII=',true);$sha=hash('sha256',$png);
+          $manifest=['qa.png'=>['sha256'=>$sha,'extension'=>'png','mime'=>'image/png','size'=>strlen($png)]];
+          $snapshot=['format'=>'sokna-guest-snapshot-v1','cafe_name'=>'QA only','categories'=>[],'items'=>[]];$content=CanonicalJson::sha256(['format'=>'sokna-guest-snapshot-v1','snapshot'=>$snapshot,'media_manifest'=>$manifest]);
+          ok($send('guest/publish',['snapshot'=>$snapshot,'media_manifest'=>$manifest,'content_hash'=>$content,'revision_id'=>'guest-'.substr($content,0,32),'generated_at'=>gmdate('c')]),'signed guest revision');
+          $availability=['items'=>[],'order_acceptance'=>['cafe'=>true]];$availability['version']=CanonicalJson::sha256($availability);$availability['generated_at']=gmdate('c');ok($send('guest/availability',$availability),'signed availability');
+          for($i=1;$i<count($models)-1;$i++)$sendModel($models[$i]);
+          denied($send('authority/activate'),'takeover_resync_incomplete');$sendModel($models[count($models)-1]);
+          denied($send('authority/activate'),'takeover_resync_incomplete');
+          ok($send('guest/media',['sha256'=>$sha,'mime'=>'image/png','extension'=>'png','size'=>strlen($png),'content_base64'=>base64_encode($png)]),'signed media replica');
+          ok($send('authority/activate'),'activation only after all signed channels and verified media');
+          $new=row($p,$e);ck($new['authority_state']==='active'&&(bool)$new['remote_enabled']&&(bool)$new['order_intake_enabled'],'destination enabled after full sync');
+          ok($send('authority/activate'),'activation retry idempotent');
+          ck(row($p,$a)===$old&&row($p,$b)===$beforeB&&row($p,$d)===$beforeD&&row($p,$f)===$beforeF,'source and unrelated installations unchanged after activation');
+          $r=callSigned($a,$keys[$a],7,'realtime/exchange');ck($r['status']===401,'revoked source remains denied after destination activation');
+          file_put_contents($w.'/takeover-acceptance-receipt.json',json_encode(['status'=>'PASS','synthetic_only'=>true,'actual_mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'assertions'=>count($passed),'checks'=>$passed,'signed_product_http_kernel'=>true,'full_local_client_cutover'=>false,'actual_browser_order'=>false,'actual_host'=>false,'default_guest_origin_rebound'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          echo 'GROUP PASS A23-TRN-01/02 scoped product gate'.PHP_EOL;
+          PHP
+          echo "a648233916d88d43b46221023df3661f99dc17bd1a029686f2460828f33ce260  $W/takeover-acceptance.php" | sha256sum -c
+          php "$W/takeover-acceptance.php" "$W" | tee "$W/takeover-acceptance-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-GUARDED-TRANSFER-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/takeover-acceptance-receipt.json
+            ${{ runner.temp }}/a22/takeover-acceptance-log.txt
+            ${{ runner.temp }}/a22/takeover-acceptance.php
+            ${{ runner.temp }}/a22/candidate.patch
+          retention-days: 30
