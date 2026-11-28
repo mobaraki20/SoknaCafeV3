@@ -1,0 +1,244 @@
+name: A23 native Windows scheduled backup Vault recovery
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-native-scheduled-backup.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: core-native
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/cp76/out
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Real Windows large encrypted business recovery to an independent installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $receipt=Get-Content "$env:RUNNER_TEMP/cp76/out/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $pkg='LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          $sha='707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10'
+          if($receipt.local.web_sha256 -cne $sha -or $receipt.production_authorized -ne $false -or $receipt.delivery_authorized -ne $false){throw 'INVALID_CANDIDATE_RECEIPT'}
+          if((Get-FileHash "$env:RUNNER_TEMP/cp76/out/$pkg" -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'CANDIDATE_ARCHIVE_DRIFT'}
+          $version='3.0.0-g6.2-workspace.231gl-a21-postrelease-20261128'
+          $s=Get-Content 'qa/factory/checkpoint78-standard-clean-web.ps1' -Raw
+          $s=$s.Replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip',$pkg).Replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',$sha).Replace('3.0.0-g6.2-workspace.231gg-checkpoint76-qa',$version)
+          $s=$s.Replace('php.ini-development','php.ini-production')
+          function Need([bool]$ok,[string]$code){if(!$ok){throw $code}}
+          function Write-LF([string]$path,[string]$content){[IO.File]::WriteAllText($path,($content.Replace("`r`n","`n").TrimEnd("`r","`n")+"`n"),[Text.UTF8Encoding]::new($false))}
+          function Check-Hash([string]$p,[string]$h){Need ((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $h) ('HASH_DRIFT '+[IO.Path]::GetFileName($p))}
+          $core=(Resolve-Path 'core-native').Path
+          Need ((git -C $core rev-parse HEAD) -ceq 'f38c20083068e540d593876a2c527c51e0157f92') 'CORE_REF_DRIFT'
+          Need ((git -C $core rev-parse 'HEAD:windows/maintenance/src/Sokna.Maintenance.Supervisor/BackupSchedulerWorker.cs') -ceq '6fbf672d65598d4507fddd2c7009b866600b2ada') 'WORKER_BLOB_DRIFT'
+          $cs=@'
+          using System.Text.Json;
+          using System.Security.Cryptography;
+          using System.Text;
+          using Sokna.Maintenance.Core;
+          using Sokna.Maintenance.Supervisor;
+          
+          if (!OperatingSystem.IsWindows() || Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true" || Environment.GetEnvironmentVariable("SOKNA_R186_CI_ONLY") != "YES" || args.Length != 4) throw new InvalidOperationException("QA_DISPOSABLE_ONLY");
+          var lab = Path.GetFullPath(args[0]);
+          var temp = Path.GetFullPath(Environment.GetEnvironmentVariable("RUNNER_TEMP") ?? throw new InvalidOperationException("RUNNER_TEMP"));
+          if (!lab.StartsWith(temp.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar+"sokna-r301-native-", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("LAB_PATH");
+          var php = Path.GetFullPath(args[1]);
+          using var fixture = JsonDocument.Parse(File.ReadAllBytes(args[2]));
+          var f = fixture.RootElement;
+          var iid = f.GetProperty("installation_id").GetString() ?? throw new InvalidDataException("SOURCE_ID");
+          var bearer = f.GetProperty("bearer").GetString() ?? throw new InvalidDataException("BEARER");
+          var expires = f.GetProperty("expires_at").GetDateTimeOffset();
+          var data = f.GetProperty("data_root").GetString() ?? throw new InvalidDataException("DATA_ROOT");
+          var pass = "synthetic-a23-native-scheduler-only";
+          var checks = new List<string>();
+          void Check(bool ok, string name) { if (!ok) throw new InvalidOperationException(name); checks.Add(name); Console.WriteLine("PASS " + name); }
+          const string build = "3.0.0-g6.2-workspace.231gl-a21-postrelease-20261128";
+          const string tree = "6fa30442b3586c8cce598fb4ef607b6569b61d19240fa0fc8bfbec21f98faf84";
+          var paths = new MaintenancePaths(Path.Combine(lab,"maintenance-scheduler"));
+          Directory.CreateDirectory(paths.DataRoot);
+          var stateStore = new SupervisorStateStore(paths); var supervisor = stateStore.LoadOrCreate(); stateStore.Save(supervisor);
+          new SecretStore(paths).EnsureKeys();
+          var layout = new LocalSlotManager(paths).InspectHealthyCurrent();
+          Check(layout.Build == build && Path.GetFullPath(layout.WebRoot).Equals(Path.GetFullPath(Path.Combine(lab,"Web")),StringComparison.OrdinalIgnoreCase),"real Apache service discovers exact A21 Local");
+          BackupSchedulerWorker Create() => new(paths,new MaintenanceOperationStore(paths),new DurableJournal(paths.JournalPath),supervisor);
+          var worker = Create();
+          var policy = new BackupSchedulePolicy{Enabled=true,RecoveryCopyExternallyConfirmed=true,IntervalHours=24,PhpExecutable=php,ExpectedLocalBuild=build,ExpectedManagedTreeSha256=tree,RemoteVaultEndpoint="https://127.0.0.1:18794/maintenance.php",SourceInstallationId=iid,VaultCredentialExpiresAtUtc=expires};
+          worker.ProvisionFromAdmin(policy,pass,bearer);
+          var sealedPath = Path.Combine(paths.SecretsRoot,"backup-recovery-vault.dpapi");
+          Check(File.Exists(sealedPath)&&!Encoding.UTF8.GetString(File.ReadAllBytes(sealedPath)).Contains(pass,StringComparison.Ordinal)&&!Encoding.UTF8.GetString(File.ReadAllBytes(sealedPath)).Contains(bearer,StringComparison.Ordinal),"DPAPI provisioned sealed credentials");
+          var statePath = Path.Combine(paths.DataRoot,"backups","schedule-state.json");
+          BackupJobState Read() => AtomicFile.ReadJson<BackupJobState>(statePath);
+          BackupJobState? verified = null;
+          await worker.StartAsync(CancellationToken.None);
+          try {
+              var until=DateTimeOffset.UtcNow.AddSeconds(120);
+              while(DateTimeOffset.UtcNow<until){var s=Read();if(s.State=="REMOTE_VERIFIED"){verified=s;break;}if((s.State is "BLOCKED" or "UNKNOWN") && s.Code!="BACKUP_READY_AWAITING_FIRST_SCHEDULE") throw new InvalidOperationException("WORKER_"+s.State+"_"+s.Code);await Task.Delay(250);}
+              Check(verified is not null,"actual scheduled background worker reached REMOTE_VERIFIED");
+          } finally { using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(15)); await worker.StopAsync(stop.Token); worker.Dispose(); }
+          var v=verified ?? throw new InvalidOperationException("MISSING_VERIFIED");
+          Check(v.LastVerifiedBackupId?.StartsWith("business-",StringComparison.Ordinal)==true && v.LastVerifiedSha256?.Length==64 && v.LastRemoteReceiptId?.Length==44 && v.BackupId is null && v.NextDueUtc>DateTimeOffset.UtcNow,"durable matching receipt and next due, pending identity cleared");
+          var dir=Path.Combine(data,"recovery","business");var file=Path.Combine(dir,v.LastVerifiedBackupId+".skbf");
+          using(var stream=File.OpenRead(file)){Check(Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant()==v.LastVerifiedSha256,"real local encrypted artifact exact SHA");}
+          var count=Directory.GetFiles(dir,"business-*.skbf").Length;
+          var second=Create();await second.StartAsync(CancellationToken.None);
+          try {await Task.Delay(2000);var after=Read();Check(after.LastRemoteReceiptId==v.LastRemoteReceiptId&&after.LastVerifiedBackupId==v.LastVerifiedBackupId&&after.NextDueUtc==v.NextDueUtc&&Directory.GetFiles(dir,"business-*.skbf").Length==count,"restart respects schedule, no duplicate artifact");
+          using var status=JsonDocument.Parse(JsonSerializer.Serialize(second.ReadStatus()));Check(status.RootElement.GetProperty("release_qualified").GetBoolean()==false,"production qualification guard remains false");}
+          finally{using var stop=new CancellationTokenSource(TimeSpan.FromSeconds(15));await second.StopAsync(stop.Token);second.Dispose();}
+          File.WriteAllText(args[3],JsonSerializer.Serialize(new {status="PASS",actual_windows=true,actual_worker=true,actual_dpapi=true,actual_scm_apache=true,worker_installed_as_service=false,release_qualified=false,backup_id=v.LastVerifiedBackupId,sha256=v.LastVerifiedSha256,remote_receipt_id=v.LastRemoteReceiptId,backup_bytes=new FileInfo(file).Length,restart_no_duplicate=true,checks},new JsonSerializerOptions{WriteIndented=true}));
+          '@
+          $phpFixture=@'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Maintenance\{PublicMaintenanceStorage,VaultCredentialStore,VaultPolicyStore};
+          use Sokna\Local\Domain\Recovery\{RemoteVaultHttpTransport,RemoteVaultDownloadClient,RemoteVaultDownloadHttpTransport,MediaSnapshotCodec};
+          if(PHP_SAPI!=='cli'||PHP_OS_FAMILY!=='Windows'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_R186_CI_ONLY')!=='YES')exit(2);
+          $lab=realpath($argv[1]);if(!$lab||!str_starts_with(str_replace('\\','/',$lab),str_replace('\\','/',realpath(getenv('RUNNER_TEMP'))).'/sokna-r301-native-'))exit(2);
+          $local=$lab.'/Web';$pub=$lab.'/PublicEdge';require $local.'/bootstrap.php';$cfg=require $lab.'/config.php';if($cfg['db']['name']!=='sokna_ci_clean_windows'||$cfg['db']['port']!='39745')exit(2);
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$data=$cfg['app']['data_dir'];$iid=$cfg['installation']['id'];
+          function ck($x,$n){if(!$x)throw new RuntimeException($n);echo 'PASS '.$n.PHP_EOL;}
+          function rows(PDO $p):array{$out=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','users','inventory_items'] as $t)$out[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);return $out;}
+          if($argv[2]==='prepare'){
+          $actor=$p->query("SELECT id,role FROM users WHERE username='ci-admin' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);ck(is_array($actor),'actual source administrator');
+          $p->exec("INSERT INTO subscribers(name,mobile,mobile_normalized,active) VALUES('QA recovery subscriber','00000000000','00000000000',1)");$sub=(int)$p->lastInsertId();
+          $clock=$core->businessClock()->assignment();$table=(int)$p->query('SELECT id FROM cafe_tables ORDER BY id LIMIT 1')->fetchColumn();$item=(int)$p->query('SELECT id FROM items ORDER BY id LIMIT 1')->fetchColumn();ck($table>0&&$item>0,'source catalog and table');
+          $p->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,?,?,?)")->execute(['qa-win-recovery-session',$table,$table,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$sid=(int)$p->lastInsertId();
+          $p->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',100000,?,?,?,?,?)")->execute(['qa-win-recovery-order','qa-win-recovery-token',$table,$sid,15000,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$oid=(int)$p->lastInsertId();
+          $p->prepare('INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,?,?,?,?,?)')->execute([$oid,$item,'QA recovery product',100000,1,1,'hot_bar',100000]);
+          $core->tax()->setEnabled(false,$actor);$settle=$core->settlements();$a=$settle->account($sid);$r=$settle->settle(['session_id'=>$sid,'expected_session_id'=>$sid,'expected_remaining_total'=>$a['remaining_total'],'expected_signature'=>$a['signature'],'mode'=>'full','destination'=>'subscriber','subscriber_id'=>$sub,'request_id'=>'qa-win-recovery-payment','print_receipt'=>false],$actor);ck((int)($r['settlement_id']??0)>0,'actual source settlement');
+          
+              file_put_contents($data.'/guest-media/qa-a23-scheduler.bin',random_bytes(9*1048576));
+              $storage=$lab.'/PublicPrivate';mkdir($storage,0700,true);
+              $pcfg=['app'=>['storage_dir'=>$storage,'base_url'=>'https://127.0.0.1:18794','default_installation_id'=>$iid,'base_path'=>'/'],'db'=>['host'=>'127.0.0.1','port'=>'39745','name'=>'sokna_a23_scheduler_public','user'=>'root','pass'=>''],'relay'=>['secret_encryption_key_base64'=>base64_encode(random_bytes(32)),'installation_secrets'=>[]]];
+              $p->exec('CREATE DATABASE sokna_a23_scheduler_public CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+              file_put_contents($pub.'/config.php','<?php return '.var_export($pcfg,true).';');touch($pub.'/install.lock');
+              foreach(['MaintenanceException','PublicMaintenanceStorage','VaultCredentialStore','VaultPolicyStore'] as $f)require_once $pub.'/src/Maintenance/'.$f.'.php';
+              $s=new PublicMaintenanceStorage($pub,$storage);$base=$s->ensureBase();$c=new VaultCredentialStore($base);$ps=new VaultPolicyStore($base);$u=$c->provision($iid,['vault.upload'],86400*30,'disposable scheduler',['max_artifact_bytes'=>33554432,'max_chunk_bytes'=>1048576]);$r=$c->provision($iid,['vault.recovery_read'],3600,'disposable recovery');$ps->set(['installation_id'=>$iid,'credential_id'=>'synthetic-fixture'],['max_remote_bytes'=>67108864,'retention'=>['recent'=>2,'daily'=>0,'weekly'=>0,'monthly'=>0]]);
+              file_put_contents($lab.'/scheduler-secret.json',json_encode(['installation_id'=>$iid,'bearer'=>$u['credential'],'expires_at'=>$u['expires_at'],'read_bearer'=>$r['credential'],'data_root'=>$data],JSON_THROW_ON_ERROR));
+              exit(0);
+          }
+          if($argv[2]!=='verify')exit(2);
+          $f=json_decode(file_get_contents($lab.'/scheduler-secret.json'),true,32,JSON_THROW_ON_ERROR);$s=json_decode(file_get_contents($argv[3]),true,32,JSON_THROW_ON_ERROR);$id=$s['backup_id'];$hash=$s['sha256'];$endpoint='https://127.0.0.1:18794/maintenance.php';
+          $remote=new RemoteVaultHttpTransport($endpoint,$f['bearer']);$r=$remote->status($id);$receipt=$r['receipt'];ck(($r['state']??'')==='REMOTE_VERIFIED'&&$receipt['remote_receipt_id']===$s['remote_receipt_id']&&$receipt['artifact_sha256']===$hash&&$receipt['artifact_size']===$s['backup_bytes'],'independent real Vault receipt exactly matches scheduler journal');
+          $path=$core->recoveryWorkspace()->path($id);$before=rows($p);$media=MediaSnapshotCodec::scan($data);$held=$lab.'/held-scheduler.skbf';ck(rename($path,$held)&&!file_exists($path),'source ciphertext not available from normal recovery path');
+          $target=$lab.'-scheduler-target';$web=$target.'/Web';$dest=$target.'/Data';$p->exec('CREATE DATABASE sokna_a23_scheduler_target CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$p->exec("CREATE USER 'a23_sched_target'@'127.0.0.1' IDENTIFIED BY 'synthetic-target-only-20261128'");$p->exec("GRANT ALL PRIVILEGES ON sokna_a23_scheduler_target.* TO 'a23_sched_target'@'127.0.0.1'");
+          $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$web);ck(($setup->status()['state']??'')==='new','independent target has new state');$init=$setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'39745','name'=>'sokna_a23_scheduler_target','user'=>'a23_sched_target','pass'=>'synthetic-target-only-20261128'],'create_database'=>false,'admin_user'=>'qa-target','admin_password'=>'synthetic-target-only-20261128','cafe_name'=>'QA destination','table_count'=>3]);ck(($init['success']??false)===true&&$init['installation_id']!==$iid,'independent fresh standard setup');
+          $tcfg=require $target.'/config.php';$tcore=sokna_local_bootstrap($tcfg);$tp=$tcore->database();try{$tp->query('SELECT COUNT(*) FROM sokna_ci_clean_windows.orders');throw new RuntimeException('source database exposed');}catch(PDOException){ck(true,'target DB credentials cannot read source');}
+          $dl=new RemoteVaultDownloadClient($target.'/download');$tr=new RemoteVaultDownloadHttpTransport($endpoint,$f['read_bearer']);
+          $download=$dl->download($id,$tr);$file=$download['path'];ck(hash_file('sha256',$file)===$hash&&$download['remote_receipt_id']===$receipt['remote_receipt_id'],'actual downloaded ciphertext and receipt identical');
+          $pass='synthetic-a23-native-scheduler-only';$inspect=$tcore->businessBackup()->inspectEncrypted($file,$pass);ck($inspect['stream_verified']===true&&$inspect['target_ready']===true,'fresh target validates authenticated backup');$restore=$tcore->businessBackup()->restoreEncryptedToEmptyTarget($file,$pass,0);ck($restore['restored']===true&&rows($tp)===$before&&MediaSnapshotCodec::scan($dest)===$media,'real independent restored business and media exact');ck($tcore->publicAuthorityState()->phase()==='reenroll_required'&&rows($p)===$before&&hash_file('sha256',$held)===$hash,'new identity fenced and original source unchanged');
+          file_put_contents($argv[4],json_encode(['status'=>'PASS','actual_windows'=>true,'actual_mariadb'=>$tp->query('SELECT VERSION()')->fetchColumn(),'scheduler_receipt_matches'=>true,'native_https_download'=>true,'restored_business_media_exact'=>true,'fresh_target_fenced'=>true,'source_preserved'=>true,'backup_id'=>$id,'sha256'=>$hash,'remote_receipt_id'=>$receipt['remote_receipt_id']],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          '@
+          $proxy=@'
+          import http.server, http.client, ssl, sys
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def handle_req(self):
+                  if not self.path.startswith('/maintenance.php?'): self.send_error(404);return
+                  n=int(self.headers.get('Content-Length','0'))
+                  if n<0 or n>4194304:self.send_error(413);return
+                  data=self.rfile.read(n) if n else None
+                  headers={k:v for k,v in self.headers.items() if k.lower() not in ('host','connection','transfer-encoding')}
+                  headers['Host']='127.0.0.1:18793';headers['Connection']='close'
+                  c=http.client.HTTPConnection('127.0.0.1',18793,timeout=60)
+                  try:
+                      c.request(self.command,self.path,body=data,headers=headers);r=c.getresponse();body=r.read();self.send_response(r.status)
+                      for k,v in r.getheaders():
+                          if k.lower() not in ('content-length','connection','transfer-encoding','server','date'):self.send_header(k,v)
+                      self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+                  finally:c.close()
+              do_GET=do_POST=do_PUT=handle_req
+          server=http.server.ThreadingHTTPServer(('127.0.0.1',18794),Handler)
+          ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);ctx.load_cert_chain(sys.argv[1],sys.argv[2]);server.socket=ctx.wrap_socket(server.socket,server_side=True);server.serve_forever()
+          '@
+          $harnessDir=Join-Path $core 'windows/maintenance/tests/Sokna.Maintenance.BackupHarness'
+          $csPath=Join-Path $harnessDir 'Program.cs'
+          $proj=Join-Path $harnessDir 'Sokna.Maintenance.BackupHarness.csproj'
+          $fixturePath=Join-Path $env:RUNNER_TEMP 'a23-scheduler-fixture.php'
+          $proxyPath=Join-Path $env:RUNNER_TEMP 'a23-scheduler-tls-proxy.py'
+          Write-LF $csPath $cs
+          Write-LF $fixturePath $phpFixture
+          Write-LF $proxyPath $proxy
+          Check-Hash $csPath '854cb721a489416d7e9e5ec3e5550aaaa29e42e09526ef14dc6a6b7074ccbfae'
+          Check-Hash $fixturePath '696d6fa9b6aed3bd99cd5e19b43ebc04a0a9593879c2827cff2db8de185ba684'
+          Check-Hash $proxyPath '0037ea62142bef46afb2c3254f2dd000f2c04a6f4a62b4addc445d1a2f043c44'
+          dotnet build $proj -c Release --nologo
+          Need ($LASTEXITCODE -eq 0) 'HARNESS_BUILD_FAILED'
+          $inject=@'
+          $publicPack=Join-Path $env:RUNNER_TEMP 'cp76/out/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip'
+          Check-Hash $publicPack '641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402'
+          $pub=Join-Path $lab 'PublicEdge'
+          Expand-Archive $publicPack $pub
+          $target=$lab+'-scheduler-target'
+          Need (!(Test-Path $target)) 'TARGET_ALREADY_EXISTS'
+          Expand-Archive $pack (Join-Path $target 'Web')
+          $phpExe=Join-Path $phpRoot 'php.exe'
+          $env:PHPRC=$phpRoot
+          $cert=Join-Path $lab 'qa-ca.pem'
+          $key=Join-Path $lab 'qa-key.pem'
+          $openssl=Join-Path $env:ProgramFiles 'Git/usr/bin/openssl.exe'
+          if(!(Test-Path $openssl)){$openssl=(Get-Command openssl -ErrorAction Stop).Source}
+          & $openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' -keyout $key -out $cert
+          Need ($LASTEXITCODE -eq 0) 'TEST_CA_GENERATION_FAILED'
+          Add-Content (Join-Path $phpRoot 'php.ini') ('openssl.cafile="'+(P $cert)+'"')
+          Run $phpExe @('-l',$fixturePath)
+          Run $phpExe @($fixturePath,$lab,'prepare')
+          $pubServer=$null;$proxyServer=$null
+          try{
+            $pubServer=Start-Process -FilePath $phpExe -ArgumentList @('-S','127.0.0.1:18793','-t',('"'+$pub+'"')) -WorkingDirectory $phpRoot -PassThru -RedirectStandardOutput (Join-Path $lab 'pub-out.txt') -RedirectStandardError (Join-Path $lab 'pub-err.txt')
+            $proxyServer=Start-Process -FilePath (Get-Command python).Source -ArgumentList @(('"'+$proxyPath+'"'),('"'+$cert+'"'),('"'+$key+'"')) -PassThru -RedirectStandardOutput (Join-Path $lab 'proxy-out.txt') -RedirectStandardError (Join-Path $lab 'proxy-err.txt')
+            Start-Sleep -Seconds 2
+            Need (!$pubServer.HasExited -and !$proxyServer.HasExited) 'TLS_FIXTURE_UNAVAILABLE'
+            $scheduleReceipt=Join-Path $env:RUNNER_TEMP 'a23-native-scheduler-receipt.json'
+            $restoreReceipt=Join-Path $env:RUNNER_TEMP 'a23-native-scheduler-restore-receipt.json'
+            dotnet run --project $proj --configuration Release --no-build -- $lab $phpExe (Join-Path $lab 'scheduler-secret.json') $scheduleReceipt | Tee-Object (Join-Path $env:RUNNER_TEMP 'a23-native-scheduler-log.txt')
+            Need ($LASTEXITCODE -eq 0 -and (Test-Path $scheduleReceipt)) 'ACTUAL_SCHEDULER_FAILED'
+            Stop-Service SoknaApache -ErrorAction Stop
+            Run $phpExe @($fixturePath,$lab,'verify',$scheduleReceipt,$restoreReceipt)
+            Need (Test-Path $restoreReceipt) 'RESTORE_RECEIPT_MISSING'
+          } finally {
+            foreach($p in @($proxyServer,$pubServer)){if($null -ne $p -and !$p.HasExited){$p.Kill();$p.WaitForExit()}}
+            Remove-Item (Join-Path $lab 'scheduler-secret.json'),$key -ErrorAction SilentlyContinue
+          }
+          '@
+          $marker=' $receipt=@{status='
+          Need ($s.Contains($marker)) 'NATIVE_SCRIPT_MARKER'
+          $s=$s.Replace($marker,($inject+[Environment]::NewLine+$marker))
+          $p=Join-Path $env:RUNNER_TEMP 'a23-native-scheduler.ps1'
+          Set-Content $p $s -Encoding utf8NoBOM
+          & $p
+          Need ($LASTEXITCODE -eq 0) 'NATIVE_SCHEDULER_GATE_FAILED'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-NATIVE-SCHEDULER-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a23-native-scheduler-receipt.json
+            ${{ runner.temp }}/a23-native-scheduler-restore-receipt.json
+            ${{ runner.temp }}/a23-native-scheduler-log.txt
+          retention-days: 30
