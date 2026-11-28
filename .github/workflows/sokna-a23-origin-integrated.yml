@@ -55,7 +55,7 @@ jobs:
           echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
           unzip -q "$P2" -d "$W/public"
           php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
-      - name: Verify A23-18 state ordering and integrated recovery
+      - name: A23-19 post-origin real publication, guest ACK and Chromium
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/a22"
@@ -1389,11 +1389,74 @@ jobs:
           kill -0 "$pp" "$qp"
           curl -fsS http://127.0.0.1:18766/qa-opcache-state | tee "$W/origin-opcache-state-log.txt"
           curl -fsS http://127.0.0.1:18768/qa-opcache-state | tee -a "$W/origin-opcache-state-log.txt"
-          php -d opcache.enable_cli=0 "$W/origin-http.php" "$W" candidate | tee "$W/origin-candidate-log.txt"
+          cat > "$W/origin19-sync.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]??'');if(!$w||basename($w)!=='a22')exit(2);
+          require $w.'/local/bootstrap.php';
+          $checks=[];function ck($ok,$n){global $checks;if(!$ok)throw new RuntimeException($n);$checks[]=$n;echo "PASS $n\n";}
+          function sql(PDO $p,string $s,array $a=[]):PDOStatement{$q=$p->prepare($s);$q->execute($a);return $q;}
+          function core(){global $w;return sokna_local_bootstrap(require $w.'/config.php');}
+          function guestJson(string $base,string $path,array $data):array{
+           $raw=file_get_contents($base.$path,false,stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nAccept: application/json\r\n",'content'=>json_encode($data,JSON_THROW_ON_ERROR),'ignore_errors'=>true,'follow_location'=>0,'timeout'=>20]]));$status=0;foreach($http_response_header??[] as $h)if(preg_match('~^HTTP/\S+ (\d+)~',$h,$m))$status=(int)$m[1];$body=json_decode((string)$raw,true);return ['status'=>$status,'body'=>is_array($body)?$body:[]];
+          }
+          function publish($c,$q,$iid){for($i=0;$i<16;$i++){ $r=$c->publicEdgePublisher()->syncAll(10); if(($r['success']??false)&&!(int)($r['guest_publication']['media_remaining']??0)&&sql($q,'SELECT COUNT(*) FROM guest_active_revisions WHERE installation_id=?',[$iid])->fetchColumn())return $r;}throw new RuntimeException('publication failed '.json_encode($r['failed_channels']??[]));}
+          $old='http://127.0.0.1:18766/public';$new='http://127.0.0.1:18768';$c=core();$db=$c->database();$iid=$c->publicEdgeSyncClient()->installationId();$q=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cp150_public;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          publish($c,$q,$iid);$snap=json_decode((string)sql($q,'SELECT r.snapshot_json FROM guest_active_revisions a JOIN guest_publish_revisions r ON r.installation_id=a.installation_id AND r.revision_id=a.revision_id WHERE a.installation_id=?',[$iid])->fetchColumn(),true,64,JSON_THROW_ON_ERROR);
+          $table=null;foreach($snap['tables'] as $row){if(!empty($row['token'])&&!sql($db,"SELECT COUNT(*) FROM table_sessions WHERE table_id=? AND status IN('active','pending')",[$row['id']])->fetchColumn()){$table=$row;break;}}ck(is_array($table),'actual published free table');
+          $closed=$c->orderCatalog()->guestScheduleClosedItemIds();$item=null;foreach($snap['catalogs'] as $cat){foreach($cat['items'] as $row){if($row['available']===true&&empty($row['is_bundle'])&&!in_array((int)$row['id'],$closed,true)&&(int)$row['price']>0){$item=$row;break 2;}}}ck(is_array($item),'published available item');
+          $before=$db->query("SELECT COUNT(*) FROM orders")->fetchColumn();
+          $r=$c->publicOriginRebind()->execute($new,1);ck($r['ok']&&$r['base_url']===$new&&!$r['finalize_pending']&&!$r['push_rebind_pending'],'cross-origin and path change finalized');
+          $c=core();ck($c->publicEdgeSyncClient()->installationId()===$iid&&$c->publicEdgeSyncClient()->publicBaseUrl()===$new,'new coordinator retains installation');
+          publish($c,$q,$iid);ck(true,'post-origin signed full publication successful');ck(($c->publicEdgePublisher()->syncHeartbeat(5)['success']??false)===true,'post-origin heartbeat');
+          $clientToken='qa-a23-origin-'.bin2hex(random_bytes(12));$device='qa-a23-device-'.bin2hex(random_bytes(12));$payload=['table_token'=>$table['token'],'client_token'=>$clientToken,'device_token'=>$device,'session_token'=>'','items'=>[['id'=>(int)$item['id'],'quantity'=>1,'expected_price'=>(int)$item['price'],'fulfillment_mode'=>'dine_in']]];
+          $submit=guestJson($new,'/api/guest/order',$payload);$rid=(string)($submit['body']['request_id']??'');ck($submit['status']===202&&($submit['body']['accepted']??false)===true&&$rid!=='','guest order queued at new origin');
+          $statusPayload=['action'=>'submission_status','table_token'=>$table['token'],'client_token'=>$clientToken,'device_token'=>$device,'request_id'=>$rid];$seen=null;
+          for($i=0;$i<8;$i++){ $x=$c->publicEdgeRelay()->syncRealtimeExchange(8,8);ck(($x['success']??false)===true,'signed relay exchange at new origin');$seen=guestJson($new,'/api/guest/orders',$statusPayload);if($seen['status']===200&&($seen['body']['state']??'')==='committed'&&($seen['body']['terminal']??false)===true)break; }
+          ck($seen['status']===200&&($seen['body']['state']??'')==='committed'&&($seen['body']['business_terminal']??false)===true&&($seen['body']['result']['success']??false)===true,'guest receives authoritative committed ACK');
+          $order=sql($db,'SELECT id,public_code,order_source,status,device_token,table_id FROM orders WHERE client_token=?',[$clientToken])->fetch(PDO::FETCH_ASSOC);ck(is_array($order)&&$order['order_source']==='guest'&&$order['status']==='pending_approval'&&$order['device_token']===$device&&(int)$order['table_id']===(int)$table['id']&&$seen['body']['result']['order_code']===$order['public_code'],'actual Local order matches receipt');
+          $lines=sql($db,'SELECT item_id,quantity,unit_price FROM order_items WHERE order_id=?',[$order['id']])->fetchAll(PDO::FETCH_ASSOC);ck(count($lines)===1&&(int)$lines[0]['item_id']===(int)$item['id']&&(int)$lines[0]['quantity']===1&&(int)$lines[0]['unit_price']===(int)$item['price'],'ordered item quantity and price exact');
+          $again=guestJson($new,'/api/guest/order',$payload);ck(in_array($again['status'],[200,202],true)&&($again['body']['success']??false)===true,'same guest token retry accepted');$c->publicEdgeRelay()->syncRealtimeExchange(8,8);$after=guestJson($new,'/api/guest/orders',$statusPayload);
+          ck((int)sql($db,'SELECT COUNT(*) FROM orders WHERE client_token=?',[$clientToken])->fetchColumn()===1&&(int)sql($q,'SELECT COUNT(*) FROM realtime_requests WHERE installation_id=? AND request_id=?',[$iid,$rid])->fetchColumn()===1&&($after['body']['result']['order_code']??null)===$order['public_code']&&(int)$db->query('SELECT COUNT(*) FROM orders')->fetchColumn()===(int)$before+1,'exactly one order and one receipt');
+          file_put_contents($w.'/origin19-browser-input.json',json_encode(['old'=>$old,'new'=>$new,'iid'=>$iid,'token'=>$table['token'],'pwa'=>'pwa-'.str_repeat('a',32)],JSON_THROW_ON_ERROR));
+          file_put_contents($w.'/origin19-sync-receipt.json',json_encode(['status'=>'PASS','checks'=>$checks,'actual_mariadb'=>$db->query('SELECT VERSION()')->fetchColumn(),'production_authorized'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          PHP
+          cat > "$W/origin19-browser.mjs" <<'JS'
+          import fs from 'node:fs';
+          import {spawn} from 'node:child_process';
+          const w=process.argv[2], f=JSON.parse(fs.readFileSync(w+'/origin19-browser-input.json')),checks=[];
+          const ck=(v,n)=>{if(!v)throw Error(n);checks.push(n);console.log('PASS '+n)};
+          const chrome=spawn('google-chrome',['--headless','--no-sandbox','--disable-dev-shm-usage','--remote-debugging-port=19222','--user-data-dir='+w+'/chrome19','about:blank'],{stdio:'ignore'});
+          const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+          try{
+           let target;for(let i=0;i<80;i++){try{target=(await (await fetch('http://127.0.0.1:19222/json/list')).json()).find(x=>x.type==='page');if(target)break}catch{}await sleep(250)}
+           if(!target)throw Error('Chrome unavailable');
+           const ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
+           let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const [r,j]=pending.get(m.id);pending.delete(m.id);m.error?j(m.error):r(m.result)}};
+           const cmd=(method,params={})=>new Promise((r,j)=>{const i=++id;pending.set(i,[r,j]);ws.send(JSON.stringify({id:i,method,params}));setTimeout(()=>{if(pending.delete(i))j(Error(method+' timeout'))},10000).unref()});
+           const ev=async expression=>(await cmd('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true})).result.value;
+           const nav=async url=>{await cmd('Page.navigate',{url});for(let i=0;i<60;i++){await sleep(250);if(await ev('document.readyState==="complete" && location.href!== "about:blank" && location.href.startsWith('+JSON.stringify(url.split('?')[0])+')'))return}throw Error('navigation timeout '+url)};
+           const shot=async n=>fs.writeFileSync(w+'/'+n+'.png',Buffer.from((await cmd('Page.captureScreenshot',{format:'png'})).data,'base64'));
+           await cmd('Page.enable');await cmd('Runtime.enable');await cmd('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+           const query='?table='+encodeURIComponent(f.token), old=f.old+'/menu'+query, dest=f.new+'/menu'+query;
+           await nav(old);ck(await ev('location.origin')===new URL(f.old).origin,'old origin browser launcher stays on old origin');let link=await ev('Array.from(document.links).map(a=>a.href).find(x=>x==='+JSON.stringify(dest)+')||""');ck(link===dest,'launcher exact QR token and target');await shot('origin19-old-qr');
+           await ev('Array.from(document.links).find(a=>a.href==='+JSON.stringify(dest)+').click()');for(let i=0;i<60;i++){await sleep(250);if(await ev('location.href==='+JSON.stringify(dest)+' && document.readyState==="complete"'))break}
+           ck(await ev('location.href')===dest,'real browser follows old QR launcher to new origin');ck(await ev('document.querySelector("[data-installation-id]")?.getAttribute("data-installation-id")')===f.iid,'guest page renders same installation identity');await shot('origin19-new-qr');
+           const manifest=await ev('(async()=>{const el=document.querySelector("link[rel=manifest]");if(!el)return null;const r=await fetch(el.href);return {ok:r.ok,url:el.href,body:await r.json()}})()');
+           ck(manifest?.ok&&new URL(manifest.url).origin===new URL(f.new).origin,'browser resolves manifest on new origin');ck(manifest.body.id===f.pwa||String(manifest.body.id).includes(f.pwa),'manifest stable PWA id');
+           ck(new URL(manifest.body.start_url,manifest.url).origin===new URL(f.new).origin,'PWA start URL new origin');
+           await nav(f.new+'/staff/login');ck(await ev('document.querySelector("input[name=installation_id]")?.value')===f.iid,'staff login renders same installation');await shot('origin19-staff-login');
+           fs.writeFileSync(w+'/origin19-browser-receipt.json',JSON.stringify({status:'PASS',checks,actual_chromium:true,actual_dns_tls:false,production_authorized:false},null,2));ws.close();
+          }finally{chrome.kill()}
+          JS
+          php -l "$W/origin19-sync.php"
+          php -d opcache.enable_cli=0 "$W/origin19-sync.php" "$W" | tee "$W/origin19-sync-log.txt"
+          node "$W/origin19-browser.mjs" "$W" | tee "$W/origin19-browser-log.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A23-18-ORIGIN-INTEGRATED-EVIDENCE
+          name: SOKNA-A23-19-ORIGIN-SYNC-BROWSER-EVIDENCE
           path: |
             ${{ runner.temp }}/a22/origin-*-receipt.json
             ${{ runner.temp }}/a22/origin-*-log.txt
@@ -1401,4 +1464,5 @@ jobs:
             ${{ runner.temp }}/a22/origin-other-http.log
             ${{ runner.temp }}/a22/origin-http.php
             ${{ runner.temp }}/a22/origin-router.php
+            ${{ runner.temp }}/a22/origin19-*
           retention-days: 30
