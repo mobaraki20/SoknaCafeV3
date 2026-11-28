@@ -1,0 +1,337 @@
+name: SOKNA A23-30 exact frozen package runtime and independent owner QA
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-30-exact-package-runtime.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  owner-route:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        route: [routine, emergency]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-a2329-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-a2329-ci-only
+      QA_ROUTE: ${{ matrix.route }}
+      QA_CONTAINER: ${{ job.services.mariadb.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46159414575
+          name: SOKNA-A23-29-FROZEN-PACKAGES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/sokna-a23-29/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/sokna-a23-29/prior-a21
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46063873053
+          name: SOKNA-PUBLIC-35JB-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/sokna-a23-29/prior35jb
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip, mbstring, sodium
+          coverage: none
+      - name: Exact archived inputs and isolated genuine paired A21 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          L="$RUNNER_TEMP/sokna-a23-29"
+          mkdir -p "$L/old-web" "$L/private" "$L/home"
+          export HOME="$L/home"
+          python3 - "$L" <<'PY'
+          import pathlib,sys,json,hashlib,zipfile,io
+          l=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          c=l/'candidate';q=json.loads((c/'A23-29-FACTORY-INTAKE-RECEIPT.json').read_text())
+          assert not q['production_authorized'] and not q['delivery_authorized'] and json.loads((c/'independent-build-receipt.json').read_text())['exact_bytes_match']
+          for n,v in q['files'].items():assert H((c/n).read_bytes())==v['sha256']
+          p=l/'prior35jb/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip'
+          assert H(p.read_bytes())=='09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f'
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(l/'old-web')
+          with zipfile.ZipFile(c/'PUBLIC-35JD-PROTECTED-OWNER-QA-NOT-INSTALL.zip') as z:
+              n=q['owner_contract']['approved_scope'];owner=z.read('candidate/'+n)
+          assert H(owner)==q['owner_contract']['new_sha256']
+          # Negative package is deliberately invalid and used only against the existing stable-path rejection.
+          with zipfile.ZipFile(c/'PUBLIC-35JD-UPDATE-QA-NOT-INSTALL.zip') as z:
+              files={p:z.read(p) for p in z.namelist()}
+          m=json.loads(files.pop('manifest.json'));m['files'].append({'path':n,'sha256':H(owner),'size':len(owner)})
+          files['manifest.json']=json.dumps(m).encode();files['payload/'+n]=owner
+          with zipfile.ZipFile(l/'negative-protected.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              for p,b in files.items():z.writestr(p,b)
+          PY
+          for phase in setup prior-stage prior-commit; do
+            php qa/a23-29/public-route.php "$phase" "$L/old-web" "$L" | tee "$L/$phase-log.txt"
+          done
+      - name: Real independent database and original file backup before owner transition
+        shell: bash
+        run: |
+          set -euo pipefail
+          L="$RUNNER_TEMP/sokna-a23-29"
+          test -n "$QA_CONTAINER"
+          umask 077
+          docker exec "$QA_CONTAINER" mariadb-dump --user=root --password="$QA_DB_PASSWORD" --single-transaction --skip-comments --hex-blob sokna_a2329_public > "$L/before.sql"
+          test -s "$L/before.sql"
+          docker exec "$QA_CONTAINER" mariadb --user=root --password="$QA_DB_PASSWORD" -e 'CREATE DATABASE sokna_a2329_public_backup CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+          docker exec -i "$QA_CONTAINER" mariadb --user=root --password="$QA_DB_PASSWORD" sokna_a2329_public_backup < "$L/before.sql"
+          php qa/a23-29/public-route.php verify-backup "$L/old-web" "$L" | tee "$L/verify-backup-log.txt"
+          cp "$L/old-web/src/Emergency/PublicTakeoverService.php" "$L/owner-original.php"
+          echo '100b9cd37384eea6828ed64ddfba9dac968e5912d6b62dafec2a66c55849e986  '"$L/owner-original.php" | sha256sum -c -
+      - name: Actual package route and separate cold QA owner transition while traffic is absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          L="$RUNNER_TEMP/sokna-a23-29"
+          php qa/a23-29/public-route.php stage "$L/old-web" "$L" | tee "$L/stage-log.txt"
+          # This is a disposable offline QA harness, NOT a host-side patcher or installer.
+          # No HTTP server or other writer was started for this lab.
+          python3 - "$L" <<'PY'
+          import os,sys,pathlib,json,zipfile,hashlib,fcntl,tempfile,stat
+          l=pathlib.Path(sys.argv[1]).resolve();assert os.environ['GITHUB_ACTIONS']=='true' and l.parent==pathlib.Path(os.environ['RUNNER_TEMP']).resolve() and l.name=='sokna-a23-29'
+          w=l/'old-web';c=l/'candidate';q=json.loads((c/'A23-29-FACTORY-INTAKE-RECEIPT.json').read_text())
+          o=q['owner_contract'];n=o['approved_scope'];assert n=='src/Emergency/PublicTakeoverService.php'
+          H=lambda b:hashlib.sha256(b).hexdigest()
+          assert json.loads((l/'backup-receipt.json').read_text())['verified'] is True
+          assert H((l/'owner-original.php').read_bytes())==o['old_sha256']
+          assert H((l/'before.sql').read_bytes())==json.loads((l/'backup-receipt.json').read_text())['backup_sha256']
+          assert (l/'private/routine-update-v2/activation.lock').is_file()
+          state=l/'private/routine-update-v2/state.json'
+          with open(l/'private/public-update-lifecycle.lock','r+b') as lock:
+              fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+              old_state=state.read_bytes();s=json.loads(old_state)
+              assert s['db_forward_fence'] is None and s['pending_verification']['version']==q['public']['version']
+              for p,h in o['protected_before'].items():assert not (w/p).is_symlink() and H((w/p).read_bytes())==h
+              with zipfile.ZipFile(c/'PUBLIC-35JD-PROTECTED-OWNER-QA-NOT-INSTALL.zip') as z:
+                  raw=z.read('candidate/'+n)
+              assert H(raw)==o['new_sha256']
+              dest=w/n;fd,t=tempfile.mkstemp(prefix='.a23-29-qa-',dir=dest.parent)
+              try:
+                  with os.fdopen(fd,'wb') as f:
+                      f.write(raw);f.flush();os.fsync(f.fileno())
+                  os.chmod(t,stat.S_IMODE(dest.stat().st_mode))
+                  os.replace(t,dest)
+                  assert state.read_bytes()==old_state
+                  assert all(H((w/p).read_bytes())==h for p,h in o['protected_after'].items())
+              finally:
+                  if os.path.exists(t):os.unlink(t)
+          print('PASS separate cold QA owner bytes, lifecycle state and five other pins unchanged')
+          (l/'cold-owner-receipt.json').write_text(json.dumps({'old':o['old_sha256'],'new':o['new_sha256'],'lifecycle_state_unchanged':True,'other_five_preserved':True,'qa_only':True,'operator_tool_created':False},indent=2))
+          PY
+          php qa/a23-29/public-route.php owner-readback "$L/old-web" "$L" | tee "$L/owner-readback-log.txt"
+          php qa/a23-29/public-route.php commit "$L/old-web" "$L" | tee "$L/commit-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-30-PUBLIC-${{ matrix.route }}-OWNER-EVIDENCE
+          path: |
+            ${{ runner.temp }}/sokna-a23-29/*-receipt.json
+            ${{ runner.temp }}/sokna-a23-29/*-log.txt
+            ${{ runner.temp }}/sokna-a23-29/prior-fingerprint.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  clean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mariadb: ['11.4']
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-disposable-public-clean-ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46159414575
+          name: SOKNA-A23-29-FROZEN-PACKAGES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/delivery
+      - name: Exact factory bytes and isolated Apache PHP
+        run: |
+          set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-clean-canary
+          python3 - <<'PY'
+          import zipfile,pathlib,os,hashlib,shutil,json
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])/'delivery'
+          p=t/'PUBLIC-35JD-CLEAN-QA-NOT-INSTALL.zip'
+          q=json.loads((t/'A23-29-FACTORY-INTAKE-RECEIPT.json').read_text());assert hashlib.sha256(p.read_bytes()).hexdigest()==q['files'][p.name]['sha256']
+          root=pathlib.Path('/var/www/sokna-public-clean-canary')
+          for sub in ['root/webroot','sub/webroot/public/menu']:
+              dest=root/sub;dest.mkdir(parents=True,exist_ok=False)
+              with zipfile.ZipFile(p) as z:
+                  assert z.testzip() is None;z.extractall(dest)
+          shutil.copyfile(t/'A23-29-FACTORY-INTAKE-RECEIPT.json',root/'contract.json')
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring php8.3-curl
+          sudo a2enmod rewrite headers php8.3
+          sudo chown -R www-data:www-data /var/www/sokna-public-clean-canary
+          for row in '18080 root' '18081 sub'; do
+            read -r port name <<< "$row"
+            doc="/var/www/sokna-public-clean-canary/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+          done
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+      - name: Real HTTP fresh setup and pairing on exact 35jd root and nested host
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/delivery"
+          python3 - <<'PY'
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib,hashlib,os,subprocess
+          work=pathlib.Path('/var/www/sokna-public-clean-canary');q=json.loads((work/'contract.json').read_text());c={'target':q['public']['version'],'clean_sha256':q['files']['PUBLIC-35JD-CLEAN-QA-NOT-INSTALL.zip']['sha256'],'protected':q['public']['protected_after']};rows=[]
+          for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu')]:
+              origin=f'http://127.0.0.1:{port}{base}'
+              web=work/name/'webroot'/base.lstrip('/')
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+              def post(action,body,want=200):
+                  req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+                  try:
+                      with op.open(req,timeout=45) as r:code=r.status; data=json.load(r)
+                  except urllib.error.HTTPError as e:code=e.code;data=json.load(e)
+                  assert code==want,(name,action,code,data.get('code'))
+                  return data
+              code,_,hdr=get('/__sokna_route_probe__');assert code==204 and hdr.get('X-Sokna-Route-Probe')=='ok'
+              code,html,_=get('/setup/index.php');assert code==200 and b'<!doctype html>' in html.lower()
+              _,raw,_=get('/setup/api.php?action=status');j=json.loads(raw);assert j['success'] and not j['setup']['installed'] and j['setup']['base_path']==base and j['preflight']['ok']
+              body={'csrf':j['csrf'],'db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_'+name,'user':'root','pass':'sokna-disposable-public-clean-ci'},'create_database':True,'routing_probe_ok':True,'owner_password':'disposable-owner-CI-only-20261126','emergency_password':'disposable-emergency-CI-only-20261126','storage_dir':'storage'}
+              installed=post('install',body);assert installed['success'] and installed['installed'] and installed['owner_initialized'] and not installed['paired']
+              _,raw,_=get('/setup/api.php?action=status');s=json.loads(raw);assert s['setup']['installed'] and s['setup']['state']=='ready_to_pair'
+              assert post('install',body,409)['code']=='already_installed'
+              pair=post('pair',{'pairing_code':installed['pairing_code'],'installation_id':'sokna-ci-'+name,'shared_secret':'disposable-CI-pair-secret-only-0123456789','display_name':'QA only'})
+              assert pair['success'] and pair['paired']
+              _,raw,_=get('/health');h=json.loads(raw)
+              assert h['ok'] and h['database']=='ready' and h['applied_migrations']==h['catalog_migrations']==13 and h['pending_migrations']==0 and h['emergency_ready'] and h['version']==c['target'],(name,h)
+              assert all(hashlib.sha256((web/n).read_bytes()).hexdigest()==sha for n,sha in c['protected'].items())
+              # Fresh install must contain no historical update transaction or fence.
+              state=web/'storage/routine-update-v2/state.json'
+              if subprocess.run(['sudo','-u','www-data','test','-f',str(state)]).returncode==0:
+                  st=json.loads(subprocess.check_output(['sudo','-u','www-data','cat',str(state)]));assert st.get('db_forward_fence') is None and st.get('pending_verification') is None and st.get('activation_journal') is None
+              assert subprocess.run(['sudo','-u','www-data','test','-f',str(web/'storage/maintenance.lock')]).returncode==1
+              assert h['routine_update']['active_version']==c['target'] and not h['routine_update']['pending_verification']
+              # Pairing alone deliberately does not publish a guest menu.
+              try:
+                  get('/menu')
+                  raise AssertionError('Unpublished menu unexpectedly available')
+              except urllib.error.HTTPError as e:
+                  assert e.code==503 and 'منوی عمومی هنوز منتشر نشده' in e.read().decode('utf-8'),(name,e.code)
+              # Exercise the real signed Local publish API with synthetic data only.
+              import time,hmac,secrets
+              snapshot={'format':'sokna-guest-snapshot-v1','cafe_name':'SOKNA-QA-CANARY','categories':[{'id':1,'name':'QA Category'}],'items':[{'id':1,'category_id':1,'name':'SOKNA-QA-ITEM','price':1000,'available':True}]}
+              envelope={'format':'sokna-guest-snapshot-v1','snapshot':snapshot,'media_manifest':[]}
+              digest=hashlib.sha256(json.dumps(envelope,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+              payload={'snapshot':snapshot,'media_manifest':[],'content_hash':digest,'revision_id':'guest-'+digest[:32],'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'authority_epoch':1}
+              raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode()
+              route='/api/v1/local/guest/publish';ts=str(int(time.time()));nonce=secrets.token_hex(16)
+              signing='\n'.join(['sokna-relay-v1','POST',route,ts,nonce,hashlib.sha256(raw).hexdigest()])
+              sig=hmac.new(b'disposable-CI-pair-secret-only-0123456789',signing.encode(),hashlib.sha256).hexdigest()
+              req=urllib.request.Request(origin+route,raw,{'Content-Type':'application/json','X-Sokna-Installation':'sokna-ci-'+name,'X-Sokna-Timestamp':ts,'X-Sokna-Nonce':nonce,'X-Sokna-Signature':sig})
+              try:
+                  with op.open(req,timeout=30) as response:
+                      p=json.load(response);assert response.status==200 and p['ok'] is True,(name,p)
+              except urllib.error.HTTPError as e:
+                  raise AssertionError((name,'signed publish',e.code,e.read().decode('utf-8')[:500]))
+              code,html,_=get('/menu');assert code==200 and b'SOKNA-QA-ITEM' in html,(name,code)
+              rows.append({'layout':base or '/','setup':True,'pairing':True,'duplicate_install_rejected':True,'db_migrations':13,'unpublished_menu_http_503':True,'signed_publish':True,'menu_http_200':True,'emergency_ready':True,'protected_files_unchanged':6})
+              print('PASS actual Apache setup pairing and menu',name,base or '/')
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])
+          src=p/'delivery/PUBLIC-35JD-CLEAN-QA-NOT-INSTALL.zip'
+          b=src.read_bytes();assert hashlib.sha256(b).hexdigest()==c['clean_sha256']
+          (p/'delivery/public-clean-receipt.json').write_text(json.dumps({'status':'PASS_EXACT_CONTROLLED_CLEAN_HTTP','sha256':c['clean_sha256'],'version':c['target'],'layouts':rows,'old_host_update_authorized':False,'production_cafe_authorized':False,'actual_home_install_verified':False,'requires_empty_separate_path_and_db':True},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A23-30-PUBLIC-CLEAN-RECEIPT
+          path: ${{ runner.temp }}/delivery/public-clean-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+  local-clean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46159414575
+          name: SOKNA-A23-29-FROZEN-PACKAGES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/delivery
+      - name: Exact Local clean web payload through product setup
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a21-clean-local"
+          mkdir -p "$W/local"
+          export TMPDIR="$W"
+          python3 - <<'PY'
+          import pathlib,os,zipfile,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'delivery';q=json.loads((d/'A23-29-FACTORY-INTAKE-RECEIPT.json').read_text());p=d/'LOCAL-231GM-CLEAN-WEB-QA-NOT-INSTALL.zip';c={'web_sha256':q['files'][p.name]['sha256'],'target':q['local']['version']}
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==c['web_sha256']
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              z.extractall(t/'a21-clean-local/local')
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/clean-results.txt"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'delivery';q=json.loads((d/'A23-29-FACTORY-INTAKE-RECEIPT.json').read_text());p=d/'LOCAL-231GM-CLEAN-WEB-QA-NOT-INSTALL.zip';c={'web_sha256':q['files'][p.name]['sha256'],'target':q['local']['version']}
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==c['web_sha256']
+          (t/'a21-clean-local/local-clean-receipt.json').write_text(json.dumps({'status':'PASS_EXACT_LOCAL_CLEAN_WEB_SETUP','web_sha256':c['web_sha256'],'target':c['target'],'scope':'web payload; existing prerequisite runtime required; not full Windows provision or field installation'}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A23-30-LOCAL-CLEAN-RECEIPT
+          path: ${{ runner.temp }}/a21-clean-local/*receipt.json
+          if-no-files-found: error
+          retention-days: 7
