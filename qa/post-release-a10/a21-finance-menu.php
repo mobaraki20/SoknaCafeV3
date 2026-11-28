@@ -26,6 +26,7 @@ if($mode==='finance'){
  $price=(int)query($p,'SELECT price FROM items WHERE id=?',[(int)$f['tax_item']])->fetchColumn();query($p,'UPDATE items SET price=? WHERE id=?',[$price+12345,(int)$f['tax_item']]);
  $d=$c->financeWorkspace()->settlementDetail($ids[0]);ck((int)$d['record']['total']===101000,'historical total independent of current catalog price');
  $cat=(string)query($p,'SELECT category_key FROM expense_categories WHERE active=1 ORDER BY category_key LIMIT 1')->fetchColumn();$e=$c->expenses();$x=$e->create(['category_key'=>$cat,'amount'=>123456,'description'=>'QA A21 expense','occurred_at'=>$c->time()->localNow()->modify('-1 minute')->format('Y-m-d H:i:s'),'source_request_id'=>'qa-a21-final-expense'],$actor);$rr=$e->reverse((int)$x['id'],'QA isolated reversal','qa-a21-final-expense-reverse',$actor);ck((int)$rr['id']>0,'expense and reversal history');
+ $snapshot=\Sokna\Local\Domain\Reporting\PublicInvoiceHistorySnapshot::build($p,$clock['business_date']);ck(count($snapshot['rows'])>=25,'actual bounded local invoice snapshot');echo 'ARCHIVE COVERAGE '.json_encode($snapshot['range']).' count='.count($snapshot['rows']).PHP_EOL;
  $pub=$c->publicEdgePublisher();$keys=['reports','subscribers','operations','operations_workspace','deferred_context'];$pub->seedProjectionInvalidations($keys,'qa.a21.final.finance');$r=$pub->syncProjectionModelsV2(250,8,20,null,$keys);foreach($keys as $key)ck(($r['models'][$key]['ok']??false)===true,'signed '.$key.' ACK');ck(($pub->syncHeartbeat(5)['success']??false)===true,'heartbeat');
  file_put_contents($w.'/final-finance.json',json_encode(['ids'=>$ids,'reversal'=>$rev,'subscriber'=>$sub,'subscriber_invoice'=>$first,'documents'=>$rows],JSON_THROW_ON_ERROR));
 }elseif($mode==='guest'){
@@ -38,6 +39,14 @@ if($mode==='finance'){
  $p->exec('UPDATE items SET featured=0 WHERE featured=1');
  $feature=(int)$cat->saveItem(['name'=>'QA A21 featured','description'=>'Synthetic feature','category_id'=>$category,'menu_ids'=>[$menu],'price'=>120000,'featured'=>true],$actor)['id'];
  $key=(string)query($p,'SELECT menu_key FROM menus WHERE id=?',[$menu])->fetchColumn();$table=(string)query($p,'SELECT access_token FROM cafe_tables WHERE active=1 ORDER BY id LIMIT 1')->fetchColumn();
- $pub=$c->publicEdgePublisher();$r=$pub->syncGuestPublication(20);ck(($r['success']??false)===true,'real signed guest publication');ck(($r['state']['media_ready']??false)===true,'all real synthetic image bytes acknowledged');
+ $pub=$c->publicEdgePublisher();$ready=false;for($round=1;$round<=24;$round++){
+   $r=$pub->syncGuestPublication(20);ck(($r['success']??false)===true,'real signed guest publication round '.$round);
+   $state=$r['state']??[];$media=$r['channels']['guest_media']??[];echo 'MEDIA PROGRESS '.json_encode(['round'=>$round,'ready'=>$state['media_ready']??false,'missing'=>$state['media_missing_count']??null,'uploaded'=>$media['uploaded']??null,'code'=>$media['code']??'']).PHP_EOL;
+   if(($state['media_ready']??false)===true){$ready=true;break;}
+   if(($media['ok']??false)!==true)break;
+ }
+ ck($ready,'all real synthetic image bytes acknowledged');
  file_put_contents($w.'/final-guest.json',json_encode(['menu_key'=>$key,'table'=>$table,'ids'=>$ids,'featured'=>$feature],JSON_THROW_ON_ERROR));
+}elseif($mode==='refresh'){
+ $pub=$c->publicEdgePublisher();$keys=['reports','subscribers','operations','operations_workspace','deferred_context','guest_operational','table_draft_context','preparation'];$pub->seedProjectionInvalidations($keys,'qa.a21.final.refresh');$r=$pub->syncProjectionModelsV2(250,8,20,null,$keys);foreach($keys as $key)ck(($r['models'][$key]['ok']??false)===true,'after guest mutation signed '.$key.' ACK');ck(($pub->syncHeartbeat(5)['success']??false)===true,'post-mutation heartbeat');
 }else exit(2);

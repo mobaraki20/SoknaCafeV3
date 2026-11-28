@@ -1,4 +1,4 @@
-name: SOKNA A21 actual financial archive and guest media corrected fixture
+name: SOKNA A21 archive freshness and bounded media synchronization
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -165,16 +165,18 @@ jobs:
           fstatus=${PIPESTATUS[0]}
           php qa/post-release-a10/a21-finance-menu.php "$W/local" guest 2>&1 | tee "$W/guest-results.txt"
           gstatus=${PIPESTATUS[0]}
+          php qa/post-release-a10/a21-finance-menu.php "$W/local" refresh 2>&1 | tee "$W/refresh-results.txt"
+          rstatus=${PIPESTATUS[0]}
           npm install --prefix "$W/pw" playwright
           nstatus=$?
           node qa/post-release-a10/a21-finance-menu.cjs 2>&1 | tee "$W/browser-results.txt"
           bstatus=${PIPESTATUS[0]}
           printf 'FINANCE=%s GUEST=%s BROWSER=%s\n' "$fstatus" "$gstatus" "$bstatus" | tee "$W/group-results.txt"
-          test "$fstatus" = 0 && test "$gstatus" = 0 && test "$nstatus" = 0 && test "$bstatus" = 0
+          test "$fstatus" = 0 && test "$rstatus" = 0 && test "$gstatus" = 0 && test "$nstatus" = 0 && test "$bstatus" = 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A21-FINANCE-MENU-CONFIRMATION-NO-INSTALL
+          name: SOKNA-A21-ARCHIVE-MEDIA-FINAL-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
