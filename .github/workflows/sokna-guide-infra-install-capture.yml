@@ -1,0 +1,133 @@
+name: SOKNA guide actual infrastructure install
+on:
+  push:
+    branches: [docs/guide-native-capture-20261128]
+    paths: ['.github/workflows/sokna-guide-infra-install-capture.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  install:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 37261818633
+          artifact-ids: 11325361479
+          path: input
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install exact released manager and verify its embedded dependency lock
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          $setup=Get-ChildItem input -Recurse -Filter SOKNA-Prerequisites-Setup-1.0.13.exe | Select-Object -First 1
+          if(!$setup){throw 'Installer missing'}
+          if((Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -ne '4c0a608250dbd4d57a4ff46a4b4bc095f6f54f854d2a310c77b21ef2453fd048'){throw 'Installer hash mismatch'}
+          if(-not (Test-Path 'D:\')){throw 'No disposable non-system drive'}
+          if(Test-Path 'D:\SOKNA'){throw 'Target already exists'}
+          if(Get-Service SoknaApache,SoknaMariaDB -ErrorAction SilentlyContinue){throw 'Existing infrastructure; refusing'}
+          $p=Start-Process $setup.FullName -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if($p.ExitCode -ne 0){throw 'Manager installation failed'}
+          $app=Join-Path $env:ProgramFiles 'SOKNA Prerequisites'
+          $lock=Get-ChildItem $app -Recurse -Filter release-lock.json | Select-Object -First 1
+          if(!$lock){throw 'Embedded lock missing'}
+          $meta=Get-Content $lock.FullName -Raw | ConvertFrom-Json
+          if(!$meta.release_frozen){throw 'Release lock not frozen'}
+          $expected=@{php='6df2a5f59f10f08022bede47a26d61c3c16756c54d86aad58503dc8a9d3c25ad';apache='f6dcf17d08aa32721ae418cd818c157e4c521c9e889b758646fb64287f1d56e3';mariadb='4d92fb5f16c0ec8d5a9fc1efdb33a377eaa712d6bce97451e151465c3041ccac'}
+          $cache=Join-Path $env:ProgramData 'SOKNA\PrerequisiteCache'
+          New-Item -ItemType Directory -Force $cache | Out-Null
+          foreach($a in $meta.artifacts){
+            if(!$expected.ContainsKey($a.dependency)){continue}
+            if($expected[$a.dependency] -ne $a.sha256){throw 'Embedded dependency lock drift'}
+            $dest=Join-Path $cache $a.filename
+            $ok=$false
+            foreach($url in @($a.source_url)+@($a.fallback_urls)){
+              if(!$url){continue}
+              curl.exe --fail --location --silent --show-error --max-time 80 --output $dest $url
+              if($LASTEXITCODE -eq 0 -and (Test-Path $dest) -and (Get-Item $dest).Length -eq $a.size -and (Get-FileHash $dest -Algorithm SHA256).Hash.ToLowerInvariant() -eq $a.sha256){$ok=$true;break}
+            }
+            if(!$ok){throw ('LOCKED_DEPENDENCY_UNAVAILABLE: '+$a.dependency+' '+$a.version)}
+            Write-Host ('VERIFIED '+$a.dependency+' '+$a.version)
+          }
+          python -m pip install pywinauto pillow
+          if($LASTEXITCODE){throw 'Capture tooling unavailable'}
+      - name: Actual GUI install and evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import os, sys, time, subprocess, json, hashlib, secrets
+          from pathlib import Path
+          from pywinauto import Application, Desktop
+          from PIL import ImageStat
+          sys.stdout.reconfigure(encoding='utf-8',errors='replace')
+          out=Path('evidence'); records=[]
+          root=Path('D:/SOKNA'); state=root/'Infrastructure'/'infrastructure-state.json'
+          exe=Path(os.environ['ProgramFiles'])/'SOKNA Prerequisites'/'SoknaPrerequisitesSetup.exe'
+          app=subprocess.Popen([str(exe)])
+          def shot(w,name):
+              try:w.set_focus()
+              except Exception:pass
+              time.sleep(.5)
+              im=w.capture_as_image()
+              assert im is not None and max(ImageStat.Stat(im.convert('RGB')).stddev)>8
+              p=out/(name+'.png');im.save(p)
+              records.append({'name':p.name,'title':w.window_text(),'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'size':im.size})
+              print('REAL_CAPTURE',name,flush=True)
+          def services():
+              return subprocess.check_output(['powershell','-NoProfile','-NonInteractive','-Command',"Get-Service SoknaApache,SoknaMariaDB -ErrorAction SilentlyContinue | ForEach-Object {$_.Name+':'+$_.Status}"],text=True)
+          try:
+              end=time.monotonic()+40
+              while time.monotonic()<end:
+                  wins=[w for w in Desktop(backend='win32').windows() if w.process_id()==app.pid and w.is_visible() and w.rectangle().width()>250 and w.rectangle().height()>180]
+                  if wins:break
+                  time.sleep(.5)
+              assert wins,'No actual manager window'
+              w=max(wins,key=lambda x:x.rectangle().width()*x.rectangle().height())
+              u=Application(backend='uia').connect(process=app.pid).window(handle=w.handle)
+              tabs=u.descendants(control_type='TabItem')
+              assert len(tabs)==4,'Four tabs required'
+              tabs[1].select();shot(w,'01-04-verified-files')
+              tabs[2].select()
+              password=secrets.token_urlsafe(24)
+              fields=[v for v in w.descendants() if v.style() & 0x20 and ('edit' in v.class_name().lower() or v.friendly_class_name()=='Edit')]
+              assert len(fields)==2,'Expected two masked password fields'
+              for field in fields:field.set_edit_text(password)
+              shot(w,'01-05-mariadb-password-masked')
+              tabs[0].select()
+              assert any(v.window_text()=='D:\\SOKNA' for v in w.descendants() if 'edit' in v.class_name().lower() or v.friendly_class_name()=='Edit'),'Unexpected target root'
+              w.child_window(title='شروع').wrapper_object().post_message(0x00F5)
+              time.sleep(2);shot(w,'01-06-operation-start')
+              deadline=time.monotonic()+240
+              ok=False
+              while time.monotonic()<deadline:
+                  if state.exists():
+                      s=json.loads(state.read_text(encoding='utf-8-sig'))
+                      if s.get('last_operation')=='install' and all(k in services() for k in ('SoknaApache:Running','SoknaMariaDB:Running')):
+                          ok=True;break
+                  if app.poll() is not None:raise RuntimeError('Manager exited before install success')
+                  time.sleep(3)
+              assert ok,'Infrastructure install did not reach running state'
+              tabs[3].select();shot(w,'01-07-installed-details')
+              tabs[0].select();shot(w,'01-08-installed-status')
+              import urllib.request
+              # No business data or Local Web is installed in this phase.
+              s=json.loads(state.read_text(encoding='utf-8-sig'))
+              (out/'infra-install-result.json').write_text(json.dumps({'status':'PASS','version':'1.0.13','root':str(root),'services':services().splitlines(),'local_web_installed':False,'port':s.get('endpoints',{}).get('local_web',{}).get('port')},indent=2))
+          finally:
+              if app.poll() is None:app.terminate();app.wait(timeout=15)
+              (out/'receipt.json').write_text(json.dumps({'version':'1.0.13','run_id':os.environ['GITHUB_RUN_ID'],'release_sha256':'4c0a608250dbd4d57a4ff46a4b4bc095f6f54f854d2a310c77b21ef2453fd048','captures':records},ensure_ascii=False,indent=2),encoding='utf-8')
+          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\guide_infra.py"
+          python "$env:RUNNER_TEMP\guide_infra.py"
+          if($LASTEXITCODE){throw 'Actual infrastructure install/capture failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-GUIDE-01-REAL-INSTALL-EVIDENCE
+          path: evidence
+          if-no-files-found: warn
