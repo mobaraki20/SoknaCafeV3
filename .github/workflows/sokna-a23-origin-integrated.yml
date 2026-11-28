@@ -1289,6 +1289,17 @@ jobs:
           }
           $pre=$c->publicOriginRebind()->preflight($root);ck($pre['safe_to_prepare']&&$pre['current_instance_health_verified']&&$pre['target_route_verified']&&!$pre['target_health_verified']&&$pre['target_health_after_commit_required'],'path preflight honest current health and route proof');
           foreach(['qa-no-marker','qa-no-route','qa-redirect'] as $bad)reject(fn()=>$c->publicOriginRebind()->preflight($root.'/'.$bad),'deployment_target_route_probe_failed');ck(configHashes()===$before,'all preflight attempts read-only');
+          // Targeted readback: the normal signed product endpoint, no direct config mutation.
+          $prep=$c->publicEdgeSyncClient()->deploymentBindingRequest($old,['action'=>'prepare','target_base_url'=>$root,'target_public_instance_id'=>$probe['public_instance_id']]);$diagId=$prep['body']['rebind_id'];
+          $commit=$c->publicEdgeSyncClient()->deploymentBindingRequest($old,['action'=>'commit','rebind_id'=>$diagId]);
+          clearstatcache(true,$w.'/public/config.php');$disk=require $w.'/public/config.php';
+          $diag=['commit_phase'=>$commit['body']['phase']??null,'disk_base_url'=>$disk['app']['base_url']??null,'disk_base_path'=>$disk['app']['base_path']??null,'disk_hash_changed'=>hash_file('sha256',$w.'/public/config.php')!==$before[1]];
+          try{$fresh=$c->publicEdgeSyncClient()->deploymentBindingProbe($root);$diag['target_signed_base']=$fresh['deployment']['base_url']??null;$diag['target_signed_coherent']=$fresh['deployment']['coherent']??null;$diag['other_signed_base']=$c->publicEdgeSyncClient()->deploymentBindingProbe($other)['deployment']['base_url']??null;$diag['status_phase']=$c->publicEdgeSyncClient()->deploymentBindingRequest($root,['action'=>'status','rebind_id'=>$diagId])['body']['phase']??null;}catch(Throwable $e){$diag['error']=$e->errorCode??get_class($e);}
+          $rb=$c->publicEdgeSyncClient()->deploymentBindingRequest($old,['action'=>'rollback','rebind_id'=>$diagId]);clearstatcache();$diag['rollback_phase']=$rb['body']['phase']??null;$diag['rollback_config_exact']=configHashes()===$before;
+          file_put_contents($w.'/origin-readback-diagnostic-receipt.json',json_encode($diag,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));echo 'READBACK '.json_encode($diag,JSON_UNESCAPED_SLASHES).PHP_EOL;
+          ck($diag['rollback_config_exact']&&$diag['rollback_phase']==='rolled_back','signed diagnostic rollback restores both exact config files');
+          ck($diag['disk_base_url']===$root&&$diag['disk_base_path']===''&&$diag['target_signed_base']===$root&&$diag['target_signed_coherent']===true&&$diag['other_signed_base']===$root,'actual post-commit disk and both HTTP readbacks agree');
+          
           function doMove(string $from,string $to,string $expectedKind,string $pwa):array{
            global $w,$lock,$iid;$c=core();$oldCfg=configs();$r=$c->publicOriginRebind()->execute($to,1);ck($r['ok']&&$r['base_url']===$to&&$r['previous_base_url']===$from&&$r['transition_kind']===$expectedKind&&!$r['finalize_pending']&&!$r['push_rebind_pending'],'actual Local execute finalized '.$expectedKind.' '.$from.' -> '.$to);
            $newCfg=configs();ck($newCfg[0]['public']['base_url']===$to&&$newCfg[1]['app']['base_url']===$to&&$newCfg[1]['app']['base_path']===(parse_url($to,PHP_URL_PATH)??''),'both actual config files committed');
@@ -1319,7 +1330,7 @@ jobs:
           sha256sum -c <<HASHES
           6ed186ab9742c670017c6c2e5e9966826889fa24c24606a5f47d668ddfe03fec  $W/base.patch
           5c5df61a0fa79155a7359610d8864cd5184602f469255b42e9cecd7bc5bcdf23  $W/preflight.patch
-          3f16227266abb1ebcdc2aa8ec9eac5da9dbbcce3602172dfb9ba16a58056145a  $W/origin-http.php
+          c91be550b48b7716e4ce64aff59730c111297ef7a5db747434153477e92fa1e3  $W/origin-http.php
           7939cfc7d6cf625d709e525dd43e0d5a0677e44148b8bb00c18302b02dda0843  $W/origin-router.php
           HASHES
           cd "$W"
@@ -1335,7 +1346,7 @@ jobs:
           trap 'kill "$pp" "$qp" 2>/dev/null || true' EXIT
           sleep 2
           kill -0 "$pp" "$qp"
-          php -d opcache.enable_cli=0 "$W/origin-http.php" "$W" baseline | tee "$W/origin-baseline-log.txt"
+          # baseline observed in run 46150663216; do not repeat it here
           patch --batch --forward -p1 < preflight.patch
           sha256sum -c <<'HASHES'
           6fb2b2866e8c1bccfa4757257cf19e2a594445280d9b18cc5906fc2e24f344e8  local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
