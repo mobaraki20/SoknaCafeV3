@@ -1,0 +1,5 @@
+<?php
+declare(strict_types=1);
+if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+$w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+$c=sokna_local_bootstrap($cfg);$p=$c->database();$actor=$p->query("SELECT id,role FROM users WHERE username='qa-target'")->fetch(PDO::FETCH_ASSOC);$s=$c->printTemplates();$s->installStandard('customer',$actor);$cat=$c->catalogAdmin();$menu=(int)$cat->saveMenu(['name'=>'QA essential menu','status'=>'active','sort_order'=>-1000],$actor)['id'];$category=(int)$cat->saveCategory(['name'=>'QA essential category','menu_ids'=>[$menu]],$actor)['id'];$cat->saveItem(['name'=>'QA essential item','category_id'=>$category,'menu_ids'=>[$menu],'price'=>100000,'sort_order'=>-1000],$actor);echo "PASS seeded actual template and catalog item\n";
