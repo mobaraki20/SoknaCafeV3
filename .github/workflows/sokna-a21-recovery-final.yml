@@ -1,0 +1,176 @@
+name: SOKNA A21 exact same-schema interruption recovery and final receipt
+on:
+  push:
+    branches: [qa/post-release-a10-20261128]
+    paths: [.github/workflows/sokna-a21-recovery-final.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - {origin: GK, fault: APACHE_STOPPED, ledger: '93', run: '46067310389', artifact: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY, file: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip}
+          - {origin: GK, fault: POINTER_SWITCHED, ledger: '93', run: '46067310389', artifact: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY, file: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.5'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/delivery
+      - name: Exact final controlled archive via standard native panel on actual 231fw synthetic origin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'|Select-Object -First 1
+          if(!$base){throw 'BASELINE_MISSING'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $target=Join-Path $env:RUNNER_TEMP 'delivery/LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip'
+          $r=Get-Content "$env:RUNNER_TEMP/delivery/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          if($r.status -ne 'PENDING_EXACT_FINAL_GATE' -or $r.delivery_authorized -ne $false -or (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.local.sha256){throw 'CANDIDATE_DRIFT'}
+          $env:SOKNA_CURRENT_QA_ZIP=$target
+          $env:SOKNA_MATRIX_TARGET_ZIP=$target
+          $env:SOKNA_A21_WEB_SHA=[string]$r.local.web_sha256
+          @'
+          from pathlib import Path
+          import os
+          p=Path('qa/factory/prepare_checkpoint84_native.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('LOCAL-231GG-CONTROLLED-HOME-CANARY.zip','LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip').replace('CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING','CONTROLLED_CAFE_OPERATOR_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_CANARY_ONLY_NOT_CAFE_PRODUCTION_APPROVAL','CONTROLLED_CAFE_OPERATOR_ONLY_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_EXACT_OUTER_QA_ONLY','A21_EXACT_OUTER_QA_ONLY')
+          s=s.replace('origin=os.environ["SOKNA_ORIGIN"]',"origins['GK']=('79ea97f6be0577c9c724865f0fe271cff8dbb3bf078f12825fa91c6b091a5b45','b8019526c9fcbbe65bc5cf564769e62ca9175b956dfaee8cade6097f60309b52')\norigin=os.environ[\"SOKNA_ORIGIN\"]")
+          s=s.replace("{t for _,t in origins.values()}","{origins[k][1] for k in ('R307','GK')}").replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',os.environ['SOKNA_A21_WEB_SHA']).replace("assert fault=='none'","assert fault in ('none','APACHE_STOPPED','POINTER_SWITCHED')").replace("@('GE','GF')","@('GE','GF','GK')")
+          # Same-schema GK interruption must recover to the prior release even after pointer switch.
+          old=" $forward=$fault-in@('none','DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED')"
+          assert old in s
+          s=s.replace(old," $forward=$fault -eq 'none' -or ($env:SOKNA_ORIGIN -ne 'GK' -and $fault-in@('DATABASE_FORWARD_INTENT','POINTER_SWITCHED','COMMITTED'))")
+          p.with_name('prepare_a21_native.py').write_text(s,encoding='utf-8')
+          h=Path('qa/checkpoint61/BridgeHarness.cs')
+          code=h.read_text(encoding='utf-8')
+          old='if(evidence.MigrationPlan?.RequiresMigration!=true)throw new InvalidDataException("APPEND_ONLY_PLAN_NOT_PROVEN");'
+          assert code.count(old)==1
+          new='''var requiresSql=baseline.SchemaFingerprint!=t.GetProperty("schema_fingerprint").GetString();
+                  if(evidence.MigrationPlan is null || evidence.MigrationPlan.RequiresMigration!=requiresSql ||
+                     evidence.UnchangedMigrationsVerified==requiresSql || !evidence.SignedStageVerified ||
+                     !evidence.PhysicalSiblingVerified || evidence.ExecutionAuthorized || evidence.PanelUpdateReady)
+                      throw new InvalidDataException("EXACT_MIGRATION_PLAN_NOT_PROVEN");
+                  if(evidence.MigrationPlan.SourceFingerprint!=baseline.SchemaFingerprint ||
+                     evidence.MigrationPlan.TargetFingerprint!=t.GetProperty("schema_fingerprint").GetString() ||
+                     evidence.MigrationPlan.SourceHead!=baseline.MigrationHead ||
+                     evidence.MigrationPlan.TargetHead!=t.GetProperty("migration_head").GetString())
+                      throw new InvalidDataException("EXACT_MIGRATION_IDENTITY_NOT_PROVEN");'''
+          h.write_text(code.replace(old,new),encoding='utf-8')
+          '@ | Set-Content "$env:RUNNER_TEMP/prepare-a21.py" -Encoding utf8NoBOM
+          python "$env:RUNNER_TEMP/prepare-a21.py"
+          python qa/factory/prepare_a21_native.py
+          if($LASTEXITCODE -ne 0){throw 'BRIDGE_PREPARATION_FAILED'}
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'BRIDGE_TEST_FAILED'}
+          }finally{Pop-Location}
+      - name: Verify exact native receipt, including interrupted recovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r=Get-Content "$env:RUNNER_TEMP/delivery/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $x=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
+          $actual=(Get-FileHash "$env:RUNNER_TEMP/delivery/LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $baseline=if($env:SOKNA_ORIGIN -eq 'GK'){$r.local.baselines[1].local}else{$r.local.baselines[0].local}
+          $forward=$false
+          $phase=if($forward){'COMMITTED'}else{'RECOVERED_TO_PREVIOUS_SLOT'}
+          if($x.status -ne 'PASS' -or $x.candidate_sha256 -cne $actual -or $actual -cne $r.local.sha256 -or $x.phase -ne $phase -or $x.origin -ne $env:SOKNA_ORIGIN -or $x.origin_tree_sha256 -cne $baseline.managed_tree_sha256 -or $x.target_tree_sha256 -cne $r.local.target.managed_tree_sha256 -or $x.migrations -ne 93 -or !$x.independent_restore -or !$x.package_admission_tested -or $x.actual_field_host){throw 'DELIVERY_GATE'}
+          Write-Output "PASS EXACT NATIVE A21 $env:SOKNA_ORIGIN $env:SOKNA_FAULT $actual"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-RECEIPT
+          path: ${{ runner.temp }}/matrix-receipt.json
+          retention-days: 7
+          if-no-files-found: error
+  delivery:
+    needs: [native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          pattern: SOKNA-A21-*-RECEIPT*
+          path: ${{ runner.temp }}/receipts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-A21-NATIVE-GK-*-RECEIPT
+          path: ${{ runner.temp }}/recovery-receipts
+      - name: Independent exact package receipt verification
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'candidate';r=t/'receipts';c=json.loads((d/'factory-build-receipt.json').read_text());H=lambda b:hashlib.sha256(b).hexdigest()
+          assert c['status']=='PENDING_EXACT_FINAL_GATE' and not c['delivery_authorized']
+          for n,h in [('LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip',c['local']['sha256']),('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip',c['local']['web_sha256']),('PUBLIC-A21-UPDATE-CANDIDATE-QA-ONLY.zip',c['public']['update_sha256']),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip',c['public']['clean_sha256'])]: assert H((d/n).read_bytes())==h
+          for origin,fault in [('R307','none'),('GK','none'),('GK','APACHE_STOPPED'),('GK','POINTER_SWITCHED')]:
+              x=json.loads(((r if fault=='none' else t/'recovery-receipts')/f'SOKNA-A21-NATIVE-{origin}-{fault}-RECEIPT'/'matrix-receipt.json').read_text(encoding='utf-8-sig'));assert x['status']=='PASS' and x['candidate_sha256']==c['local']['sha256'] and x['origin']==origin and x['fault']==fault and x['independent_restore'] and x['package_admission_tested'] and (fault!='none' or x['panel_activation_tested']) and x['phase']==('RECOVERED_TO_PREVIOUS_SLOT' if fault!='none' else 'COMMITTED') and not x['actual_field_host']
+          for origin in ['35ip','35iy','35jb']:
+              for route in ['routine','emergency']:
+                  assert (r/f'SOKNA-A21-PUBLIC-{origin}-{route}-RECEIPTS'/'route-result.txt').read_text().strip()==f"{origin}:{route}:{c['public']['update_sha256']}:PASS"
+          x=json.loads((r/'SOKNA-A21-PUBLIC-CLEAN-RECEIPT'/'public-clean-receipt.json').read_text());assert x['status']=='PASS_EXACT_CONTROLLED_CLEAN_HTTP' and x['sha256']==c['public']['clean_sha256'] and {a['layout'] for a in x['layouts']}=={'/','/public/menu'}
+          q=json.loads((r/'SOKNA-A21-LOCAL-CLEAN-RECEIPT'/'local-clean-receipt.json').read_text());assert q['status']=='PASS_EXACT_LOCAL_CLEAN_WEB_SETUP' and q['web_sha256']==c['local']['web_sha256']
+          out={'status':'PASS_EXACT_PACKAGES_CONTROLLED_OPERATOR_GATE','source_sha256':c['source_sha256'],'run_id':os.environ['GITHUB_RUN_ID'],'factory_run_id':'46122453416','local':c['local'],'public':c['public'],'controlled_operator_delivery_authorized':True,'production_host_accepted':False,'automatic_deployment_authorized':False,'requires_verified_backup_and_exact_preflight':True,'local_clean_scope':'web payload only; existing qualified runtime required','field_checklist_required':True}
+          (t/'A21-DELIVERY-RECEIPT.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('PASS exact A21 controlled operator package gates')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-FACTORY-DELIVERY-RECEIPT
+          path: ${{ runner.temp }}/A21-DELIVERY-RECEIPT.json
+          if-no-files-found: error
+          retention-days: 30
