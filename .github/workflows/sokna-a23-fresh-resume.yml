@@ -1,0 +1,350 @@
+name: A23 real HTTP fresh replacement resume
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-fresh-resume.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+          P2="$RUNNER_TEMP/candidate/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip"
+          echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
+          unzip -q "$P2" -d "$W/public"
+          php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
+      - name: Apply exact QA-only patches and run recovery guard plus fresh replacement resume
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          cat > "$W/ui.patch" <<'PATCH'
+          --- a/local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          +++ b/local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          @@ -33,6 +33,9 @@
+                   // A one-time setup code must never silently overwrite an existing Local pairing.
+                   if ($this->client->configured()) {
+                       throw new PublicEdgeSyncException('public_already_paired', 'این لوکال قبلاً به پابلیک وصل شده است. برای نصب تازه پابلیک از «بازیابی اتصال پابلیک» استفاده کنید؛ ثبت کد اولیه مجاز نیست.', 409);
+          +        }
+          +        if ($this->authorityState !== null && $this->authorityState->phase() !== 'active') {
+          +            throw new PublicEdgeSyncException('public_initial_pair_recovery_required', 'این دستگاه در وضعیت بازیابی است؛ اتصال اولیه مجاز نیست. ابتدا بازیابی کنترل‌شده اتصال را تکمیل کنید.', 409);
+                   }
+                   $code = trim($code);
+                   if ($code === '') throw new PublicEdgeSyncException('pairing_code_required', 'کد اتصال لازم است.', 422);
+          --- a/local/public/integrations/api.php
+          +++ b/local/public/integrations/api.php
+          @@ -11,13 +11,14 @@
+                   $errors=[];$guard=$core->snapshotGuard();
+                   $accommodation=$guard->capture('connections','accommodation',['enabled'=>false,'base_url'=>'','configured'=>false,'credential_saved'=>false],'وضعیت اتصال اقامتگاه فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->accommodationSnapshot());
+                   $public=$guard->capture('connections','public_edge',['status'=>'unavailable','base_url'=>'','last_sync_at'=>'','version'=>''],'وضعیت وب عمومی فعلاً در دسترس نیست.',fn():array=>$core->systemDiagnostics()->publicConnectionStatus());
+          +        $authority=$guard->capture('connections','public_authority',['phase'=>'unknown'],'وضعیت بازیابی اتصال پابلیک فعلاً در دسترس نیست.',function()use($core):array{$s=$core->publicAuthorityState()->status();return ['phase'=>(string)($s['phase']??'unknown'),'authority_epoch'=>(int)($s['authority_epoch']??0)];});
+                   $lanStaff=$guard->capture('connections','lan_staff',['enabled'=>false,'configured'=>false,'base_url'=>'','source'=>'config','staff_policy'=>'lan_preferred_public_fallback','guest_policy'=>'public_first'],'وضعیت مسیر LAN کارکنان فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->lanStaffSnapshot());
+                   $originTransition=$guard->capture('connections','public_origin_transition',['active'=>false],'وضعیت انتقال آدرس Public فعلاً در دسترس نیست.',fn():array=>$core->publicOriginRebind()->transitionStatus());
+                   $windows=$guard->capture('connections','windows_services',['state'=>'unavailable','active'=>false],'وضعیت Windows Services فعلاً در دسترس نیست.',fn():array=>$core->windowsServicesPairing()->status());
+                   $runtime=$guard->capture('connections','windows_runtime',['status'=>'unavailable','runtime_version'=>'','contract_version'=>1],'وضعیت Windows Runtime فعلاً در دسترس نیست.',function()use($core):array{$health=$core->systemDiagnostics()->healthComponent('runtime');return (array)(($health['components']??[])['runtime']??[]);});
+                   $agents=$guard->capture('connections','print_agents',[],'فهرست Print Agentها فعلاً در دسترس نیست.',function()use($core):array{$snap=$core->printManagement()->snapshot();return array_values((array)($snap['agents']??[]));});
+          -        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+          -        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+          +        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'public_authority'=>$authority,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+          +        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'public_authority'=>$authority['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+               }
+               $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+               if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel','public_move_status','public_move_finish','public_move_existing_owner_offer_execute'],true)){
+          --- a/local/public/integrations/index.php
+          +++ b/local/public/integrations/index.php
+          @@ -31,7 +31,7 @@
+               </form></article>
+               <article class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>وضعیت همگام‌سازی</h3><p>منو و سفارش، دسترسی کارکنان و تصاویر جداگانه بررسی می‌شوند؛ خرابی تصویر منو را از کار نمی‌اندازد.</p></div></div><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>بخش</th><th>وضعیت</th><th>آخرین موفقیت</th><th>جزئیات</th></tr></thead><tbody data-public-channels><tr><td colspan="4">در حال دریافت وضعیت…</td></tr></tbody></table></div></div></article>
+               <article class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>وضعیت ارتباط</h3><p>ارسال به وب، اتصال خودکار، آخرین ارتباط و صف پاسخ هرکدام وضعیت مستقل دارند؛ موفقیت یکی به معنی سلامت همه نیست.</p></div></div><div class="sc-summary-grid"><article class="sc-card sc-metric"><span>ارسال به وب عمومی</span><strong data-public-signal="outbound">—</strong><small class="sc-help" data-public-signal-help="outbound">—</small></article><article class="sc-card sc-metric"><span>اتصال خودکار سرویس</span><strong data-public-signal="relay">—</strong><small class="sc-help" data-public-signal-help="relay">—</small></article><article class="sc-card sc-metric"><span>آخرین ارتباط با وب</span><strong data-public-signal="heartbeat">—</strong><small class="sc-help" data-public-signal-help="heartbeat">—</small></article><article class="sc-card sc-metric"><span>صف درخواست‌های ورودی</span><strong data-public-signal="queue">—</strong><small class="sc-help" data-public-signal-help="queue">—</small></article></div></div></article>
+          -    <article class="sc-card" data-public-initial-pair-card><form class="sc-card__body sc-form" data-public-pair-form novalidate><div class="sc-section-head"><div><h3>اتصال اولیه پابلیک</h3><p>فقط برای لوکالی که تا امروز هیچ اتصال پابلیکی نداشته است. نصب تازه پابلیکِ متصل به لوکال قدیمی را از «بازیابی اتصال» انجام بده.</p></div></div><div class="sc-form-grid sc-form-grid--2"><label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-pair-url placeholder="https://example.com" dir="ltr" required></label><label class="sc-field"><span class="sc-field__label">کد اتصال</span><input class="sc-control" data-public-pair-code autocomplete="off" dir="ltr" required></label></div><label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-pair-name value="کافه سکنا"></label><div class="sc-actions"><button class="sc-button" type="submit" data-public-pair>ثبت اتصال</button></div></form></article>
+          +    <article class="sc-card" data-public-initial-pair-card hidden><form class="sc-card__body sc-form" data-public-pair-form novalidate><div class="sc-section-head"><div><h3>اتصال اولیه پابلیک</h3><p>فقط برای لوکالی که تا امروز هیچ اتصال پابلیکی نداشته است. نصب تازه پابلیکِ متصل به لوکال قدیمی را از «بازیابی اتصال» انجام بده.</p></div></div><div class="sc-form-grid sc-form-grid--2"><label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-pair-url placeholder="https://example.com" dir="ltr" required></label><label class="sc-field"><span class="sc-field__label">کد اتصال</span><input class="sc-control" data-public-pair-code autocomplete="off" dir="ltr" required></label></div><label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-pair-name value="کافه سکنا"></label><div class="sc-actions"><button class="sc-button" type="submit" data-public-pair disabled>ثبت اتصال</button></div></form></article>
+               <article class="sc-card" data-public-operation-card><div class="sc-card__body sc-stack"><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-sync>همگام‌سازی اکنون</button><button class="sc-button sc-button--secondary" type="button" data-public-probe>آزمایش ارتباط</button></div><div class="sc-event-feedback sc-alert sc-alert--danger" data-public-feedback hidden></div><small class="sc-help" data-public-relay-detail hidden></small></div></article>
+               <details class="sc-connection-advanced" data-public-recovery-advanced><summary class="sc-disclosure__summary"><strong>ابزارهای بازیابی پیشرفته</strong></summary>
+               <article class="sc-card" data-public-replacement-panel><div class="sc-card__body sc-stack">
+          @@ -66,7 +66,7 @@
+                 <small class="sc-help" data-lan-staff-detail></small>
+                 <details class="sc-connection-advanced"><summary class="sc-disclosure__summary"><strong>راهنمای اتصال گوشی به شبکه کافه</strong></summary><div class="sc-stack"><p>آدرس 127.0.0.1 فقط روی رایانه اصلی کار می‌کند. اپ همکاران از آدرس پابلیک نصب می‌شود و هنگام دسترسی به شبکه داخلی، مسیر امن LAN را ترجیح می‌دهد.</p><p>برای راه‌اندازی، نام میزبان داخلی با DNS خصوصی، گواهی HTTPS معتبر و دسترسی محدود فایروال لازم است. پس از آزمایش و ذخیره، اتصال را در همان گوشی روی وای‌فای کافه بررسی کنید. موفقیت پیش‌بررسی رایانه به معنی تأیید اتصال گوشی نیست.</p></div></details>
+               </form></article>
+          -    <details class="sc-card sc-connection-advanced" data-public-reenroll-disclosure><summary class="sc-disclosure__summary"><span><strong>انتقال اتصال به دستگاه جدید</strong><small>فقط بعد از بازیابی نسخه پشتیبان یا تعویض دستگاه</small></span></summary><div class="sc-card__body sc-stack"><p class="sc-muted">برای دستگاه جایگزین، کد اتصال جدید بگیر. اتصال فعلی تنها پس از تأیید شما تغییر می‌کند.</p><div class="sc-form-grid sc-form-grid--2"><label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-reenroll-url placeholder="https://example.com" dir="ltr"></label><label class="sc-field"><span class="sc-field__label">کد اتصال جدید</span><input class="sc-control" data-public-reenroll-code autocomplete="off" dir="ltr"></label></div><label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-reenroll-name value="کافه سکنا"></label><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-reenroll>انتقال و اتصال دوباره</button></div><div class="sc-event-feedback sc-alert sc-alert--danger" data-public-reenroll-feedback hidden></div></div></details>
+          +    <article class="sc-card" data-public-device-recovery hidden><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>وضعیت انتقال به دستگاه جدید</h3><p data-public-device-recovery-message role="status" aria-live="polite"></p></div><span class="sc-badge sc-badge--warning">نیازمند بررسی بازیابی</span></div><p class="sc-muted">پشتیبان تجاری جایگزین اعتبارنامهٔ اتصال و هویت دستگاه نمی‌شود. ابتدا دستگاه قبلی را از چرخه عملیاتی خارج کنید؛ اتصال اولیه یا کد قدیمی انتقال را برای جایگزینی هویت استفاده نکنید.</p><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-device-recovery-guide hidden>ابزارهای بازیابی اتصال</button></div></div></article>
+             </section>
+           
+             <section class="sc-work-panel" data-panel="windows" hidden>
+          --- a/local/public/assets/connections-workspace.js
+          +++ b/local/public/assets/connections-workspace.js
+          @@ -1,6 +1,6 @@
+           (()=>{'use strict';const root=document.querySelector('[data-connections-workspace]');if(!root)return;const api=root.dataset.api,csrf=root.dataset.csrf,$=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)],L=window.SoknaLocale||{dateTime:v=>'—',instantDateTime:v=>'—',integer:v=>String(v??'')};let snap=null,originRebindPreview=null,replacementPreflight=null,refreshGeneration=0,connectionReadValid=false,windowsSecretId="",windowsSecretTimer=null;const dirty=new Set(),formRevision={accommodation:0,lan:0};const toast=(m,tone='success',title='')=>window.SoknaUI?.toast?.(m,{tone,title});
+           const elapsed=v=>{if(v==null||!Number.isFinite(Number(v))||Number(v)<0)return 'نامشخص';const n=Number(v);return n<60?`${L.integer(Math.round(n))} ثانیه`:n<3600?`${L.integer(Math.round(n/60))} دقیقه`:n<86400?`${L.integer(Math.round(n/3600))} ساعت`:`${L.integer(Math.round(n/86400))} روز`};
+          -const status=m=>{const x=$('[data-status]');if(!x)return;x.textContent=m||'';x.hidden=!m};const feedback=(scope,m='',bad=true)=>{const x=$(`[data-${scope}-feedback]`);if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const reenrollFeedback=(m='',bad=true)=>{const x=$('[data-public-reenroll-feedback]');if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const badge=(el,text,tone='neutral')=>{if(!el)return;el.textContent=text;el.className='sc-badge'+(tone==='neutral'?'':` sc-badge--${tone}`)};
+          +const status=m=>{const x=$('[data-status]');if(!x)return;x.textContent=m||'';x.hidden=!m};const feedback=(scope,m='',bad=true)=>{const x=$(`[data-${scope}-feedback]`);if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const badge=(el,text,tone='neutral')=>{if(!el)return;el.textContent=text;el.className='sc-badge'+(tone==='neutral'?'':` sc-badge--${tone}`)};
+           async function request(url,opt={}){let r;try{r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error((j.message||'عملیات انجام نشد.')+(j.support_id?` · کد پیگیری ${j.support_id}`:''));return j}const post=async payload=>{const action=String(payload.action||''),readOnly=action==='public_move_status';if(!readOnly&&!connectionReadValid)throw new Error('ابتدا وضعیت معتبر اتصال‌ها را بازخوانی کن.');const scope=action.startsWith('windows_services_')?'windows_services':action.startsWith('public_')?'public_edge':action.startsWith('accommodation_')?'accommodation':action.startsWith('lan_staff_')?'lan_staff':'';if(!readOnly&&scope&&snap?.errors?.[scope])throw new Error('اطلاعات این اتصال در دسترس نیست؛ ابتدا آن را بازخوانی کن.');return request(api,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({...payload,csrf_token:csrf})})};
+           function accommodationProbe(){const a=snap?.accommodation;if(!connectionReadValid||snap?.errors?.accommodation||dirty.has('accommodation')||a?.enabled!==true||a.configured!==true||typeof a.base_url!=='string'||!a.base_url||!/^([a-f0-9]{12})$/.test(a.key_fingerprint||''))return null;return {revision:formRevision.accommodation,generation:refreshGeneration,base:a.base_url,fingerprint:a.key_fingerprint};}
+           function accommodationProbeCurrent(probe){const now=accommodationProbe();return now!==null&&now.revision===probe.revision&&now.generation===probe.generation&&now.base===probe.base&&now.fingerprint===probe.fingerprint;}
+          @@ -19,11 +19,15 @@
+             $('[data-public-url]').textContent=p.base_url||p.base_origin||'—';$('[data-public-sync-at]').textContent=p.last_sync_at?(L.instantDateTime||L.dateTime)(p.last_sync_at):'—';
+             const version=$('[data-public-version]');version.textContent=err?'—':shortVersion(p.version);version.title=err?'نسخه زنده تأیید نشده است.':(p.version||'');renderPublicChannels(p);
+             const paired=!!String(p.base_url||'').trim()&&state!=='not_configured';
+          -  const initialCard=$('[data-public-initial-pair-card]');if(initialCard)initialCard.hidden=paired||!!err;const sync=$('[data-public-sync]'),probe=$('[data-public-probe]');if(sync)sync.disabled=!paired||!!err;if(probe)probe.disabled=!paired||!!err;
+          -  const oldTransfer=$('[data-public-reenroll-disclosure]');if(oldTransfer)oldTransfer.hidden=paired;
+          -  const initial=$('[data-public-pair]');if(initial){initial.disabled=paired;initial.title=paired?'اتصال اولیه برای این لوکال مجاز نیست؛ از بازیابی کنترل‌شده استفاده کنید.':'';}
+          -  const pairCode=$('[data-public-pair-code]');if(pairCode)pairCode.disabled=paired;
+          -  const reurl=$('[data-public-reenroll-url]');if(reurl&&!reurl.value.trim())reurl.value=p.base_url||p.base_origin||'';
+          +  const authority=snap.public_authority||{},phase=String(authority.phase||'unknown'),authorityKnown=!snap.errors?.public_authority&&['active','reenroll_required','resync_required'].includes(phase),initialAllowed=authorityKnown&&phase==='active'&&!paired&&!err;
+          +  const initialCard=$('[data-public-initial-pair-card]');if(initialCard)initialCard.hidden=!initialAllowed;const sync=$('[data-public-sync]'),probe=$('[data-public-probe]');if(sync)sync.disabled=!paired||!!err||!authorityKnown||phase==='reenroll_required';if(probe)probe.disabled=!paired||!!err||!authorityKnown||phase!=='active';
+          +  const initial=$('[data-public-pair]');if(initial){initial.disabled=!initialAllowed;initial.title=initialAllowed?'':'اتصال اولیه در وضعیت فعلی مجاز نیست.';}
+          +  const pairCode=$('[data-public-pair-code]');if(pairCode)pairCode.disabled=!initialAllowed;
+          +  const recovery=$('[data-public-device-recovery]'),message=$('[data-public-device-recovery-message]'),guide=$('[data-public-device-recovery-guide]');
+          +  if(recovery)recovery.hidden=authorityKnown&&phase==='active';
+          +  if(message)message.textContent=!authorityKnown?'وضعیت بازیابی تأیید نشده است؛ ابتدا اطلاعات اتصال را بازخوانی کنید.':phase==='resync_required'?'اعتبار اتصال ثبت شده است؛ همگام‌سازی و پذیرش نهایی هنوز لازم است.':paired?'بازیابی اعتبار اتصال لازم است؛ ابزارهای بازیابی کنترل‌شده را بررسی کنید.':'اطلاعات بازیابی شده‌اند اما اعتبار اتصال هنوز ثبت نشده است. انتقال شناسه دستگاه به مسیر کنترل‌شده نیاز دارد؛ اتصال اولیه را انجام ندهید.';
+          +  if(guide)guide.hidden=!authorityKnown||!paired||!!err||phase!=='reenroll_required';
+          +  if(!authorityKnown||phase!=='active')badge($('[data-public-badge]'),!authorityKnown?'وضعیت بازیابی نامشخص':phase==='resync_required'?'همگام‌سازی بازیابی لازم است':'بازیابی اتصال لازم است','warning');
+             const a=p.automatic_relay||{},relay=p.relay||{},queued=Number(relay.queued||0),expired=Number(relay.expired_due||0),claimed=Number(relay.claimed||0),staleClaimed=Number(relay.claimed_stale||0),age=p.relay_oldest_queued_age_seconds;
+             const outboundOk=Number(p.sync_error_count||0)===0&&!!p.last_sync_at,outboundLabel=!p.last_sync_at?'هنوز ثبت نشده':Number(p.sync_error_count||0)>0?'نیازمند بررسی':'آخرین ارسال موفق';
+             setPublicSignal('outbound',outboundLabel,p.last_sync_at?`آخرین همگام‌سازی ${(L.instantDateTime||L.dateTime)(p.last_sync_at)}`:'سابقه‌ای ثبت نشده');
+          @@ -308,8 +312,8 @@
+                 }catch(err){feedback('public-replacement',err.message||'بازیابی کامل نشد؛ تا بررسی وضعیت مجدد کد جدید نسازید.');window.scrollTo(0,before);}
+               });
+             });
+          -  $('[data-public-pair-form]').addEventListener('submit',async e=>{e.preventDefault();const b=$('[data-public-pair]');await SoknaUI.busy(b,async()=>{feedback('public');const url=$('[data-public-pair-url]').value.trim(),code=$('[data-public-pair-code]').value.trim();if(!url||!code){feedback('public','آدرس وب عمومی و کد اتصال هر دو لازم‌اند.');return}try{await post({action:'public_pair',base_url:url,pairing_code:code,display_name:$('[data-public-pair-name]').value.trim()});$('[data-public-pair-code]').value='';await refresh('اتصال وب عمومی ثبت شد.')}catch(err){feedback('public',err.message||'اتصال وب عمومی انجام نشد.')}})});$('[data-public-sync]').addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_sync'}),r=j.public_sync||{};await refresh();const auto=snap?.public_edge?.automatic_relay||{};if(r.success&&r.degraded){toast(r.guest_publication?.message||'منو و سفارش به‌روز شد؛ بخشی از تصاویر هنوز در حال همگام‌سازی است.','warning','همگام‌سازی ناقص')}else if(r.success&&auto.status==='ok'){toast('ارسال Local → Public و مسیر برگشت خودکار Public → Local هر دو تأیید شدند.','success','همگام‌سازی')}else if(r.success){toast('ارسال Local → Public موفق بود؛ مسیر برگشت خودکار Public → Local هنوز تأیید نشده است.','warning','همگام‌سازی خروجی موفق')}else{const failed=(r.critical_failed_channels||r.failed_channels||[]).map(x=>publicChannelLabels[x]||x).join('، ');feedback('public',failed?`همگام‌سازی بخش‌های ضروری کامل نشد: ${failed}`:'همگام‌سازی کامل نشد.')}}catch(err){feedback('public',window.SoknaUI?.errorText?.(err,'همگام‌سازی انجام نشد.')||'همگام‌سازی انجام نشد.')}}));$('[data-public-probe]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_probe'}),r=j.probe||{},p=r.status||{},rt=r.roundtrip||{},fresh=p.edge_local_fresh===true,heartbeat=r.heartbeat?.success===true,auto=p.automatic_relay?.status==='ok';await refresh();if(fresh&&heartbeat&&rt.success===true&&auto){const ms=Number(rt.latency_ms||0),id=String(rt.correlation_id||'').slice(0,16);feedback('public',`آزمایش کامل رفت‌وبرگشت موفق بود${ms?` · ${L.integer(ms)} ms`:''}${id?` · کد پیگیری ${id}`:''}.`,false);toast('مسیر Local ↔ Public واقعاً تأیید شد.','success','آزمایش ارتباط کامل')}else{const hop=rt.hop||(!heartbeat?'heartbeat':!auto?'runtime_trigger':'status'),code=rt.error_code||p.automatic_relay?.error_code||p.probe_error||p.edge_runtime_status||p.status||'unknown';const cid=String(rt.correlation_id||p.automatic_relay?.correlation_id||'').slice(0,16);feedback('public',`ارتباط کامل تأیید نشد · مرحله: ${hop} · کد: ${code}${cid?` · پیگیری: ${cid}`:''}`,true);toast('حداقل یک بخش از مسیر واقعی ارتباط مشکل دارد.','warning','آزمایش ارتباط')}}catch(err){await refresh().catch(()=>{});feedback('public',err.message||'آزمایش ارتباط انجام نشد.',true)}}));
+          -$('[data-public-reenroll]').addEventListener('click',async e=>{const b=e.currentTarget,url=$('[data-public-reenroll-url]').value.trim(),code=$('[data-public-reenroll-code]').value.trim(),name=$('[data-public-reenroll-name]').value.trim();reenrollFeedback('');if(!url||!code){reenrollFeedback('آدرس وب عمومی و کد اتصال جدید هر دو لازم‌اند.');return}if(!await SoknaUI.confirm('انتقال اتصال به دستگاه جدید','بعد از تکمیل انتقال، اتصال قبلی این نصب جایگزین می‌شود.',true))return;await SoknaUI.busy(b,async()=>{try{await post({action:'public_reenroll',base_url:url,enrollment_code:code,display_name:name});$('[data-public-reenroll-code]').value='';await refresh();toast('انتقال و اتصال دوباره کامل شد.','success','وب عمومی')}catch(err){reenrollFeedback(err.message||'انتقال اتصال انجام نشد.')}})});
+          +  $('[data-public-pair-form]').addEventListener('submit',async e=>{e.preventDefault();const b=$('[data-public-pair]');if(!connectionReadValid||b.disabled||snap?.errors?.public_authority||snap?.public_authority?.phase!=='active'){feedback('public','اتصال اولیه در وضعیت بازیابی یا وضعیت نامشخص مجاز نیست.');return;}await SoknaUI.busy(b,async()=>{feedback('public');const url=$('[data-public-pair-url]').value.trim(),code=$('[data-public-pair-code]').value.trim();if(!url||!code){feedback('public','آدرس وب عمومی و کد اتصال هر دو لازم‌اند.');return}try{await post({action:'public_pair',base_url:url,pairing_code:code,display_name:$('[data-public-pair-name]').value.trim()});$('[data-public-pair-code]').value='';await refresh('اتصال وب عمومی ثبت شد.')}catch(err){feedback('public',err.message||'اتصال وب عمومی انجام نشد.')}})});$('[data-public-sync]').addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_sync'}),r=j.public_sync||{};await refresh();const auto=snap?.public_edge?.automatic_relay||{};if(r.success&&r.degraded){toast(r.guest_publication?.message||'منو و سفارش به‌روز شد؛ بخشی از تصاویر هنوز در حال همگام‌سازی است.','warning','همگام‌سازی ناقص')}else if(r.success&&auto.status==='ok'){toast('ارسال Local → Public و مسیر برگشت خودکار Public → Local هر دو تأیید شدند.','success','همگام‌سازی')}else if(r.success){toast('ارسال Local → Public موفق بود؛ مسیر برگشت خودکار Public → Local هنوز تأیید نشده است.','warning','همگام‌سازی خروجی موفق')}else{const failed=(r.critical_failed_channels||r.failed_channels||[]).map(x=>publicChannelLabels[x]||x).join('، ');feedback('public',failed?`همگام‌سازی بخش‌های ضروری کامل نشد: ${failed}`:'همگام‌سازی کامل نشد.')}}catch(err){feedback('public',window.SoknaUI?.errorText?.(err,'همگام‌سازی انجام نشد.')||'همگام‌سازی انجام نشد.')}}));$('[data-public-probe]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_probe'}),r=j.probe||{},p=r.status||{},rt=r.roundtrip||{},fresh=p.edge_local_fresh===true,heartbeat=r.heartbeat?.success===true,auto=p.automatic_relay?.status==='ok';await refresh();if(fresh&&heartbeat&&rt.success===true&&auto){const ms=Number(rt.latency_ms||0),id=String(rt.correlation_id||'').slice(0,16);feedback('public',`آزمایش کامل رفت‌وبرگشت موفق بود${ms?` · ${L.integer(ms)} ms`:''}${id?` · کد پیگیری ${id}`:''}.`,false);toast('مسیر Local ↔ Public واقعاً تأیید شد.','success','آزمایش ارتباط کامل')}else{const hop=rt.hop||(!heartbeat?'heartbeat':!auto?'runtime_trigger':'status'),code=rt.error_code||p.automatic_relay?.error_code||p.probe_error||p.edge_runtime_status||p.status||'unknown';const cid=String(rt.correlation_id||p.automatic_relay?.correlation_id||'').slice(0,16);feedback('public',`ارتباط کامل تأیید نشد · مرحله: ${hop} · کد: ${code}${cid?` · پیگیری: ${cid}`:''}`,true);toast('حداقل یک بخش از مسیر واقعی ارتباط مشکل دارد.','warning','آزمایش ارتباط')}}catch(err){await refresh().catch(()=>{});feedback('public',err.message||'آزمایش ارتباط انجام نشد.',true)}}));
+          +$('[data-public-device-recovery-guide]')?.addEventListener('click',()=>{const panel=$('[data-public-recovery-advanced]');if(panel){panel.open=true;$('[data-public-replacement-preflight]')?.focus();}});
+           async function revealWindows(result,msg){++refreshGeneration;root.removeAttribute('aria-busy');hideWindowsSecret();snap.windows_services=result||snap.windows_services;renderWindows();const code=String(result?.pairing_code||''),id=String(result?.pairing_id||''),seconds=Number(result?.seconds_remaining||0);if(code&&id&&windowsTicketActive(result)){windowsSecretId=id;$('[data-windows-code]').textContent=code;$('[data-windows-secret]').hidden=false;windowsSecretTimer=setTimeout(hideWindowsSecret,Math.min(seconds,3600)*1000)}toast(msg,'success','سرویس‌های ویندوز')}
+           async function createWindowsInitial(allowAdditional=false){feedback('windows');const payload={action:'windows_services_pairing_create',display_name:$('[data-windows-name]').value.trim(),allow_additional:!!allowAdditional};const j=await post(payload);await revealWindows(j.windows_services,allowAdditional?'کد اتصال دستگاه جدید ساخته شد.':'کد اتصال اولیه ساخته شد.')}
+           async function createWindowsRotation(id,displayName){if(id<1){feedback('windows','Print Agent فعالی برای اتصال مجدد انتخاب نشده است.');return}const j=await post({action:'windows_services_print_token_rotation_create',agent_id:id,display_name:displayName});await revealWindows(j.windows_services,'کد اتصال مجدد ساخته شد؛ شناسه Agent و مقصدهای چاپ حفظ می‌شوند.')}
+          PATCH
+          cat > "$W/resume.patch" <<'PATCH'
+          --- a/public/src/Authority/AuthorityEpochService.php
+          +++ b/public/src/Authority/AuthorityEpochService.php
+          @@ -131,7 +131,7 @@
+               public function status(string $installationId): array
+               {
+                   $this->validId($installationId);
+          -        $q=$this->pdo->prepare('SELECT installation_id,authority_epoch,authority_state,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=? LIMIT 1');
+          +        $q=$this->pdo->prepare('SELECT installation_id,authority_epoch,authority_state,remote_enabled,order_intake_enabled,public_move_intake_paused FROM installations WHERE installation_id=? LIMIT 1');
+                   $q->execute([$installationId]);
+                   $row=$q->fetch(PDO::FETCH_ASSOC);
+                   if(!is_array($row))throw new PublicUpdateException('installation_not_found','Installation not found.',404);
+          @@ -139,7 +139,7 @@
+                       'authority_epoch'=>(int)$row['authority_epoch'],
+                       'authority_state'=>(string)$row['authority_state'],
+                       'remote_enabled'=>(bool)$row['remote_enabled'],
+          -            'order_intake_enabled'=>(bool)$row['order_intake_enabled']];
+          +            'order_intake_enabled'=>(bool)$row['order_intake_enabled'],'public_move_intake_paused'=>(bool)$row['public_move_intake_paused']];
+               }
+           
+               public function currentEpoch(string $installationId): int
+          --- a/public/src/Http/AuthorityEpochHttpAdapter.php
+          +++ b/public/src/Http/AuthorityEpochHttpAdapter.php
+          @@ -20,7 +20,7 @@
+               {
+                   $v=$this->core->signedLocalRequests()->verify($installationId,$method,$path,$timestamp,$nonce,$rawBody,$signature);
+                   if(($v['ok']??false)!==true)return ['status'=>(int)$v['status'],'body'=>['ok'=>false,'error'=>(string)$v['error']]];
+          -        try{return ['status'=>200,'body'=>$this->core->authorityEpoch()->status((string)$v['installation_id'])];}
+          +        try{$body=$this->core->authorityEpoch()->status((string)$v['installation_id']);$body['default_binding_matches']=hash_equals((string)$v['installation_id'],$this->core->config()->string('app.default_installation_id',''));return ['status'=>200,'body'=>$body];}
+                   catch(PublicUpdateException $e){return ['status'=>$e->httpStatus,'body'=>['ok'=>false,'error'=>$e->errorCode]];}
+               }
+           
+          --- a/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          +++ b/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          @@ -580,6 +580,24 @@
+                   return $body;
+               }
+           
+          +    /** Prove fresh replacement pairing after an uncertain one-time-code response. Never activates intake. */
+          +    public function probeFreshReplacementPairing(string $baseUrl,string $newSecret): array
+          +    {
+          +        $values=$this->config->all();
+          +        $values['public']=is_array($values['public']??null)?$values['public']:[];
+          +        $values['public']['base_url']=$this->requireBase($baseUrl,'نشانی پابلیک نامعتبر است.');
+          +        $values['public']['shared_secret']=$newSecret;
+          +        $probe=new self(Config::fromArray($values),$this->transport,null,null);
+          +        $resp=$probe->post('/api/v1/local/authority/status',['authority_epoch'=>1],5);
+          +        $body=(array)($resp['body']??[]);
+          +        if(($body['installation_id']??null)!==$this->installationId() || ($body['authority_epoch']??null)!==1 ||
+          +            ($body['authority_state']??null)!=='active' || ($body['remote_enabled']??null)!==true ||
+          +            ($body['order_intake_enabled']??null)!==false || ($body['public_move_intake_paused']??null)!==true || ($body['default_binding_matches']??null)!==true){
+          +            throw new PublicEdgeSyncException('public_fresh_replacement_proof_invalid','وضعیت امضاشده مقصد تازه با اتصال متوقف‌شده مورد انتظار مطابقت ندارد.',409);
+          +        }
+          +        return $body;
+          +    }
+          +
+               public function reenrollAuthority(string $baseUrl,string $code,string $newSecret,string $displayName=''): array
+               {
+                   $base=$this->requireBase($baseUrl,'نشانی Public معتبر نیست.');
+          --- a/local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+          +++ b/local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+          @@ -77,16 +77,15 @@
+                       'nonce'=>$challenge['nonce'],
+                       'source_public_hash'=>hash('sha256',self::json($old)),
+                       'kind'=>$kind,
+          -            'expected_epoch'=>$ownerNextEpoch,
+          +            'expected_epoch'=>$kind==='fresh_unpaired'?1:$ownerNextEpoch,
+                       'stage'=>'pairing',
+                   ];
+                   $this->writeState($path,$state,true);
+                   try {
+          +            // Claim before either irreversible one-time-code operation. The durable
+          +            // staged secret can prove a committed pairing after a lost response.
+          +            $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                       if($kind==='existing_paired'){
+          -                // Claim before the remote one-time offer can be consumed. The
+          -                // state file is durable and a lost reply will be probed, never
+          -                // resent with the same or a different code.
+          -                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                           $pair=$this->local->publicEdgeSyncClient()->reenrollAuthority(
+                               $target,$pairingCode,$secret,''
+                           );
+          @@ -110,7 +109,6 @@
+                               ($body['installation_id']??null)!==$this->installationId) {
+                               throw new RuntimeException('public_replacement_pairing_contract_missing');
+                           }
+          -                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                       }
+                       $state['stage']='paired';
+                       $this->writeState($path,$state);
+          @@ -127,6 +125,19 @@
+               public function finish(string $operationId): array
+               {
+                   $state=$this->readState($this->statePath());
+          +        if(in_array((string)($state['stage']??''),['pairing','pairing_uncertain'],true) &&
+          +           ($state['kind']??'')==='fresh_unpaired'){
+          +            if(!hash_equals((string)($state['operation_id']??''),$operationId))
+          +                throw new RuntimeException('fresh_move_operation_changed');
+          +            // Only the already-claimed, owner-approved operation may resume.
+          +            // No second code submission, no config commit and no intake mutation here.
+          +            if(($this->ledger->status($this->installationId,$operationId)['status']??null)!=='claimed')
+          +                throw new RuntimeException('replacement_approval_not_consumed');
+          +            $this->local->publicEdgeSyncClient()->probeFreshReplacementPairing(
+          +                (string)$state['target_base_url'],(string)$state['new_secret']);
+          +            $state['stage']='paired';
+          +            $this->writeState($this->statePath(),$state);
+          +        }
+                   if(($state['stage']??'')==='pairing_uncertain' &&
+                      ($state['kind']??'')==='existing_paired'){
+                       if(!hash_equals((string)($state['operation_id']??''),$operationId))
+          @@ -207,10 +218,11 @@
+                       // code is recoverable by an authenticated, read-only signed probe
+                       // in finish(). Never issue a second enrollment code here.
+                       'status'=>(in_array($state['stage'],['paired','sync_ready','config_committed'],true) ||
+          -                (($state['stage']??'')==='pairing_uncertain' && ($state['kind']??'')==='existing_paired'))
+          +                (($state['stage']??'')==='pairing_uncertain' && ($state['kind']??'')==='existing_paired') ||
+          +                (in_array((string)($state['stage']??''),['pairing','pairing_uncertain'],true) && ($state['kind']??'')==='fresh_unpaired' && ($this->ledger->status($this->installationId,(string)$state['operation_id'])['status']??null)==='claimed'))
+                           ?'sync_pending':'support_required',
+          -            'resume_kind'=>(($state['stage']??'')==='pairing_uncertain')
+          -                ?'probe_existing_authority':'continue_synced_transfer',
+          +            'resume_kind'=>in_array((string)($state['stage']??''),['pairing','pairing_uncertain'],true)
+          +                ?(($state['kind']??'')==='fresh_unpaired'?'probe_fresh_pairing':'probe_existing_authority'):'continue_synced_transfer',
+                       'active'=>true,
+                       'operation_id'=>$state['operation_id'],
+                       'target_base_url'=>$state['target_base_url'],
+          PATCH
+          cat > "$W/real-resume.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          use Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException;
+          use Sokna\Local\Domain\PublicEdge\PublicMoveApprovalLedger;
+          use Sokna\Local\Domain\PublicEdge\PublicMoveSimpleReplacement;
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);if(!$w||basename($w)!=='a22')exit(2);require $w.'/local/bootstrap.php';$cfgPath=$w.'/config.php';$cfg=require $cfgPath;$pubPath=$w.'/public/config.php';$pubCfg=require $pubPath;
+          if(($cfg['db']['name']??'')!=='sokna_cp150'||($pubCfg['db']['name']??'')!=='sokna_cp150_public'||($cfg['db']['host']??'')!=='127.0.0.1'||($pubCfg['db']['host']??'')!=='127.0.0.1')exit(2);
+          function ck($x,$m){if(!$x)throw new RuntimeException($m);echo "PASS $m\n";}
+          function writeCfg($p,$c){file_put_contents($p,'<?php return '.var_export($c,true).';');}
+          function sql(PDO $p,$s,array $a=[]){$q=$p->prepare($s);$q->execute($a);return $q;}
+          function reject(callable $f,string $code){try{$f();throw new RuntimeException('unexpected accepted');}catch(PublicEdgeSyncException $e){ck($e->errorCode===$code,'rejected '.$code);}}
+          $iid=$cfg['installation']['id'];$target=$cfg['public']['base_url'];$secret=$cfg['public']['shared_secret'];ck($target==='http://127.0.0.1:18766/public'&&$pubCfg['app']['default_installation_id']===$iid,'exact disposable target binding');
+          $local=sokna_local_bootstrap($cfg);$p=$local->database();$q=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_cp150_public;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
+          $local->publicAuthorityState()->markRestoreRequired('qa-a23-business-restore');$unpaired=$cfg;$unpaired['public']=['base_url'=>'','shared_secret'=>''];$beforeHash=hash_file('sha256',$cfgPath);$test=sokna_local_bootstrap($unpaired);reject(fn()=>$test->publicReenrollment()->initialPair($target,'synthetic-invalid-code','QA',1),'public_initial_pair_recovery_required');ck(hash_file('sha256',$cfgPath)===$beforeHash,'real DB recovery guard preserves config');$local->publicAuthorityState()->markActive($local->publicAuthorityState()->epoch());
+          // Synthetic post-commit boundary; the original owner/code route is NOT qualified here.
+          sql($q,"UPDATE installations SET remote_enabled=1,order_intake_enabled=0,public_move_intake_paused=1,authority_state='active',authority_epoch=1 WHERE installation_id=?",[$iid]);
+          $paused=fn()=>sql($q,'SELECT CONCAT(authority_state,":",remote_enabled,":",order_intake_enabled,":",public_move_intake_paused) FROM installations WHERE installation_id=?',[$iid])->fetchColumn();ck($paused()==='active:1:0:1','destination fixture paused');
+          $cfg['public']=['base_url'=>'http://127.0.0.1:18769/public','shared_secret'=>bin2hex(random_bytes(32))];writeCfg($cfgPath,$cfg);$local=sokna_local_bootstrap($cfg);$client=$local->publicEdgeSyncClient();$p=$local->database();$beforeHash=hash_file('sha256',$cfgPath);
+          $proof=$client->probeFreshReplacementPairing($target,$secret);ck(($proof['default_binding_matches']??false)===true&&($proof['public_move_intake_paused']??false)===true,'real HTTP signed proof of paused binding');
+          $op='qa-a23-fresh-lost-response';$nonce=bin2hex(random_bytes(24));$ledger=new PublicMoveApprovalLedger($p);sql($p,"INSERT INTO public_move_auth_operations(operation_id,local_installation_id,challenge_sha256,challenge_json,nonce,status,expires_epoch) VALUES(?,?,?,?,?,'claimed',?)",[$op,$iid,str_repeat('a',64),'{}',$nonce,time()+300]);sql($p,'INSERT INTO public_move_auth_slots(local_installation_id,operation_id) VALUES(?,?) ON DUPLICATE KEY UPDATE operation_id=VALUES(operation_id)',[$iid,$op]);
+          $dir=$cfg['app']['data_dir'].'/private-move';if(!is_dir($dir))mkdir($dir,0700,true);$journal=$dir.'/replacement-current.json';ck(!file_exists($journal),'fresh fixture journal');
+          $state=['format'=>'sokna-simple-public-replacement-v1','operation_id'=>$op,'source_base_url'=>$cfg['public']['base_url'],'target_base_url'=>$target,'new_secret'=>$secret,'nonce'=>$nonce,'source_public_hash'=>hash('sha256',json_encode($cfg['public'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'kind'=>'fresh_unpaired','expected_epoch'=>1,'stage'=>'pairing_uncertain'];file_put_contents($journal,json_encode($state,JSON_THROW_ON_ERROR));chmod($journal,0600);$jsha=hash_file('sha256',$journal);
+          $svc=new PublicMoveSimpleReplacement($local,$ledger,$iid,$cfg['app']['data_dir']);ck($svc->status()['resume_kind']==='probe_fresh_pairing','real ledger recognizes resumable fresh pairing');
+          $wrong=$pubCfg;$wrong['app']['default_installation_id']='qa-a23-other-binding';writeCfg($pubPath,$wrong);try{reject(fn()=>$svc->finish($op),'public_fresh_replacement_proof_invalid');ck(hash_file('sha256',$journal)===$jsha&&hash_file('sha256',$cfgPath)===$beforeHash&&$paused()==='active:1:0:1','wrong public binding preserves Local config, journal and paused intake');}finally{writeCfg($pubPath,$pubCfg);}
+          // Lost/uncertain pairing can now resume only with the same signed staged secret.
+          $before=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','users','inventory_items'] as $t)$before[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+          $result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;
+          for($i=0;$i<2&&($result['status']??'')==='sync_retry';$i++){$result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;}
+          $complete=($result['completed']??false)===true;foreach($before as $t=>$rows)ck($p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC)===$rows,'business rows unchanged '.$t);
+          if($complete){$new=require $cfgPath;ck($new['public']['base_url']===$target&&hash_equals($secret,$new['public']['shared_secret']),'committed exact destination binding');ck(!file_exists($journal)&&$ledger->status($iid,$op)['status']==='completed','journal resolved and ledger completed');ck($paused()==='active:1:1:0','destination intake only after sync');}
+          else{ck(is_file($journal),'incomplete operation journal preserved');ck($paused()==='active:1:0:1','incomplete sync remains paused');}
+          file_put_contents($w.'/a23-resume-receipt.json',json_encode(['status'=>$complete?'PASS':'PARTIAL','actual_mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'actual_http'=>true,'synthetic_postcommit_journal'=>true,'owner_consent_or_original_pairing_tested'=>false,'old_host_not_running'=>true,'guard_recovery_config_preserved'=>true,'wrong_binding_rejected'=>true,'same_secret_signed_proof'=>true,'result'=>$result,'business_rows_preserved'=>true,'full_sync_activation'=>$complete,'new_identity_takeover_tested'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));ck($complete,'full fresh replacement resumed and activated');
+          PHP
+          sha256sum -c <<HASHES
+          295476eaead63b58f70d5debe9b2620b1b30a517e7fd5aca41d6082d8b95daad  $W/ui.patch
+          d0a5a60533e584eec8aa4a70ee753fdc436dff0a0631d64e07ce30e658afaa07  $W/resume.patch
+          8422927da128b598062018585117a30ba47def03ffeae8f07099e8deef09a6dc  $W/real-resume.php
+          HASHES
+          cd "$W"
+          patch --batch --forward -p1 < ui.patch
+          patch --batch --forward -p1 < resume.patch
+          sha256sum -c <<'HASHES'
+          5de19325087d31ace90de7d86aadbaf5b481adf27ab0e687113365a71909fe67  local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          11290e94a49ad64a9a60cde8c90840aa909ee66d895f0e6ce1eec1fb3841e72e  local/public/integrations/api.php
+          f56fdfd1bef93cd38244e030930dc6cfe5783bd11448fdd0025ab9612b7b4422  local/public/integrations/index.php
+          183c81abd5ad8c70c81f135ec9ed3731043bd1b19759617bb8c01c6c857579a8  local/public/assets/connections-workspace.js
+          1e8c1c7876badd0647f9b69d46786a2f2d59c22f232ace6a546c450d64202d37  public/src/Authority/AuthorityEpochService.php
+          3bbda68d78c2ad7bc892548d67fb4323811a204a03779b0e1850b7c5703f995d  public/src/Http/AuthorityEpochHttpAdapter.php
+          45047d14f2673cc09547ba74460925bbebf19b908b098b7077cc8769f95a19d8  local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          84162971d80e2244631e56bfd92d07d0a1a0a00b26b7ee83eb5f7dac88cd1140  local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+          HASHES
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/real-resume-http.log" 2>&1 & pp=$!
+          trap 'kill "$pp" 2>/dev/null || true' EXIT
+          sleep 2
+          kill -0 "$pp"
+          php "$W/real-resume.php" "$W" | tee "$W/real-resume-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-FRESH-RESUME-REAL-HTTP-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/a23-resume-receipt.json
+            ${{ runner.temp }}/a22/real-resume-log.txt
+            ${{ runner.temp }}/a22/real-resume-http.log
+            ${{ runner.temp }}/a22/real-resume.php
+          retention-days: 30
