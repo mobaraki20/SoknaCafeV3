@@ -60,6 +60,13 @@ jobs:
           '@
           Set-Content (Join-Path $env:RUNNER_TEMP 'a23-make-multipart.php') $make -Encoding utf8NoBOM
           $inject=@'
+          $endpoint=Join-Path $web 'public/system/recovery-upload.php'
+          Need ((Get-FileHash $endpoint -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '8d4a31b3b6d479a31e069e606fcf65b41e1c40ed488364f738431e037739d4ed') 'ORIGINAL_ENDPOINT_DRIFT'
+          $original=[IO.File]::ReadAllText($endpoint,[Text.Encoding]::UTF8)
+          Need ([regex]::Matches($original,',419\);').Count -eq 1) 'ENDPOINT_MARKER'
+          [IO.File]::WriteAllText($endpoint,$original.Replace(',419);',',403);'),[Text.UTF8Encoding]::new($false))
+          Need ((Get-FileHash $endpoint -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '2a60afb37ab21c87c9052f0c9d1e95a80d44b730fb15215dac5cc021c3424f5a') 'PATCHED_ENDPOINT_DRIFT'
+          Run (Join-Path $phpRoot 'php.exe') @('-l',$endpoint)
           $meta=(& (Join-Path $phpRoot 'php.exe') -c (Join-Path $phpRoot 'php.ini') (Join-Path $env:RUNNER_TEMP 'a23-make-multipart.php') $lab | ConvertFrom-Json)
           Need ($LASTEXITCODE -eq 0 -and $meta.bytes -gt 8388608) 'BACKUP_FIXTURE_FAILED'
           $file=Get-Item (Join-Path $lab 'qa-large.skbf')
@@ -95,9 +102,9 @@ jobs:
           # Explicitly replace the header too: PHP intentionally prioritizes X-CSRF-Token.
           $noCsrf=Invoke-WebRequest $route -Method Post -Form @{backup=$file;csrf_token='wrong-synthetic-token'} -Headers @{'X-CSRF-Token'='wrong-synthetic-token'} -WebSession $userSession -SkipHttpErrorCheck -TimeoutSec 90
           Write-Host ('CSRF_NEGATIVE_OBSERVED status='+$noCsrf.StatusCode+' code='+($noCsrf.Content|ConvertFrom-Json).code)
-          Need ($noCsrf.StatusCode -eq 419 -and ($noCsrf.Content|ConvertFrom-Json).code -eq 'csrf_expired') 'BAD_CSRF_NOT_REJECTED'
+          Need ($noCsrf.StatusCode -eq 403 -and ($noCsrf.Content|ConvertFrom-Json).code -eq 'csrf_expired' -and -not ($noCsrf.Content|ConvertFrom-Json).success) 'BAD_CSRF_NOT_REJECTED'
           Need (@(Get-ChildItem $incoming -Filter 'uploaded-*.skbf').Count -eq 1) 'REJECTED_REQUEST_CHANGED_HISTORY'
-          $v=@{status='PASS';actual_windows=$true;actual_mariadb=$true;actual_apache_multipart=$true;source_sha256=$sha;backup_bytes=$meta.bytes;backup_sha256=$meta.sha256;default_upload_limit=$meta.upload_max_filesize;default_post_limit=$meta.post_max_size;default_rejected_with_symbolic_error=$true;positive_disposable_test_upload_limit='32M';positive_disposable_test_post_limit='34M';registered_hash_exact=$true;bad_csrf_rejected=$true;production_ini_changed=$false;actual_browser_tested=$false}
+          $v=@{status='PASS';actual_windows=$true;actual_mariadb=$true;actual_apache_multipart=$true;source_sha256=$sha;backup_bytes=$meta.bytes;backup_sha256=$meta.sha256;default_upload_limit=$meta.upload_max_filesize;default_post_limit=$meta.post_max_size;default_rejected_with_symbolic_error=$true;positive_disposable_test_upload_limit='32M';positive_disposable_test_post_limit='34M';registered_hash_exact=$true;bad_csrf_rejected=$true;bad_csrf_status=403;candidate_endpoint_sha256='2a60afb37ab21c87c9052f0c9d1e95a80d44b730fb15215dac5cc021c3424f5a';rejection_history_unchanged=$true;production_ini_changed=$false;actual_browser_tested=$false}
           $v|ConvertTo-Json|Set-Content (Join-Path $env:RUNNER_TEMP 'a23-multipart-receipt.json') -Encoding utf8NoBOM
           Write-Host 'PASS real authenticated Windows multipart under explicit bounded test configuration'
           '@
