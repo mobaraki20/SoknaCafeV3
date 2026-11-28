@@ -1,0 +1,116 @@
+name: A23 Windows authenticated large backup multipart bounds
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-windows-multipart.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/cp76/out
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Real Windows large encrypted business recovery to an independent installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $receipt=Get-Content "$env:RUNNER_TEMP/cp76/out/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $pkg='LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          $sha='707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10'
+          if($receipt.local.web_sha256 -cne $sha -or $receipt.production_authorized -ne $false -or $receipt.delivery_authorized -ne $false){throw 'INVALID_CANDIDATE_RECEIPT'}
+          if((Get-FileHash "$env:RUNNER_TEMP/cp76/out/$pkg" -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'CANDIDATE_ARCHIVE_DRIFT'}
+          $version='3.0.0-g6.2-workspace.231gl-a21-postrelease-20261128'
+          $s=Get-Content 'qa/factory/checkpoint78-standard-clean-web.ps1' -Raw
+          $s=$s.Replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip',$pkg).Replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',$sha).Replace('3.0.0-g6.2-workspace.231gg-checkpoint76-qa',$version)
+          $s=$s.Replace('php.ini-development','php.ini-production')
+          $make=@'
+          <?php
+          declare(strict_types=1);
+          if(PHP_OS_FAMILY!=='Windows'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_R186_CI_ONLY')!=='YES')exit(2);
+          $lab=realpath($argv[1]);if(!$lab||!str_starts_with(str_replace('\\','/',$lab),str_replace('\\','/',realpath(getenv('RUNNER_TEMP'))).'/sokna-r301-native-'))exit(2);
+          require $lab.'/Web/bootstrap.php';$cfg=require $lab.'/config.php';if($cfg['db']['name']!=='sokna_ci_clean_windows'||$cfg['db']['port']!='39745')exit(2);$core=sokna_local_bootstrap($cfg);$data=$cfg['app']['data_dir'];$media=$data.'/guest-media';
+          file_put_contents($media.'/qa-large-upload.bin',random_bytes(9*1048576));
+          $path=$lab.'/qa-large.skbf';$m=$core->businessBackup()->createEncrypted($path,'synthetic-a23-multipart-only',0);
+          if(filesize($path)<=8*1048576||filesize($path)>=32*1048576||hash_file('sha256',$path)!==$m['sha256'])exit(3);
+          echo json_encode(['bytes'=>filesize($path),'sha256'=>$m['sha256'],'upload_max_filesize'=>ini_get('upload_max_filesize'),'post_max_size'=>ini_get('post_max_size')],JSON_THROW_ON_ERROR);
+          '@
+          Set-Content (Join-Path $env:RUNNER_TEMP 'a23-make-multipart.php') $make -Encoding utf8NoBOM
+          $inject=@'
+          $meta=(& (Join-Path $phpRoot 'php.exe') -c (Join-Path $phpRoot 'php.ini') (Join-Path $env:RUNNER_TEMP 'a23-make-multipart.php') $lab | ConvertFrom-Json)
+          Need ($LASTEXITCODE -eq 0 -and $meta.bytes -gt 8388608) 'BACKUP_FIXTURE_FAILED'
+          $file=Get-Item (Join-Path $lab 'qa-large.skbf')
+          $account=@{username='ci-admin';password='disposable-windows-qa-20261126'}
+          $loginPost=Invoke-WebRequest "$origin/login.php" -Method Post -Body $account -SessionVariable userSession -TimeoutSec 30
+          $sys=Invoke-WebRequest "$origin/system/index.php" -WebSession $userSession -TimeoutSec 30
+          Need ($sys.StatusCode -eq 200 -and $sys.Content -match 'data-system-workspace') 'AUTHENTICATED_SYSTEM_PAGE_MISSING'
+          $token=[regex]::Match($sys.Content,'data-csrf="([^"]+)"').Groups[1].Value
+          Need ($token.Length -ge 16) 'CSRF_MISSING'
+          $route="$origin/system/recovery-upload.php"
+          $first=Invoke-WebRequest $route -Method Post -Form @{backup=$file;csrf_token=$token} -Headers @{'X-CSRF-Token'=$token} -WebSession $userSession -SkipHttpErrorCheck -TimeoutSec 90
+          $err=$first.Content|ConvertFrom-Json
+          Need ($first.StatusCode -eq 413 -and $err.code -eq 'upload_server_limit' -and -not $err.success) 'DEFAULT_CAP_NOT_EXPLICITLY_REJECTED'
+          $incoming=Join-Path $data 'recovery/business'
+          Need (@(Get-ChildItem $incoming -Filter 'uploaded-*.skbf' -ErrorAction SilentlyContinue).Count -eq 0) 'DEFAULT_REJECTION_REGISTERED_FILE'
+          Write-Host "PASS fresh php.ini-production cap rejects authenticated actual >8MiB business backup: $($meta.upload_max_filesize)/$($meta.post_max_size)"
+          # Explicitly change only disposable test runtime for a positive capacity check. Not an installer change.
+          Stop-Service SoknaApache -ErrorAction Stop
+          $ini=Join-Path $phpRoot 'php.ini'
+          $origIni=Get-Content $ini -Raw
+          $limited=[regex]::Replace($origIni,'(?m)^\s*upload_max_filesize\s*=.*$','upload_max_filesize = 32M')
+          $limited=[regex]::Replace($limited,'(?m)^\s*post_max_size\s*=.*$','post_max_size = 34M')
+          Need ($limited -match '(?m)^upload_max_filesize = 32M$' -and $limited -match '(?m)^post_max_size = 34M$') 'TEST_BOUND_FAILED'
+          Set-Content $ini $limited -Encoding utf8NoBOM
+          Start-Service SoknaApache
+          Start-Sleep -Seconds 2
+          $ok=Invoke-WebRequest $route -Method Post -Form @{backup=$file;csrf_token=$token} -Headers @{'X-CSRF-Token'=$token} -WebSession $userSession -SkipHttpErrorCheck -TimeoutSec 90
+          $body2=$ok.Content|ConvertFrom-Json
+          Need ($ok.StatusCode -eq 200 -and $body2.success -and $body2.backup.size_bytes -eq $meta.bytes -and $body2.backup.sha256 -ceq $meta.sha256) 'BOUNDED_REAL_MULTIPART_FAILED'
+          $registered=Join-Path $incoming ($body2.backup.id+'.skbf')
+          Need ((Get-FileHash $registered -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $meta.sha256) 'REGISTERED_BYTES_DRIFT'
+          $noCsrf=Invoke-WebRequest $route -Method Post -Form @{backup=$file;csrf_token='wrong-synthetic-token'} -WebSession $userSession -SkipHttpErrorCheck -TimeoutSec 90
+          Need ($noCsrf.StatusCode -eq 419 -and ($noCsrf.Content|ConvertFrom-Json).code -eq 'csrf_expired') 'BAD_CSRF_NOT_REJECTED'
+          Need (@(Get-ChildItem $incoming -Filter 'uploaded-*.skbf').Count -eq 1) 'REJECTED_REQUEST_CHANGED_HISTORY'
+          $v=@{status='PASS';actual_windows=$true;actual_mariadb=$true;actual_apache_multipart=$true;source_sha256=$sha;backup_bytes=$meta.bytes;backup_sha256=$meta.sha256;default_upload_limit=$meta.upload_max_filesize;default_post_limit=$meta.post_max_size;default_rejected_with_symbolic_error=$true;positive_disposable_test_upload_limit='32M';positive_disposable_test_post_limit='34M';registered_hash_exact=$true;bad_csrf_rejected=$true;production_ini_changed=$false;actual_browser_tested=$false}
+          $v|ConvertTo-Json|Set-Content (Join-Path $env:RUNNER_TEMP 'a23-multipart-receipt.json') -Encoding utf8NoBOM
+          Write-Host 'PASS real authenticated Windows multipart under explicit bounded test configuration'
+          '@
+          $marker=' $receipt=@{status='
+          if(!$s.Contains($marker)){throw 'NATIVE_SCRIPT_MARKER'}
+          # Supply the exact archive SHA explicitly to the receipt inside the child script.
+          $inject=$inject.Replace('$sha',("'"+$sha+"'"))
+          $s=$s.Replace($marker,($inject+[Environment]::NewLine+$marker))
+          $p=Join-Path $env:RUNNER_TEMP 'a23-native-multipart.ps1'
+          Set-Content $p $s -Encoding utf8NoBOM
+          & $p
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_MULTIPART_FAILED'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-WINDOWS-MULTIPART-EVIDENCE
+          path: ${{ runner.temp }}/a23-multipart-receipt.json
+          if-no-files-found: warn
+          retention-days: 30
