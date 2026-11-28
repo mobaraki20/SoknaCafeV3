@@ -1,0 +1,258 @@
+name: SOKNA guide operational screens and exact pairing
+on:
+  push:
+    branches: [docs/guide-native-capture-20261128]
+    paths: ['.github/workflows/sokna-guide-operations-capture.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-guide-only
+          MARIADB_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          artifact-ids: 15254366335
+          path: input
+      - uses: actions/checkout@v4
+        with:
+          repository: rastikerdar/vazirmatn
+          ref: v33.003
+          path: official-font
+          persist-credentials: false
+      - name: Prepare exact archives, real web server and product font
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          sudo mkdir -p /srv/sokna-docs-lab
+          sudo chown "$USER":"$(id -gn)" /srv/sokna-docs-lab
+          mkdir -p /srv/sokna-docs-lab/local/Web /srv/sokna-docs-lab/public
+          python - <<'PY'
+          import zipfile,pathlib,hashlib
+          p=pathlib.Path('input')
+          pairs=[('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip','707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','/srv/sokna-docs-lab/local/Web'),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip','641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','/srv/sokna-docs-lab/public')]
+          for name,expected,dest in pairs:
+              found=[x for x in p.rglob('*.zip') if hashlib.sha256(x.read_bytes()).hexdigest()==expected]
+              assert len(found)==1,(name,'no exact archive',list(p.iterdir()))
+              with zipfile.ZipFile(found[0]) as z:
+                  assert z.testzip() is None
+                  z.extractall(dest)
+          PY
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2 libapache2-mod-php php-mysql php-mbstring php-zip php-curl php-gd
+          sudo a2enmod rewrite headers
+          cat <<'CONF' | sudo tee /etc/apache2/conf-available/sokna-docs-lab.conf
+          Listen 127.0.0.1:18080
+          Listen 127.0.0.1:18081
+          <VirtualHost 127.0.0.1:18080>
+              ServerName 127.0.0.1
+              DocumentRoot /srv/sokna-docs-lab/local/Web/public
+              <Directory /srv/sokna-docs-lab/local/Web/public>
+                  Options FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+          <VirtualHost 127.0.0.1:18081>
+              ServerName 127.0.0.1
+              DocumentRoot /srv/sokna-docs-lab/public
+              <Directory /srv/sokna-docs-lab/public>
+                  Options FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+          CONF
+          sudo a2enconf sokna-docs-lab
+          mkdir -p /srv/sokna-docs-lab/local/SetupCache/ui-fonts /srv/sokna-docs-lab/public/storage/ui-fonts
+          cp 'official-font/fonts/webfonts/Vazirmatn[wght].woff2' /tmp/vazirmatn.woff2
+          echo '4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92  /tmp/vazirmatn.woff2' | sha256sum -c
+          cp /tmp/vazirmatn.woff2 /srv/sokna-docs-lab/local/SetupCache/ui-fonts/Vazirmatn-Variable.woff2
+          cp /tmp/vazirmatn.woff2 /srv/sokna-docs-lab/public/storage/ui-fonts/Vazirmatn-Variable.woff2
+          sudo chown -R www-data:www-data /srv/sokna-docs-lab
+          sudo apache2ctl configtest
+          sudo systemctl restart apache2
+          curl -f http://127.0.0.1:18080/setup/ -o /dev/null || { sudo tail -80 /var/log/apache2/error.log; exit 1; }
+          curl -f http://127.0.0.1:18081/setup/ -o /dev/null || { sudo tail -80 /var/log/apache2/error.log; exit 1; }
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Capture actual setup screens and perform installation through UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/guide_web.py <<'PY'
+          import hashlib,json,os,secrets
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('evidence'); records=[]
+          expected='4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92'
+          def font(page):
+              page.evaluate("async()=>{await document.fonts.ready; await document.fonts.load('400 16px Vazirmatn','سکنا')}")
+              loaded=page.evaluate("()=>[...document.fonts].some(f=>f.family.replace(/[\"']/g,'')==='Vazirmatn'&&f.status==='loaded')")
+              assert loaded,'Product font not loaded'
+          def shot(page,name,section=None):
+              font(page)
+              f=out/(name+'.png')
+              if section:page.locator(section).screenshot(path=str(f))
+              else:page.screenshot(path=str(f),full_page=True)
+              records.append(dict(name=f.name,url=page.url,sha256=hashlib.sha256(f.read_bytes()).hexdigest(),font_sha256=expected))
+              print('REAL_CAPTURE',name,flush=True)
+          def req(page,button,action):
+              with page.expect_response(lambda r:'api.php?action='+action in r.url,timeout=90000) as response:
+                  page.locator(button).click()
+              data=response.value.json()
+              assert response.value.ok and data.get('success') is not False,(action,data.get('message'))
+              return data
+          def fields(page):
+              page.locator('[data-db="user"]').fill('root')
+              page.locator('[data-db="pass"]').fill('disposable-guide-only')
+              page.locator('[data-create-db]').check()
+          try:
+              with sync_playwright() as pw:
+                  browser=pw.chromium.launch(headless=True)
+                  page=browser.new_page(viewport={'width':1440,'height':1000},color_scheme='light')
+                  with page.expect_response(lambda r:'api.php?action=status' in r.url) as resp:
+                      page.goto('http://127.0.0.1:18080/setup/')
+                  assert resp.value.json()['preflight']['ok']
+                  page.locator('[data-preflight] .sc-setup__check').first.wait_for()
+
+                  page.locator('[data-data-dir]').fill('/srv/sokna-docs-lab/local/Data/LocalWeb')
+                  req(page,'[data-action="preflight"]','preflight')
+
+                  fields(page)
+                  req(page,'[data-action="test-db"]','test_database')
+                  page.locator('[data-admin="user"]').fill('admin')
+                  admin_password=secrets.token_urlsafe(24)
+                  page.locator('[data-admin="password"]').fill(admin_password)
+
+                  req(page,'[data-action="install"]','install_new')
+                  page.wait_for_url('**/login.php',timeout=90000)
+
+                  p=browser.new_page(viewport={'width':1440,'height':1000},color_scheme='light')
+                  with p.expect_response(lambda r:'api.php?action=status' in r.url) as resp:
+                      p.goto('http://127.0.0.1:18081/setup/')
+                  assert resp.value.json()['preflight']['ok']
+                  p.locator('[data-checks] .check-info').first.wait_for()
+
+                  req(p,'[data-preflight]','preflight')
+                  fields(p)
+                  req(p,'[data-test-db]','test_database')
+                  p.locator('[data-owner]').fill(secrets.token_urlsafe(24))
+                  p.locator('[data-emergency]').fill(secrets.token_urlsafe(24))
+
+                  # A real successful Public setup creates a pairing code; do not capture or expose it.
+                  installed=req(p,'[data-install]','install')
+                  print('PUBLIC_INSTALL_UI_PASS',flush=True)
+                  code=installed['pairing_code']
+                  assert code and len(code)>8
+                  # Real login, unchanged installed database; only the setup-created administrator.
+                  page.locator('input[name=password]').fill(admin_password)
+                  page.locator('[data-login-form] button[type=submit]').click()
+                  page.wait_for_url(lambda url:'login.php' not in url,timeout=30000)
+                  page.wait_for_load_state('networkidle')
+                  base='http://127.0.0.1:18080'
+                  def visit(path):
+                      with page.expect_response(lambda r: path+'api.php' in r.url and r.request.method=='GET',timeout=30000) as res:
+                          page.goto(base+path)
+                      d=res.value.json()
+                      assert res.value.ok and d.get('success') is not False,path
+                      page.wait_for_load_state('networkidle')
+                      return d.get('snapshot',{})
+                  def tab(name,filename):
+                      page.locator('[data-tab="'+name+'"]').click()
+                      page.wait_for_timeout(350)
+                      shot(page,filename)
+                  # Read-only independent pages first; no demo orders or arbitrary seed modifications.
+                  results={}
+                  def capture_view(path,root,name,tabs=()):
+                      try:
+                          page.goto(base+path)
+                          loc=page.locator(root)
+                          loc.wait_for(timeout=15000)
+                          api=loc.get_attribute('data-api')
+                          if api:
+                              from urllib.parse import urljoin
+                              u=urljoin(base+'/',api)
+                              rr=page.request.get(u,timeout=20000)
+                              assert rr.ok and rr.json().get('success') is not False
+                          page.wait_for_load_state('networkidle',timeout=20000)
+                          shot(page,name)
+                          results[name]='PASS_READ_ONLY'
+                          for selector,filename in tabs:
+                              page.locator(selector).click()
+                              page.wait_for_timeout(450)
+                              shot(page,filename)
+                              results[filename]='PASS_READ_ONLY'
+                      except Exception as e:
+                          results[name]=type(e).__name__
+                          print('OPTIONAL_CAPTURE',name,type(e).__name__,flush=True)
+                  capture_view('/printing/','[data-printing-workspace]','10-01-printing', [('[data-print-tab=queue]','10-02-queue'),('[data-print-tab=templates]','10-03-templates')])
+                  capture_view('/system/','[data-system-workspace]','17-01-system-health',[('[data-tab=updates]','17-02-updates'),('[data-tab=recovery]','17-03-backup')])
+                  capture_view('/guest-content/','[data-guest-content]','15-01-guest-content',[('[data-tab=copy]','15-02-guest-copy'),('[data-tab=settings]','15-03-guest-settings')])
+                  capture_view('/operator/','[data-operator-workspace]','16-01-hall')
+                  capture_view('/waiter/','[data-preparation-workspace]','16-02-preparation')
+                  capture_view('/notifications/','[data-notifications-workspace]','12-01-notifications')
+                  page.goto(base+'/integrations/')
+                  page.locator('[data-connections-workspace]').wait_for()
+                  page.wait_for_load_state('networkidle')
+                  page.locator('[data-tab=windows]').click()
+                  shot(page,'10-04-windows-connection')
+                  page.locator('[data-tab=public]').click()
+                  # Capture real viewport for sidebar geometry, separately from prior full-page images.
+                  font(page)
+                  f=out/'06-01-before-pair-viewport.png'
+                  page.screenshot(path=str(f))
+                  records.append(dict(name=f.name,url=page.url,sha256=hashlib.sha256(f.read_bytes()).hexdigest(),font_sha256=expected))
+                  (out/'read-only-results.json').write_text(json.dumps(results,indent=2))
+                  def matches(resp,action):
+                      if '/integrations/api.php' not in resp.url or resp.request.method!='POST':return False
+                      try:return resp.request.post_data_json.get('action')==action
+                      except Exception:return False
+                  page.locator('[data-public-pair-url]').fill('http://127.0.0.1:18081')
+                  page.locator('[data-public-pair-code]').fill(code)
+                  with page.expect_response(lambda r:matches(r,'public_pair'),timeout=90000) as pr:
+                      page.locator('[data-public-pair]').click()
+                  pair=pr.value.json()
+                  # Persist only selected nonsecret fields, never server response bodies.
+                  (out/'pair-state.json').write_text(json.dumps({'http_status':pr.value.status,'success':pair.get('success'),'pairing_ok':pair.get('pairing',{}).get('ok')},indent=2))
+                  assert pr.value.ok and pair.get('success') is True and pair.get('pairing',{}).get('ok') is True,'Actual pair failed'
+                  page.wait_for_function("()=>document.querySelector('[data-public-pair-code]').value===''",timeout=30000)
+                  rr=page.request.get(base+'/integrations/api.php',timeout=30000)
+                  assert rr.ok
+                  paired=rr.json()['snapshot'];edge=paired.get('public_edge',{})
+                  geometry=page.locator('[data-public-initial-pair-card]').evaluate("(e)=>({hidden:e.hidden,display:getComputedStyle(e).display})")
+                  state={'pair_http_status':pr.value.status,'pair_success':True,'status':edge.get('status'),'base_url':edge.get('base_url'),'card':geometry,'snapshot_error':bool(paired.get('errors',{}).get('public_edge'))}
+                  (out/'pair-state.json').write_text(json.dumps(state,indent=2))
+                  assert edge.get('base_url')=='http://127.0.0.1:18081' and edge.get('status')!='not_configured' and not state['snapshot_error'],'Pair persistence unconfirmed'
+                  shot(page,'06-02-paired')
+                  with page.expect_response(lambda r:matches(r,'public_sync'),timeout=120000) as sr:
+                      page.locator('[data-public-sync]').click()
+                  result=sr.value.json().get('public_sync',{})
+                  (out/'pair-sync-result.json').write_text(json.dumps({'pair_success':True,'sync_http_status':sr.value.status,'sync_success':result.get('success'),'degraded':result.get('degraded'),'failed_channels':result.get('failed_channels',[]),'scope':'loopback; no Windows Runtime or WAN field acceptance'},indent=2))
+                  page.wait_for_load_state('networkidle',timeout=120000)
+                  shot(page,'06-03-sync')
+                  browser.close()
+          finally:
+              (out/'receipt.json').write_text(json.dumps({'scope':'exact controlled web packages, real initial default-data UI and pairing attempt on disposable Linux Apache and MariaDB 11.4; not Windows field or hosting panel','run_id':os.environ['GITHUB_RUN_ID'],'local_sha256':'707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','public_sha256':'641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','captures':records},indent=2))
+          PY
+          python /tmp/guide_web.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-GUIDE-OPERATIONS-REAL-EVIDENCE
+          path: evidence
+          if-no-files-found: warn
