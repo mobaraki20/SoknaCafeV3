@@ -55,7 +55,7 @@ jobs:
           echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
           unzip -q "$P2" -d "$W/public"
           php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
-      - name: Verify A23-17 exact delta and run origin rebind with active OPcache
+      - name: Verify A23-18 state ordering and integrated recovery
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/a22"
@@ -1368,6 +1368,20 @@ jobs:
           p=Path('origin-http.php');s=p.read_text();anchor='// Targeted readback:';assert s.count(anchor)==1;s=s.replace(anchor,"ck($c->publicEdgeSyncClient()->deploymentBindingProbe($other)['deployment']['base_url']===$old,'second PHP pool warmed with old binding');\n"+anchor);p.write_text(s)
           p=Path('origin-router.php');s=p.read_text();anchor='$p=parse_url';s=s.replace(anchor,"if($_SERVER['REQUEST_URI']==='/qa-opcache-state'){header('Content-Type: application/json');echo json_encode(['sapi'=>PHP_SAPI,'active'=>opcache_get_status(false)!==false,'validate'=>ini_get('opcache.validate_timestamps'),'pid'=>getmypid()]);return true;}\n"+anchor);p.write_text(s)
           PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('public/src/Deployment/DeploymentRebindService.php'); s=p.read_text()
+          for i,(a,b) in enumerate(json.loads("[[\"'prepared_config_sha256'=>hash('sha256',$raw),'prepared_at'=>gmdate('c'),'expires_at'=>time()+self::STATE_TTL,\",\"'prepared_config_sha256'=>hash('sha256',$raw),'prepared_at'=>gmdate('c'),'prepared_sequence'=>$this->nextPreparedSequence(),'expires_at'=>time()+self::STATE_TTL,\"],[\"    private function latestState(string $installationId): ?array\",\"    /** Called inside the rebind lock; ordering must not depend on one-second timestamps. */\\n    private function nextPreparedSequence(): int\\n    {\\n        $max=0;foreach(glob($this->stateDir().'/rebind-*.json')?:[] as $path){try{$v=json_decode((string)file_get_contents($path),true,48,JSON_THROW_ON_ERROR);}catch(Throwable){continue;}if(!is_array($v)||($v['format']??'')!==self::CONTRACT)continue;$max=max($max,(int)($v['prepared_sequence']??0));}\\n        if($max===PHP_INT_MAX)throw new PublicUpdateException('deployment_rebind_sequence_exhausted','Rebind sequence is exhausted.',500);return $max+1;\\n    }\\n\\n    private static function compareStateOrder(array $a,array $b): int\\n    {\\n        $sequence=(int)($b['prepared_sequence']??0)<=>(int)($a['prepared_sequence']??0);if($sequence!==0)return $sequence;\\n        $time=strcmp((string)($b['prepared_at']??''),(string)($a['prepared_at']??''));if($time!==0)return $time;\\n        // Legacy records can share a timestamp. An open grace has priority over retired history.\\n        $active=(int)(($b['old_origin_grace_state']??'')==='active')<=>(int)(($a['old_origin_grace_state']??'')==='active');if($active!==0)return $active;\\n        return strcmp((string)($b['id']??''),(string)($a['id']??''));\\n    }\\n\\n    private function latestState(string $installationId): ?array\"],[\"usort($rows,static fn(array $a,array $b):int=>strcmp((string)($b['prepared_at']??''),(string)($a['prepared_at']??'')));return $rows[0]??null;\",\"usort($rows,self::compareStateOrder(...));return $rows[0]??null;\"]]")):
+              assert s.count(a)==(2 if i==2 else 1); s=s.replace(a,b)
+          p.write_text(s)
+          for name,pairs in json.loads("{\"origin-http.php\":[[\"$s['active']&&$s['phase']==='finalized'\",\"$s['active']&&$s['phase']==='finalized'&&$s['rebind_id']===$r['rebind_id']\"],[\"$again=getHttp($from.'/menu?table=qa-token%2B1','text/html');\",\"$retired=$c->publicOriginRebind()->transitionStatus();ck(!$retired['active']&&$retired['rebind_id']===$r['rebind_id'],'latest retired state identifies this move');\\n $again=getHttp($from.'/menu?table=qa-token%2B1','text/html');\"],[\"ck(snapshot($db,['orders'\",\"$faultBase='http://127.0.0.1:18768/qa-fault';$c=core();$preFault=configHashes();reject(fn()=>$c->publicOriginRebind()->execute($faultBase,1),'deployment_target_health_failed');ck(configHashes()===$preFault,'automatic failure rollback preserves both exact config files');$c=core();ck($c->publicEdgeSyncClient()->deploymentBindingProbe($other)['deployment']['base_url']===$other&&$c->publicEdgeSyncClient()->deploymentTargetHealth($other)['deployment']['base_url']===$other,'after failure rollback signed proof and Health both restored');\\n$st=$c->publicOriginRebind()->transitionStatus();ck(!$st['active']&&$st['phase']==='rolled_back','latest state correctly reports failed transition rollback');\\n$rows=[];foreach(glob((require $w.'/public/config.php')['app']['storage_dir'].'/deployment-rebind/rebind-*.json') as $f){$v=json_decode(file_get_contents($f),true);$rows[]=['id'=>$v['id'],'prepared_at'=>$v['prepared_at'],'prepared_sequence'=>$v['prepared_sequence'],'phase'=>$v['phase']];}usort($rows,fn($a,$b)=>$a['prepared_sequence']<=>$b['prepared_sequence']);ck(array_column($rows,'prepared_sequence')===range(1,count($rows))&&count($rows)===5,'five sequential state records monotonic and unique');file_put_contents($w.'/origin-state-order-receipt.json',json_encode($rows,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));\\nck(snapshot($db,['orders'\"]],\"origin-router.php\":[[\"'/qa-redirect/deployment-binding.php'\",\"'/qa-redirect/deployment-binding.php','/qa-fault/deployment-binding.php'\"],[\"if($p==='/qa-no-marker/\",\"if($p==='/qa-fault/health'){http_response_code(503);header('Content-Type: application/json');echo '{\\\"ok\\\":false}';return true;}\\nif($p==='/qa-no-marker/\"]]}").items():
+              p=Path(name); s=p.read_text()
+              for a,b in pairs:
+                  assert s.count(a)==1,(name,a,s.count(a));s=s.replace(a,b)
+              p.write_text(s)
+          PY
+          echo 'f7fddc1d4d70b2696f202f5de254313a034736b21e6bcb34899c1233627baacf  public/src/Deployment/DeploymentRebindService.php' | sha256sum -c
           php -d opcache.enable=1 -d opcache.enable_cli=0 -d opcache.validate_timestamps=0 -d opcache.file_update_protection=0 -S 127.0.0.1:18766 -t "$W/public" "$W/origin-router.php" > "$W/origin-http.log" 2>&1 & pp=$!
           php -d opcache.enable=1 -d opcache.enable_cli=0 -d opcache.validate_timestamps=0 -d opcache.file_update_protection=0 -S 127.0.0.1:18768 -t "$W/public" "$W/origin-router.php" > "$W/origin-other-http.log" 2>&1 & qp=$!
           trap 'kill "$pp" "$qp" 2>/dev/null || true' EXIT
@@ -1379,7 +1393,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A23-17-ORIGIN-INTEGRATED-EVIDENCE
+          name: SOKNA-A23-18-ORIGIN-INTEGRATED-EVIDENCE
           path: |
             ${{ runner.temp }}/a22/origin-*-receipt.json
             ${{ runner.temp }}/a22/origin-*-log.txt
