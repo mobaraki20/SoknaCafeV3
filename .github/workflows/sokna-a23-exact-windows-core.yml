@@ -1,0 +1,136 @@
+name: A23-27 exact extracted Windows installer core
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-exact-windows-core.yml']
+permissions:
+  contents: read
+jobs:
+  actual-installer:
+    runs-on: windows-latest
+    timeout-minutes: 14
+    steps:
+      - name: Exercise exact published core via supported silent mode and genuine component lifecycle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS-ne'true' -or $env:RUNNER_OS-ne'Windows'){throw 'DISPOSABLE_RUNNER_ONLY'}
+          function Need([bool]$ok,[string]$why){if(-not $ok){throw $why}}
+          function Sha([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+          $evidence=Join-Path $env:RUNNER_TEMP 'a23-27-evidence'
+          New-Item -ItemType Directory $evidence -Force|Out-Null
+          $data=Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'SOKNA'
+          $shell=Join-Path $env:ProgramFiles 'SOKNA Windows Services'
+          Need (!(Test-Path $data) -and !(Test-Path $shell)) 'REFUSE_EXISTING_HOST'
+          foreach($name in @('SoknaRuntime','SoknaPrintWorker','SoknaMaintenanceSupervisor')){Need (!(Get-Service $name -ErrorAction SilentlyContinue)) 'REFUSE_EXISTING_SERVICE'}
+          $exe=Join-Path $env:RUNNER_TEMP 'SOKNA-Windows-Services-Setup-1.1.26.exe'
+          $expected='c40f8cf57f3d1af9baa44473f818155f1244686776846ebaa355191fbae08a88'
+          Invoke-WebRequest 'https://github.com/mobaraki20/SoknaCafeV3/releases/download/windows-services-v1.1.26/SOKNA-Windows-Services-Setup-1.1.26.exe' -OutFile $exe -TimeoutSec 180
+          Need ((Sha $exe) -ceq $expected) 'PUBLISHED_EXE_HASH_DRIFT'
+          Need ((Get-Item $exe).VersionInfo.FileVersion -eq '1.1.26.0') 'EXE_VERSION_DRIFT'
+          Write-Host 'PASS exact published 1.1.26 installer SHA and PE version'
+          $receipt=[ordered]@{format='sokna-a23-27-exact-installer-qa-v1';installer_sha256=$expected;actual_windows=$true;bootstrap_started=$false;core_completed=$false;shell_hashes_verified=$false;lifecycle_completed=$false;physical_host_tested=$false;production_authorized=$false}
+          function Save-Receipt{$receipt|ConvertTo-Json -Depth 20|Set-Content (Join-Path $evidence 'installer-receipt.json') -Encoding utf8NoBOM}
+          Save-Receipt
+          $logRoot=Join-Path $env:LOCALAPPDATA 'SOKNA/Installer'
+          $p=Start-Process -FilePath $exe -PassThru
+          $receipt.bootstrap_started=$true;Save-Receipt
+          $events=$null;$ctx=$null;$core=$null
+          $deadline=[DateTimeOffset]::UtcNow.AddSeconds(40)
+          try{
+            $admin=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+            Need ($admin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) 'ADMIN_RUNNER_REQUIRED'
+            while([DateTimeOffset]::UtcNow -lt $deadline){
+              $ctxPath=Join-Path $logRoot 'active-context.json'
+              if(Test-Path $ctxPath){
+                try{
+                  $ctx=Get-Content $ctxPath -Raw|ConvertFrom-Json
+                  $events=Join-Path $ctx.log_directory 'bootstrap-events.jsonl'
+                  $ev=@(Get-Content $events|ForEach-Object{$_|ConvertFrom-Json})
+                  $extract=@($ev|Where-Object event_name -eq 'core_installer_extracted')|Select-Object -Last 1
+                  $elevated=@($ev|Where-Object event_name -eq 'elevation_succeeded')|Select-Object -Last 1
+                  $core=Join-Path ([IO.Path]::GetTempPath()) ('SOKNA/Installer/'+$ctx.transaction_id+'/SOKNA-Windows-Services-Core.exe')
+                  if($extract -and $elevated -and (Test-Path $core -PathType Leaf) -and (Get-Item $core).Length-eq$extract.data.size){break}
+                }catch{}
+              }
+              Start-Sleep -Milliseconds 300
+            }
+            Need ($extract -and $elevated -and (Test-Path $core -PathType Leaf)) 'EXACT_CORE_NOT_EXTRACTED'
+            Need ([int]$elevated.data.child_process_id -gt 0) 'ELEVATED_CHILD_NOT_PROVEN'
+            $coreCopy=Join-Path $env:RUNNER_TEMP 'A23-27-extracted-exact-core.exe'
+            Copy-Item -LiteralPath $core -Destination $coreCopy
+            $receipt.extracted_core_sha256=Sha $coreCopy
+            Need ((Sha $core) -ceq $receipt.extracted_core_sha256) 'EXTRACTED_CORE_COPY_DRIFT'
+            $receipt.core_bytes=(Get-Item $coreCopy).Length
+            $receipt.elevation_succeeded=$true
+            Copy-Item $events (Join-Path $evidence 'bootstrap-events.jsonl') -Force
+            Save-Receipt
+            Write-Host 'PASS exact bootstrap extracted and elevated genuine core'
+            # A23-27 already proved GUI automation cannot advance the wizard in CI.
+            # Stop only this disposable test's process tree before any installation
+            # and use the genuine core's supported Inno silent option on the same admin runner.
+            Need (!(Test-Path $shell) -and !(Test-Path $data)) 'REFUSE_EXISTING_OR_PARTIAL_INSTALL'
+            & taskkill.exe /PID $p.Id /T /F | Out-Null
+            Need ($LASTEXITCODE-eq0) 'DISPOSABLE_BOOTSTRAP_TREE_STOP_FAILED'
+            $p.WaitForExit()
+            $receipt.bootstrap_interactive_completed=$false
+            $silentLog=Join-Path $evidence 'exact-core-silent-install.log'
+            $proc=Start-Process -FilePath $coreCopy -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/TASKS=','/LOG="'+$silentLog+'"') -PassThru
+            Need ($proc.WaitForExit(180000)) 'EXACT_CORE_SILENT_TIMEOUT'
+            Need ($proc.ExitCode-eq0) ('EXACT_CORE_SILENT_FAILURE '+$proc.ExitCode)
+            $receipt.core_completed=$true;Save-Receipt
+            Write-Host 'PASS exact extracted core normal silent install'
+            Need (Test-Path (Join-Path $shell 'SoknaSetupHost.exe')) 'ACTUAL_INSTALLED_SHELL_MISSING'
+            $manifest=Get-Content (Join-Path $shell 'payload-manifest.json') -Raw|ConvertFrom-Json
+            Need ($manifest.package_version-eq'1.1.26' -and $manifest.format-eq'sokna-windows-services-shell-v3') 'SHELL_MANIFEST_DRIFT'
+            foreach($f in $manifest.files){
+              $target=Join-Path $shell ([string]$f.path)
+              Need ((Test-Path $target -PathType Leaf) -and (Sha $target)-ceq$f.sha256 -and (Get-Item $target).Length-eq$f.size) ('SHELL_PAYLOAD_HASH_DRIFT '+$f.path)
+            }
+            $receipt.shell_hashes_verified=$true;$receipt.shell_files=@($manifest.files).Count;Save-Receipt
+            Copy-Item (Join-Path $shell 'payload-manifest.json') $evidence
+            $m=Get-Content (Join-Path $shell 'windows-services-component-manifest-v2.json') -Raw|ConvertFrom-Json
+            Need ($m.package_version-eq'1.1.26' -and @($m.components).Count-eq5) 'COMPONENT_MANIFEST_DRIFT'
+            Copy-Item (Join-Path $shell 'windows-services-component-manifest-v2.json') $evidence
+            # Inno copies the shell only; invoke its genuine plan-file Host contract.
+            # This is a synthetic operator plan, not UI click coverage for component selection.
+            foreach($name in @('SoknaRuntime','SoknaPrintWorker','SoknaMaintenanceSupervisor')){Need (!(Get-Service $name -ErrorAction SilentlyContinue)) 'UNEXPECTED_PREPLAN_SERVICE'}
+            $rows=@()
+            foreach($c in $m.components){
+              $target=Join-Path $shell ([string]$c.payload_primary)
+              Need (Test-Path $target -PathType Leaf) ('PAYLOAD_MISSING '+$c.component_id)
+              $rows+= [ordered]@{component_id=[string]$c.component_id;primary=[bool]$c.primary;current_version='—';target_version=[string]$c.version;health='unknown';update_state='install_required';action='INSTALL';reason='disposable-exact-installer-qualification';installed_sha256='';target_sha256=(Sha $target);service_name=[string]$c.service_name;transaction_group=[string]$c.transaction_group}
+            }
+            $tx='ins-'+[DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,10)
+            $txdir=Join-Path $logRoot "logs/$tx"
+            New-Item -ItemType Directory -Path $txdir -Force|Out-Null
+            $plan=[ordered]@{format='sokna-windows-install-plan-v3';schema_version=3;transaction_id=$tx;correlation_id=('corr-'+[Guid]::NewGuid().ToString('N'));setup_session_id=('ui-'+[Guid]::NewGuid().ToString('N'));created_at_utc=[DateTime]::UtcNow.ToString('o');mode='install';shell_root=$shell;install_root=$shell;data_root=$data;package_version='1.1.26';components=$rows}
+            $planFile=Join-Path $txdir 'update-plan.json'
+            $plan|ConvertTo-Json -Depth 12|Set-Content $planFile -Encoding utf8NoBOM
+            $hostProcess=Start-Process (Join-Path $shell 'SoknaSetupHost.exe') -ArgumentList @('--plan-file',('"'+$planFile+'"')) -PassThru
+            Need ($hostProcess.WaitForExit(180000)) 'LIFECYCLE_TIMEOUT'
+            if(Test-Path (Join-Path $txdir 'setup-host-v3-error.txt')){Copy-Item (Join-Path $txdir 'setup-host-v3-error.txt') $evidence}
+            Need ($hostProcess.ExitCode-eq0) ('EXACT_INSTALLED_HOST_FAILED '+$hostProcess.ExitCode)
+            $installed=@()
+            foreach($c in $m.components){
+              $target=Join-Path $shell ([string]$c.installed_primary);$payload=Join-Path $shell ([string]$c.payload_primary)
+              Need ((Test-Path $target -PathType Leaf) -and (Sha $target)-ceq(Sha $payload)) ('PHYSICAL_COMPONENT_HASH_DRIFT '+$c.component_id)
+              $installed+=@{id=$c.component_id;version=(Get-Item $target).VersionInfo.FileVersion;sha256=(Sha $target)}
+            }
+            $receipt.installed_components=$installed
+            $receipt.lifecycle_completed=$true
+            $receipt.services=@(Get-CimInstance Win32_Service|Where-Object{$_.Name-in@('SoknaRuntime','SoknaPrintWorker','SoknaMaintenanceSupervisor')}|Select-Object Name,State,StartName,PathName)
+            Save-Receipt
+            Write-Host 'PASS exact extracted core, installed shell and component lifecycle'
+          }finally{
+            if($events -and (Test-Path $events)){Copy-Item $events (Join-Path $evidence 'bootstrap-events.jsonl') -Force}
+            if($ctx -and $ctx.log_directory){$il=Join-Path $ctx.log_directory 'inno-elevated.log';if(Test-Path $il){Copy-Item $il (Join-Path $evidence 'inno-elevated.log') -Force}}
+            Save-Receipt
+            # GitHub disposable VM is discarded, no real host or external service touched.
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-27-EXACT-WINDOWS-INSTALLER-EVIDENCE
+          path: ${{ runner.temp }}/a23-27-evidence/*
+          retention-days: 30
