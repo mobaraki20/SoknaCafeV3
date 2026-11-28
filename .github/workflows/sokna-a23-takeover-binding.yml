@@ -634,7 +634,7 @@ jobs:
           $target=$w.'-a23-takeover-target';$root=$target.'/local';$dest=$target.'/data';$p->exec('CREATE DATABASE sokna_a23_takeover_target CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$p->exec("CREATE USER 'a23_takeover_target'@'%' IDENTIFIED BY 'synthetic-a23-takeover-target-only'");$p->exec("GRANT ALL PRIVILEGES ON sokna_a23_takeover_target.* TO 'a23_takeover_target'@'%'");
           $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$root);$init=$setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_a23_takeover_target','user'=>'a23_takeover_target','pass'=>'synthetic-a23-takeover-target-only'],'create_database'=>false,'admin_user'=>'qa-takeover-target','admin_password'=>'synthetic-a23-target-only','cafe_name'=>'QA destination','table_count'=>3]);ck(($init['success']??false)===true&&$init['installation_id']!==$iid,'independent fresh Local installation');
           $tcfg=require $target.'/config.php';$tcore=sokna_local_bootstrap($tcfg);$tp=$tcore->database();$tid=$tcfg['installation']['id'];$r=$tcore->businessBackup()->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($r['restored']===true&&$tcore->publicAuthorityState()->restoredSourceIdentity()['source_installation_id']===$iid,'restored authenticated source hint');ck(rows($tp)===$before&&MediaSnapshotCodec::scan($dest)===$media,'restored business and media exact');
-          $unpairedHash=hash_file('sha256',$target.'/config.php');$ownerPassword='synthetic-a23-emergency-owner-only';$pub->emergencyAccess()->provisionHash(password_hash($ownerPassword,PASSWORD_DEFAULT),'qa-fixture');$cookie='';
+          $sourceConfigHash=hash_file('sha256',$w.'/config.php');$unpairedHash=hash_file('sha256',$target.'/config.php');$ownerPassword='synthetic-a23-emergency-owner-only';$pub->emergencyAccess()->provisionHash(password_hash($ownerPassword,PASSWORD_DEFAULT),'qa-fixture');$cookie='';
           $login=request('/emergency.php','GET',[],$cookie);$token=csrf($login);$offer=['csrf'=>$token,'old_installation_id'=>$iid,'new_installation_id'=>$tid,'confirmation'=>'TAKEOVER'];
           request('/emergency.php?action=takeover_offer','POST',$offer,$cookie);ck((int)sql($q,'SELECT COUNT(*) FROM installation_takeovers WHERE new_installation_id=?',[$tid])->fetchColumn()===0,'unauthenticated owner action cannot issue code');
           $logged=request('/emergency.php?action=login','POST',['csrf'=>$token,'emergency_password'=>$ownerPassword],$cookie);ck($logged['status']===303,'real owner password and session accepted');$page=request('/emergency.php','GET',[],$cookie);$offer['csrf']=csrf($page);
@@ -644,7 +644,7 @@ jobs:
           $old=installation($q,$iid);$new=installation($q,$tid);ck(!(bool)$old['active']&&!(bool)$new['remote_enabled']&&!(bool)$new['order_intake_enabled']&&$new['authority_state']==='resync_required','source revoked and destination fenced');ck((int)sql($q,"SELECT binding_epoch FROM installation_takeovers WHERE new_installation_id=? AND status='completed'",[$tid])->fetchColumn()===$epoch,'routing proof committed with takeover');
           ck($auth->effectiveDefaultInstallationId($iid)===''&&request('/menu')['status']===404,'implicit menu unavailable until sync');$proof=$client->probeProposedAuthority($base,$newSecret,$epoch);ck($proof['default_binding_matches']===false&&$proof['authority_state']==='resync_required','signed status reports routing not active');ck(hash_file('sha256',$target.'/config.php')===$unpairedHash,'no automatic config commit before proof');
           // Test harness explicitly stages and commits the proven credentials; this is NOT a released Local recovery UI/journal.
-          $tcore->publicReenrollment()->commitMoveConfig($base,$newSecret);$tcore->publicAuthorityState()->markReenrolled($epoch);$tcore=sokna_local_bootstrap(require $target.'/config.php');
+          (new \Sokna\Local\Domain\PublicEdge\PublicReenrollmentService($tcore->config(),$client,$tcore->publicAuthorityState(),$target.'/config.php'))->commitMoveConfig($base,$newSecret);$tcore->publicAuthorityState()->markReenrolled($epoch);$tcore=sokna_local_bootstrap(require $target.'/config.php');ck($tcore->publicEdgeSyncClient()->configured()&&$tcore->publicEdgeSyncClient()->installationId()===$tid&&hash_file('sha256',$w.'/config.php')===$sourceConfigHash,'target config committed without touching source config');
           $progress=[];for($i=0;$i<16;$i++){
             $res=$tcore->publicEdgePublisher()->syncAll(10,true);$missing=(int)($res['guest_publication']['media_remaining']??-1);$progress[]=$missing;
             $current=installation($q,$tid);ck($current['authority_state']==='resync_required'&&!(bool)$current['order_intake_enabled']&&$auth->effectiveDefaultInstallationId($iid)==='','publisher partial '.$i.' preserves fence and no default routing');
@@ -663,7 +663,7 @@ jobs:
           PHP
           sha256sum -c <<HASHES
           9928dec7d46c1f090fb38d74a5c8ff17fe761b56893ad902449859eea30b8c39  $W/binding.patch
-          a5a2acb5bf71ad8477baf775d79354e9a631cfc2b6a63c51b4a8fd0b2cda6237  $W/takeover-binding.php
+          9d4be9c0715739ee3e3b958afeb6b445c2f34afbaa782711e63e745e2bb07fdd  $W/takeover-binding.php
           HASHES
           cd "$W"
           patch --batch --forward -p1 < binding.patch
