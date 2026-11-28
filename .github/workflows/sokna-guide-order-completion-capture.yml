@@ -1,0 +1,260 @@
+name: SOKNA guide actual first order preparation and settlement
+on:
+  push:
+    branches: [docs/guide-native-capture-20261128]
+    paths: ['.github/workflows/sokna-guide-order-completion-capture.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-guide-only
+          MARIADB_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          artifact-ids: 15254366335
+          path: input
+      - uses: actions/checkout@v4
+        with:
+          repository: rastikerdar/vazirmatn
+          ref: v33.003
+          path: official-font
+          persist-credentials: false
+      - name: Prepare exact archives, real web server and product font
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          sudo mkdir -p /srv/sokna-docs-lab
+          sudo chown "$USER":"$(id -gn)" /srv/sokna-docs-lab
+          mkdir -p /srv/sokna-docs-lab/local/Web /srv/sokna-docs-lab/public
+          python - <<'PY'
+          import zipfile,pathlib,hashlib
+          p=pathlib.Path('input')
+          pairs=[('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip','707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','/srv/sokna-docs-lab/local/Web'),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip','641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','/srv/sokna-docs-lab/public')]
+          for name,expected,dest in pairs:
+              found=[x for x in p.rglob('*.zip') if hashlib.sha256(x.read_bytes()).hexdigest()==expected]
+              assert len(found)==1,(name,'no exact archive',list(p.iterdir()))
+              with zipfile.ZipFile(found[0]) as z:
+                  assert z.testzip() is None
+                  z.extractall(dest)
+          PY
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2 libapache2-mod-php php-mysql php-mbstring php-zip php-curl php-gd
+          sudo a2enmod rewrite headers
+          cat <<'CONF' | sudo tee /etc/apache2/conf-available/sokna-docs-lab.conf
+          Listen 127.0.0.1:18080
+          Listen 127.0.0.1:18081
+          <VirtualHost 127.0.0.1:18080>
+              ServerName 127.0.0.1
+              DocumentRoot /srv/sokna-docs-lab/local/Web/public
+              <Directory /srv/sokna-docs-lab/local/Web/public>
+                  Options FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+          <VirtualHost 127.0.0.1:18081>
+              ServerName 127.0.0.1
+              DocumentRoot /srv/sokna-docs-lab/public
+              <Directory /srv/sokna-docs-lab/public>
+                  Options FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+          CONF
+          sudo a2enconf sokna-docs-lab
+          mkdir -p /srv/sokna-docs-lab/local/SetupCache/ui-fonts /srv/sokna-docs-lab/public/storage/ui-fonts
+          cp 'official-font/fonts/webfonts/Vazirmatn[wght].woff2' /tmp/vazirmatn.woff2
+          echo '4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92  /tmp/vazirmatn.woff2' | sha256sum -c
+          cp /tmp/vazirmatn.woff2 /srv/sokna-docs-lab/local/SetupCache/ui-fonts/Vazirmatn-Variable.woff2
+          cp /tmp/vazirmatn.woff2 /srv/sokna-docs-lab/public/storage/ui-fonts/Vazirmatn-Variable.woff2
+          sudo chown -R www-data:www-data /srv/sokna-docs-lab
+          sudo apache2ctl configtest
+          sudo systemctl restart apache2
+          curl -f http://127.0.0.1:18080/setup/ -o /dev/null || { sudo tail -80 /var/log/apache2/error.log; exit 1; }
+          curl -f http://127.0.0.1:18081/setup/ -o /dev/null || { sudo tail -80 /var/log/apache2/error.log; exit 1; }
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Capture actual setup screens and perform installation through UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/guide_web.py <<'PY'
+          import hashlib,json,os,secrets
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('evidence'); records=[]
+          expected='4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92'
+          def font(page):
+              page.evaluate("async()=>{await document.fonts.ready; await document.fonts.load('400 16px Vazirmatn','سکنا')}")
+              loaded=page.evaluate("()=>[...document.fonts].some(f=>f.family.replace(/[\"']/g,'')==='Vazirmatn'&&f.status==='loaded')")
+              assert loaded,'Product font not loaded'
+          def shot(page,name,section=None):
+              font(page)
+              f=out/(name+'.png')
+              if section:page.locator(section).screenshot(path=str(f))
+              else:page.screenshot(path=str(f),full_page=True)
+              records.append(dict(name=f.name,url=page.url,sha256=hashlib.sha256(f.read_bytes()).hexdigest(),font_sha256=expected))
+              print('REAL_CAPTURE',name,flush=True)
+          def req(page,button,action):
+              with page.expect_response(lambda r:'api.php?action='+action in r.url,timeout=90000) as response:
+                  page.locator(button).click()
+              data=response.value.json()
+              assert response.value.ok and data.get('success') is not False,(action,data.get('message'))
+              return data
+          def fields(page):
+              page.locator('[data-db="user"]').fill('root')
+              page.locator('[data-db="pass"]').fill('disposable-guide-only')
+              page.locator('[data-create-db]').check()
+          try:
+              with sync_playwright() as pw:
+                  browser=pw.chromium.launch(headless=True)
+                  page=browser.new_page(viewport={'width':1440,'height':1000},color_scheme='light')
+                  with page.expect_response(lambda r:'api.php?action=status' in r.url) as resp:
+                      page.goto('http://127.0.0.1:18080/setup/')
+                  assert resp.value.json()['preflight']['ok']
+                  page.locator('[data-preflight] .sc-setup__check').first.wait_for()
+
+                  page.locator('[data-data-dir]').fill('/srv/sokna-docs-lab/local/Data/LocalWeb')
+                  req(page,'[data-action="preflight"]','preflight')
+
+                  fields(page)
+                  req(page,'[data-action="test-db"]','test_database')
+                  page.locator('[data-admin="user"]').fill('admin')
+                  admin_password=secrets.token_urlsafe(24)
+                  page.locator('[data-admin="password"]').fill(admin_password)
+
+                  req(page,'[data-action="install"]','install_new')
+                  page.wait_for_url('**/login.php',timeout=90000)
+
+                  # Real login, unchanged installed database; only the setup-created administrator.
+                  page.locator('input[name=password]').fill(admin_password)
+                  page.locator('[data-login-form] button[type=submit]').click()
+                  page.wait_for_url(lambda url:'login.php' not in url,timeout=30000)
+                  page.wait_for_load_state('networkidle')
+                  base='http://127.0.0.1:18080'
+                  def visit(path):
+                      with page.expect_response(lambda r: path+'api.php' in r.url and r.request.method=='GET',timeout=30000) as res:
+                          page.goto(base+path)
+                      d=res.value.json()
+                      assert res.value.ok and d.get('success') is not False,path
+                      page.wait_for_load_state('networkidle')
+                      return d.get('snapshot',{})
+                  def tab(name,filename):
+                      page.locator('[data-tab="'+name+'"]').click()
+                      page.wait_for_timeout(350)
+                      shot(page,filename)
+                  # Read-only independent pages first; no demo orders or arbitrary seed modifications.
+                  results={}
+                  def capture_view(path,root,name,tabs=()):
+                      try:
+                          page.goto(base+path)
+                          loc=page.locator(root)
+                          loc.wait_for(timeout=15000)
+                          api=loc.get_attribute('data-api')
+                          if api:
+                              from urllib.parse import urljoin
+                              u=urljoin(base+'/',api)
+                              rr=page.request.get(u,timeout=20000)
+                              assert rr.ok and rr.json().get('success') is not False
+                          page.wait_for_load_state('networkidle',timeout=20000)
+                          shot(page,name)
+                          results[name]='PASS_READ_ONLY'
+                          for selector,filename in tabs:
+                              page.locator(selector).click()
+                              page.wait_for_timeout(450)
+                              shot(page,filename)
+                              results[filename]='PASS_READ_ONLY'
+                      except Exception as e:
+                          results[name]=type(e).__name__
+                          print('OPTIONAL_CAPTURE',name,type(e).__name__,flush=True)
+                  cases={}
+                  def run_case(name,fn):
+                      try:
+                          fn()
+                          cases[name]='PASS'
+                      except Exception as e:
+                          cases[name]=type(e).__name__
+                          print('CASE_FAILURE',name,type(e).__name__,str(e).splitlines()[0][:240],flush=True)
+                      finally:
+                          (out/'cases.json').write_text(json.dumps(cases,indent=2))
+                  def order():
+                      page.goto(base+'/operator/')
+                      page.locator('[data-operator-workspace]').wait_for()
+                      page.locator('[data-global-order]').click()
+                      table=page.locator('[data-pick-table]').first
+                      table.wait_for()
+                      shot(page,'16-04-table-picker')
+                      table.click()
+                      products=page.locator('[data-order-add]')
+                      products.first.wait_for()
+                      # One default menu item and a real disposable sale.
+                      product=products.first
+                      chosen=product.get_attribute('data-order-add')
+                      product.click()
+                      page.locator('[data-order-finalize]:visible').wait_for()
+                      with page.expect_response(lambda r:r.request.method=='POST' and 'draft_finalize' in (r.request.post_data or ''),timeout=60000) as f:
+                          page.locator('[data-order-finalize]:visible').click()
+                      answer=f.value.json()
+                      assert f.value.ok and answer.get('success') is not False and answer.get('order_number'),'finalize unconfirmed'
+                      (out/'order-result.json').write_text(json.dumps({'order_number':answer.get('order_number'),'item_id':chosen,'lab_only':True},indent=2))
+                      page.locator('[data-account-settle]:visible').wait_for(timeout=20000)
+                      shot(page,'16-06-open-account')
+                      # Use the same signed-in browser context, but real preparation page.
+                      prep=page.context.new_page()
+                      prep.goto(base+'/waiter/')
+                      prep.locator('[data-preparation-list] .sc-preparation-order').first.wait_for(timeout=15000) if prep.locator('[data-preparation-list] .sc-preparation-order').count() else prep.get_by_role('button',name='گرفتم',exact=True).first.wait_for(timeout=15000)
+                      shot(prep,'16-11-preparation-pending')
+                      btn=prep.get_by_role('button',name='گرفتم',exact=True).first
+                      with prep.expect_response(lambda r:r.request.method=='POST' and '"claim"' in (r.request.post_data or ''),timeout=30000) as claim:
+                          btn.click()
+                      v=claim.value.json()
+                      assert claim.value.ok and v.get('success') is not False
+                      (out/'preparation-result.json').write_text(json.dumps({'http_status':claim.value.status,'success':v.get('success'),'lab_only':True},indent=2))
+                      prep.wait_for_timeout(800)
+                      toggle=prep.get_by_role('button',name='نمایش دریافت‌شده‌ها',exact=True)
+                      if toggle.count():toggle.first.click()
+                      shot(prep,'16-12-preparation-claimed')
+                      prep.close()
+                      page.locator('[data-account-settle]:visible').click()
+                      page.locator('[data-settle-view="direct"]').wait_for()
+                      shot(page,'16-07-settlement-choice')
+                      page.locator('[data-settle-view="direct"]').click()
+                      cash=page.locator('[data-tender-type="cash"]')
+                      if cash.get_attribute('aria-pressed')!='true':cash.click()
+                      shot(page,'16-08-cash')
+                      with page.expect_response(lambda r:r.request.method=='POST' and '"settle"' in (r.request.post_data or ''),timeout=60000) as s:
+                          page.locator('[data-settle-submit="direct"]').click()
+                      a=s.value.json()
+                      assert s.value.ok and a.get('success') is not False,'settlement rejected'
+                      (out/'settlement-result.json').write_text(json.dumps({'http_status':s.value.status,'success':a.get('success'),'lab_only':True},indent=2))
+                      page.wait_for_timeout(1200)
+                      shot(page,'16-09-after-settlement')
+                  run_case('first_order_preparation_settlement_lab',order)
+                  assert cases.get('first_order_preparation_settlement_lab')=='PASS','Order case did not pass'
+                  browser.close()
+          finally:
+              (out/'receipt.json').write_text(json.dumps({'scope':'exact controlled web packages, real initial default-data UI and pairing attempt on disposable Linux Apache and MariaDB 11.4; not Windows field or hosting panel','run_id':os.environ['GITHUB_RUN_ID'],'local_sha256':'707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','public_sha256':'641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','captures':records},indent=2))
+          PY
+          python /tmp/guide_web.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-GUIDE-ORDER-COMPLETION-REAL-EVIDENCE
+          path: evidence
+          if-no-files-found: warn
