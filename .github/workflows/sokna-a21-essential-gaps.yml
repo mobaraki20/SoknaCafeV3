@@ -1,0 +1,112 @@
+name: SOKNA exact released A21 essential gap batch
+on:
+  push:
+    branches: [qa/post-release-a10-20261128]
+    paths: [.github/workflows/sokna-a21-essential-gaps.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download exact released A21 package candidates
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify four exact hashes and unpack accepted web archives
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cp148-qa/receipts"
+          python3 - <<'PY'
+          import os,pathlib,zipfile,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'candidate';w=t/'cp148-qa'
+          files={'LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip':'a0763360131c6e948bd3bff2acdac41afa657a8a1eef336b3ed9de9537092202','LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip':'707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','PUBLIC-A21-UPDATE-CANDIDATE-QA-ONLY.zip':'7d7bd5b6943a5c860ca7fb7b750d1268540630f9fce27ccf5a559359674b61a2','PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip':'641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402'}
+          for name,h in files.items():
+              p=d/name;assert hashlib.sha256(p.read_bytes()).hexdigest()==h
+              print('PASS exact accepted archive',name,h)
+          for host,name in [('local','LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'),('public','PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip')]:
+              with zipfile.ZipFile(d/name) as z:
+                  assert z.testzip() is None and all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist());z.extractall(w/host)
+          PY
+      - name: Run real Local clean install and A10 grouped critical DB acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          export TMPDIR="$W"
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/fixture-results.txt"
+          php qa/post-release-a10/essential-roles.php "$W"
+          php qa/post-release-a10/essential-finance-verify.php "$W" seed
+      - name: Run real Public clean schema and reapply
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          test -f "$W/cp144-fixture.json"
+          export TMPDIR="$W"
+          php qa/cp160/public-fixture.php "$W/public" | tee "$W/public-results.txt"
+          php -r 'require $argv[1]."/bootstrap.php";$cfg=require $argv[1]."/config.php";if(($cfg["db"]["host"]??"")!=="127.0.0.1"||($cfg["db"]["name"]??"")!=="sokna_cp150_public")exit(2);$core=sokna_public_bootstrap($cfg);$m=$core->migrations();if($m->pendingVersions()!==[]||$m->migrate()!==[]||$m->migrate()!==[])exit(3);echo "PASS Public clean schema and twice reapply no-op\n";' "$W/public" | tee -a "$W/public-results.txt"
+      - name: Real authenticated Local and Public full pages, grouped Chromium
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          test -f "$W/cp144-fixture.json"
+          export TMPDIR="$W" RUNNER_TEMP="$W"
+          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-http.log" 2>&1 & lp=$!
+          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-http.log" 2>&1 & pp=$!
+          trap 'kill "$lp" "$pp" 2>/dev/null || true' EXIT
+          sleep 2
+          php qa/cp160/worker.php "$W/local" init | tee "$W/sync-results.txt"
+          export QA_WORK="$W"
+          npm install --prefix "$W/pw" playwright@1.56.1 --ignore-scripts --no-audit --no-fund
+          set +e
+          node qa/post-release-a10/essential-finance.cjs | tee "$W/finance-results.txt"
+          f=${PIPESTATUS[0]}
+          php qa/post-release-a10/essential-finance-verify.php "$W" verify | tee "$W/finance-db-results.txt"
+          v=${PIPESTATUS[0]}
+          node qa/post-release-a10/essential-reports.cjs | tee "$W/report-results.txt"
+          r=${PIPESTATUS[0]}
+          node qa/post-release-a10/essential-ui.cjs | tee "$W/ui-results.txt"
+          u=${PIPESTATUS[0]}
+          php qa/post-release-a10/essential-reprint.php "$W/local" | tee "$W/reprint-results.txt"
+          p=${PIPESTATUS[0]}
+          printf 'FINANCE=%s VERIFY=%s REPORTS=%s UI=%s REPRINT=%s\n' "$f" "$v" "$r" "$u" "$p" | tee "$W/group-results.txt"
+          test "$f" = 0 && test "$v" = 0 && test "$r" = 0 && test "$u" = 0 && test "$p" = 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A21-ESSENTIAL-GAPS-EVIDENCE
+          path: |
+            ${{ runner.temp }}/cp148-qa/*-results.txt
+            ${{ runner.temp }}/cp148-qa/*-http.log
+            ${{ runner.temp }}/cp148-qa/screenshots/*.png
+            ${{ runner.temp }}/cp148-qa/receipts/*
+          retention-days: 7
+          if-no-files-found: warn
