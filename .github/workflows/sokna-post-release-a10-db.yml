@@ -1,4 +1,4 @@
-name: SOKNA A14 grouped actual order printing dashboard and compact headers
+name: SOKNA A21 grouped real print catalog and draft acceptance
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -114,6 +114,21 @@ jobs:
               assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
               print('PASS EXACT A14',host,n,actual)
           PY
+      - name: Apply and verify exact cumulative A21
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          echo '0d68e3d64773cff1d73ab86a956e985c4d4b3b9ecf4f54c2084398dd621be820  qa/post-release-a10/a21.patch' | sha256sum -c -
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/post-release-a10/a21.patch"; git apply "$GITHUB_WORKSPACE/qa/post-release-a10/a21.patch")
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'e9d4a0e7f524d78dba676990cfbc83ec36ce9fd4d6548c8d3ab3cf8852c23728'),'public':(258,'515d993be47e0e7fd67614955d348ebcc17e80f87ed4b595ac8ae0343b25272c')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A21',host,n,actual)
+          PY
       - name: Run real Local clean install and A10 grouped critical DB acceptance
         shell: bash
         run: |
@@ -139,24 +154,35 @@ jobs:
           set -euo pipefail
           W="$RUNNER_TEMP/cp148-qa"
           test -f "$W/cp144-fixture.json"
-          npm install --prefix "$W/pw" playwright
           export TMPDIR="$W" RUNNER_TEMP="$W"
           PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/local-http.log" 2>&1 & lp=$!
           PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" >"$W/public-http.log" 2>&1 & pp=$!
           trap 'kill "$lp" "$pp" 2>/dev/null || true' EXIT
           sleep 2
           php qa/cp160/worker.php "$W/local" init | tee "$W/sync-results.txt"
-          php qa/post-release-a10/a14-fixture.php "$W/local" prepare | tee "$W/a14-fixture-results.txt"
-          php qa/post-release-a10/a14-fixture.php "$W/local" sync | tee -a "$W/a14-fixture-results.txt"
-          export QA_REPO="$PWD"
-          node qa/post-release-a10/a14.cjs 2>&1 | tee "$W/browser-results.txt"
+          export SOKNA_GATE_WORK="$W"
+          touch "$W/.disposable-gate"
+          php -l qa/post-release-a10/a21-gaps.php
+          set +e
+          php qa/post-release-a10/a21-gaps.php "$W/local" print 2>&1 | tee "$W/print-results.txt"
+          pstatus=${PIPESTATUS[0]}
+          php qa/post-release-a10/a21-gaps.php "$W/local" catalog 2>&1 | tee "$W/catalog-results.txt"
+          cstatus=${PIPESTATUS[0]}
+          python3 -m venv "$W/venv"
+          "$W/venv/bin/pip" install playwright
+          export SOKNA_CHROMIUM="$(command -v google-chrome)"
+          "$W/venv/bin/python" qa/post-release-a10/a21-browser.py "$W" 2>&1 | tee "$W/browser-results.txt"
+          bstatus=${PIPESTATUS[0]}
+          printf 'PRINT=%s CATALOG=%s BROWSER=%s\n' "$pstatus" "$cstatus" "$bstatus" | tee "$W/group-results.txt"
+          test "$pstatus" = 0 && test "$cstatus" = 0 && test "$bstatus" = 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A14-ACCEPTANCE-EVIDENCE-NO-INSTALL
+          name: SOKNA-A21-GROUPED-REAL-QA-EVIDENCE-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
             ${{ runner.temp }}/cp148-qa/screenshots/*.png
+            ${{ runner.temp }}/cp148-qa/browser-gap-results.json
           retention-days: 7
           if-no-files-found: warn

@@ -1,0 +1,339 @@
+--- a/local/public/assets/dashboard-open-accounts.js
++++ b/local/public/assets/dashboard-open-accounts.js
+@@ -4,7 +4,7 @@
+ const url=card.getAttribute('data-url');if(!url)return;
+ let busy=false,request=0;
+ const fa=(n)=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:0}).format(n);
+-const unknown=()=>{amount.textContent='—';if(hint)hint.textContent='مبلغ فعلاً نامشخص است';};
++const unknown=()=>{amount.textContent='نامشخص';if(hint)hint.textContent='مبلغ فعلاً نامشخص است';};
+ async function read(){
+  if(busy||document.hidden)return;busy=true;const current=++request;
+  try{
+--- a/local/public/assets/product-ui.css
++++ b/local/public/assets/product-ui.css
+@@ -7352,3 +7352,52 @@
+ .sc-page-help>summary:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
+ .sc-page-help>summary .sc-ui-icon{inline-size:17px;block-size:17px}
+ .sc-shell__content .sc-page-header__copy--inline .sc-page-help>p{position:absolute;z-index:25;inset-inline-start:0;inset-block-start:100%;inline-size:min(480px,100%);box-sizing:border-box;padding:10px 12px;border:1px solid var(--sc-border);border-radius:9px;margin:4px 0 0;color:var(--sc-text);background:var(--sc-surface-raised);box-shadow:var(--sc-panel-shadow);white-space:normal;overflow:visible;text-overflow:clip;line-height:1.75}
++
++/* Post-release: account chooser is content-sized, with a bounded scrolling list. */
++.sc-login-flow-chooser.sc-login-stable-picker[open]{height:fit-content;max-height:min(550px,calc(100dvh - 24px));grid-template-rows:auto auto auto minmax(0,1fr)}
++.sc-login-stable-picker .sc-login-stable-list{overflow-y:auto}
++
++/* Keep print disclosure control in its own column in RTL, including narrow screens. */
++.sc-print-template-disclosure>summary{display:grid;grid-template-columns:minmax(0,1fr) 24px;grid-template-rows:auto auto;gap:3px 8px;align-items:center}
++.sc-print-template-disclosure>summary>strong,.sc-print-template-disclosure>summary>small{grid-column:1;min-width:0;max-width:100%;overflow-wrap:anywhere}
++.sc-print-template-disclosure>summary::after{grid-column:2;grid-row:1/span 2;position:static;inset:auto;justify-self:center;align-self:center;line-height:1}
++
++/* Keep page help beside the title; don't clip the opened help panel on mobile. */
++.sc-shell__content .sc-page-header__main{overflow:visible}
++.sc-shell__content .sc-page-header__copy--inline{flex-direction:row;align-items:center;justify-content:center;flex-wrap:nowrap}
++.sc-shell__content .sc-page-header__copy--inline .sc-page-help>p{display:block;-webkit-line-clamp:unset;border-inline-start:1px solid var(--sc-border);max-inline-size:100%;padding:10px 12px}
++.sc-shell__content .sc-page-header__copy--inline .sc-page-help:not([open])>p{display:none}
++
++/* A18: catalog-specific density and on-demand explanations; retain all controls. */
++[data-catalog-workspace] > [data-panel] > .sc-section-head{position:relative;overflow:visible;align-items:center;gap:8px}
++[data-catalog-workspace] > [data-panel] > .sc-section-head > div:first-child{display:flex;flex-direction:row;align-items:center;gap:5px;min-inline-size:0}
++[data-catalog-workspace] > [data-panel] > .sc-section-head h2{flex:0 1 auto;min-inline-size:0}
++[data-catalog-workspace] .sc-catalog-section-help,[data-catalog-workspace] .sc-catalog-metric-help{flex:0 0 auto;position:static}
++[data-catalog-workspace] :is(.sc-catalog-section-help,.sc-catalog-metric-help)>summary{list-style:none;display:grid;place-items:center;inline-size:30px;block-size:30px;border-radius:7px;cursor:pointer;color:var(--sc-muted)}
++[data-catalog-workspace] :is(.sc-catalog-section-help,.sc-catalog-metric-help)>summary::-webkit-details-marker{display:none}
++[data-catalog-workspace] :is(.sc-catalog-section-help,.sc-catalog-metric-help)>summary .sc-ui-icon{inline-size:17px;block-size:17px}
++[data-catalog-workspace] :is(.sc-catalog-section-help,.sc-catalog-metric-help)>summary:focus-visible{outline:2px solid var(--sc-focus);outline-offset:1px}
++[data-catalog-workspace] :is(.sc-catalog-section-help,.sc-catalog-metric-help)>p{position:absolute;z-index:25;inset-inline-start:0;inset-block-start:100%;margin:3px 0 0;padding:9px 10px;box-sizing:border-box;inline-size:min(340px,100%);max-inline-size:100%;border:1px solid var(--sc-border);border-radius:8px;background:var(--sc-surface-raised);color:var(--sc-text);box-shadow:var(--sc-panel-shadow);white-space:normal;overflow:visible;text-overflow:clip;line-height:1.75;font-size:.78rem}
++[data-catalog-workspace] :is(.sc-catalog-section-help,.sc-catalog-metric-help):not([open])>p{display:none}
++[data-catalog-workspace] .sc-catalog-summary>.sc-metric{position:relative;overflow:visible;min-block-size:0;min-inline-size:0;padding:8px 11px;gap:3px;align-content:start}
++[data-catalog-workspace] .sc-catalog-metric-label{display:flex;flex-direction:row;align-items:center;gap:3px;justify-content:space-between;font-size:.78rem;font-weight:650;color:var(--sc-muted-strong)}
++[data-catalog-workspace] .sc-catalog-metric-label>span{min-inline-size:0;overflow-wrap:anywhere}
++[data-catalog-workspace] .sc-catalog-metric-help>summary{inline-size:26px;block-size:26px}
++[data-catalog-workspace] .sc-catalog-metric-help>p{min-inline-size:0;z-index:30}
++[data-catalog-workspace] .sc-catalog-summary>.sc-metric>strong{line-height:1.3}
++[data-catalog-workspace] .sc-catalog-filterbar__result .sc-button{white-space:nowrap;inline-size:auto;min-inline-size:0;padding-inline:8px!important}
++@media (max-width:760px){
++ [data-catalog-workspace]>.sc-local-nav>.sc-actions,[data-catalog-workspace]>[data-panel]>.sc-section-head>.sc-actions{display:flex!important;flex-direction:row!important;flex-wrap:wrap!important;gap:6px;inline-size:100%;justify-content:flex-start;align-items:center;overflow:visible}
++ [data-catalog-workspace]>.sc-local-nav>.sc-actions>.sc-button,[data-catalog-workspace]>[data-panel]>.sc-section-head>.sc-actions>.sc-button,[data-catalog-workspace]>[data-panel]>.sc-section-head>.sc-button{inline-size:auto!important;max-inline-size:100%;min-inline-size:0;justify-self:start;flex:0 1 auto;white-space:normal;padding-inline:10px!important;font-size:.78rem!important;min-block-size:40px}
++ [data-catalog-workspace]>.sc-local-nav>.sc-actions>.sc-refresh-action{inline-size:44px!important;flex:0 0 44px}
++ [data-catalog-workspace]>.sc-catalog-summary>.sc-metric:last-child:nth-child(odd){grid-column:auto}
++ [data-catalog-workspace]:has([data-tab="menus"][aria-selected="true"])>.sc-catalog-summary>.sc-metric:last-child{grid-column:1/-1}
++ [data-catalog-workspace] .sc-catalog-filterbar__result{display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap;min-inline-size:0;white-space:normal}
++ [data-catalog-workspace] .sc-catalog-filterbar__result strong{white-space:nowrap;font-size:.75rem}
++ [data-catalog-workspace] .sc-catalog-filterbar__result .sc-button{font-size:.75rem!important}
++ [data-catalog-workspace] [data-panel="archive"] .sc-catalog-filterbar__result{min-block-size:0;justify-content:flex-start}
++}
++@media (min-width:375px) and (max-width:760px){
++ [data-catalog-workspace] [data-category-filters]>.sc-catalog-filterbar__result,[data-catalog-workspace] [data-panel="menus"] .sc-catalog-filterbar__result{grid-column:auto}
++}
++@media (max-width:374px){[data-catalog-workspace] [data-item-filters]>.sc-catalog-filterbar__result{grid-column:1/-1}}
+--- a/local/public/catalog/index.php
++++ b/local/public/catalog/index.php
+@@ -20,15 +20,15 @@
+   <div class="sc-alert" role="status" aria-live="polite" data-catalog-publication-status hidden></div>
+ 
+   <section class="sc-summary-grid sc-catalog-summary" aria-label="خلاصه کاتالوگ">
+-    <article class="sc-metric"><span>آیتم‌های جاری</span><strong data-catalog-metric="total">۰</strong><small>فعال و غیرفعال؛ بدون آرشیو</small></article>
+-    <article class="sc-metric"><span>قابل سفارش</span><strong data-catalog-metric="orderable">۰</strong><small>فعال، موجود، دارای دسته و منوی فعال؛ بدون لحاظ ساعت سرو</small></article>
+-    <article class="sc-metric"><span>غیرفعال</span><strong data-catalog-metric="draft">۰</strong><small>موقتاً خارج از فروش؛ قابل بازگشت</small></article>
+-    <article class="sc-metric"><span>ناموجود</span><strong data-catalog-metric="unavailable">۰</strong><small>موقتاً قابل سفارش نیست</small></article>
+-    <article class="sc-metric"><span>منوی فعال</span><strong data-catalog-metric="active_menus">۰</strong><small>گروه‌های اصلی قابل سرو</small></article>
++    <article class="sc-metric"><div class="sc-catalog-metric-label"><span>آیتم‌های جاری</span><details class="sc-catalog-metric-help"><summary aria-label="راهنمای آیتم‌های جاری" title="راهنما"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>فعال و غیرفعال؛ بدون آرشیو</p></details></div><strong data-catalog-metric="total">۰</strong></article>
++    <article class="sc-metric"><div class="sc-catalog-metric-label"><span>قابل سفارش</span><details class="sc-catalog-metric-help"><summary aria-label="راهنمای قابل سفارش" title="راهنما"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>فعال، موجود، دارای دسته و منوی فعال؛ بدون لحاظ ساعت سرو</p></details></div><strong data-catalog-metric="orderable">۰</strong></article>
++    <article class="sc-metric"><div class="sc-catalog-metric-label"><span>غیرفعال</span><details class="sc-catalog-metric-help"><summary aria-label="راهنمای غیرفعال" title="راهنما"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>موقتاً خارج از فروش؛ قابل بازگشت</p></details></div><strong data-catalog-metric="draft">۰</strong></article>
++    <article class="sc-metric"><div class="sc-catalog-metric-label"><span>ناموجود</span><details class="sc-catalog-metric-help"><summary aria-label="راهنمای ناموجود" title="راهنما"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>موقتاً قابل سفارش نیست</p></details></div><strong data-catalog-metric="unavailable">۰</strong></article>
++    <article class="sc-metric"><div class="sc-catalog-metric-label"><span>منوی فعال</span><details class="sc-catalog-metric-help"><summary aria-label="راهنمای منوی فعال" title="راهنما"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>گروه‌های اصلی قابل سرو</p></details></div><strong data-catalog-metric="active_menus">۰</strong></article>
+   </section>
+ 
+   <section class="sc-work-panel sc-data-panel" data-panel="items">
+-    <div class="sc-section-head"><div><h2>آیتم‌ها و خدمات</h2><p>فقط کاتالوگ جاری اینجاست؛ آیتم‌های بازنشسته در آرشیو جدا نگهداری می‌شوند.</p></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-go-archive>آرشیو آیتم‌ها (<span data-item-archive-count>۰</span>)</button><button class="sc-button sc-button--secondary" type="button" data-featured-order-toggle aria-haspopup="dialog">مرتب‌سازی ویژه‌ها <span class="sc-featured-count" data-featured-count></span></button><button class="sc-button sc-button--secondary" type="button" data-open-ordering="item">مرتب‌سازی آیتم‌ها</button><button class="sc-button" type="button" data-open="item">آیتم جدید</button></div></div>
++    <div class="sc-section-head"><div><h2>آیتم‌ها و خدمات</h2><details class="sc-catalog-section-help"><summary aria-label="راهنمای این بخش" title="راهنمای این بخش"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>فقط کاتالوگ جاری اینجاست؛ آیتم‌های بازنشسته در آرشیو جدا نگهداری می‌شوند.</p></details></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-go-archive>آرشیو آیتم‌ها (<span data-item-archive-count>۰</span>)</button><button class="sc-button sc-button--secondary" type="button" data-featured-order-toggle aria-haspopup="dialog">مرتب‌سازی ویژه‌ها <span class="sc-featured-count" data-featured-count></span></button><button class="sc-button sc-button--secondary" type="button" data-open-ordering="item">مرتب‌سازی آیتم‌ها</button><button class="sc-button" type="button" data-open="item">آیتم جدید</button></div></div>
+ 
+ <nav class="sc-catalog-menu-strip" aria-label="فیلتر منو" data-catalog-menu-strip></nav>
+     <div class="sc-catalog-filterbar" data-item-filters>
+@@ -36,7 +36,7 @@
+       <label class="sc-field"><span class="sc-field__label">دسته</span><select class="sc-control" data-item-category-filter><option value="0">همه دسته‌ها</option></select></label>
+       <label class="sc-field"><span class="sc-field__label">وضعیت</span><select class="sc-control" data-item-status><option value="active">فعال</option><option value="inactive">غیرفعال</option><option value="all">همه جاری</option><option value="orderable">قابل سفارش</option><option value="unavailable">ناموجود</option><option value="featured">ویژه</option><option value="scheduled">زمان‌بندی‌شده</option></select></label>
+       <label class="sc-field"><span class="sc-field__label">نمایش برای</span><select class="sc-control" data-item-audience><option value="all">همه</option><option value="guest">مهمان</option><option value="staff">کارکنان</option></select></label>
+-      <div class="sc-catalog-filterbar__result"><strong data-item-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-item-filters>پاک‌کردن فیلتر</button></div>
++      <div class="sc-catalog-filterbar__result"><strong data-item-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-item-filters aria-label="پاک‌کردن فیلتر" title="پاک‌کردن فیلتر">پاک‌کردن</button></div>
+     </div>
+     <div class="sc-catalog-bulk" data-item-bulk hidden><strong><span data-bulk-count>۰</span> آیتم انتخاب شده</strong><select class="sc-control" data-bulk-field aria-label="عملیات گروهی"><option value="available:1">موجود کن</option><option value="available:0">ناموجود کن</option><option value="guest_visible:1">نمایش مهمان</option><option value="guest_visible:0">مخفی از مهمان</option><option value="staff_visible:1">نمایش کارکنان</option><option value="staff_visible:0">مخفی از کارکنان</option><option value="featured:1">ویژه کن</option><option value="featured:0">ویژه را بردار</option></select><button class="sc-button" type="button" data-bulk-apply>اعمال</button><button class="sc-button sc-button--secondary" type="button" data-bulk-clear>لغو انتخاب</button></div>
+     <p class="sc-hint" data-item-reorder-hint hidden>برای تغییر ترتیب، یک دسته مشخص انتخاب کن و فیلترهای دیگر را خالی بگذار؛ سپس ردیف‌ها را بکش یا از دکمه‌های بالا/پایین استفاده کن.</p>
+@@ -45,7 +45,7 @@
+   </section>
+ 
+   <section class="sc-work-panel sc-data-panel" data-panel="archive" hidden>
+-    <div class="sc-section-head"><div><h2>آرشیو کاتالوگ</h2><p>آرشیو به‌معنای حذف کامل نیست؛ سابقه آیتم حفظ می‌شود و بازگردانی آن به حالت غیرفعال و مخفی انجام می‌شود.</p></div></div>
++    <div class="sc-section-head"><div><h2>آرشیو کاتالوگ</h2><details class="sc-catalog-section-help"><summary aria-label="راهنمای این بخش" title="راهنمای این بخش"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>آرشیو به‌معنای حذف کامل نیست؛ سابقه آیتم حفظ می‌شود و بازگردانی آن به حالت غیرفعال و مخفی انجام می‌شود.</p></details></div></div>
+     <div class="sc-catalog-filterbar sc-catalog-filterbar--compact"><label class="sc-field sc-catalog-search"><span class="sc-field__label">جستجو در آرشیو</span><input class="sc-control" type="search" data-archive-search placeholder="نام یا کد…"></label><div class="sc-catalog-filterbar__result"><strong data-archive-result-count>۰ نتیجه</strong></div></div>
+     <div class="sc-actions sc-catalog-archive-switch" role="group" aria-label="نوع آرشیو"><button class="sc-button sc-button--secondary" type="button" data-archive-switch="items" aria-pressed="true">آیتم‌ها (<span data-archive-item-count>۰</span>)</button><button class="sc-button sc-button--secondary" type="button" data-archive-switch="categories" aria-pressed="false">دسته‌بندی‌ها (<span data-archive-category-count>۰</span>)</button></div>
+     <section class="sc-dialog-section" data-archive-section="items"><div class="sc-dialog-section__head"><strong>آیتم‌های آرشیوشده</strong><small>برای ویرایش ابتدا به کاتالوگ بازگردان.</small></div><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>آیتم</th><th>دسته</th><th>آخرین قیمت</th><th>تاریخ آرشیو</th><th>یادداشت</th><th></th></tr></thead><tbody data-archive-items></tbody></table></div></section>
+@@ -65,26 +65,26 @@
+   </dialog>
+ 
+   <section class="sc-work-panel sc-data-panel" data-panel="categories" hidden>
+-    <div class="sc-section-head"><div><h2>دسته‌بندی‌ها</h2><p>تصویر، آیکن، مخاطب و ترتیب هر دسته در هر منو را مدیریت کن.</p></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-open-ordering="category">مرتب‌سازی دسته‌ها</button><button class="sc-button" type="button" data-open="category">دسته جدید</button></div></div>
++    <div class="sc-section-head"><div><h2>دسته‌بندی‌ها</h2><details class="sc-catalog-section-help"><summary aria-label="راهنمای این بخش" title="راهنمای این بخش"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>تصویر، آیکن، مخاطب و ترتیب هر دسته در هر منو را مدیریت کن.</p></details></div><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-open-ordering="category">مرتب‌سازی دسته‌ها</button><button class="sc-button" type="button" data-open="category">دسته جدید</button></div></div>
+     <div class="sc-catalog-filterbar sc-catalog-filterbar--compact" data-category-filters>
+       <label class="sc-field sc-catalog-search"><span class="sc-field__label">جستجو</span><input class="sc-control" type="search" data-category-search placeholder="نام دسته یا منو…"></label>
+       <label class="sc-field"><span class="sc-field__label">مخاطب</span><select class="sc-control" data-category-audience><option value="all">همه</option><option value="guest">مهمان و کارکنان</option><option value="staff">فقط کارکنان</option></select></label>
+       <label class="sc-field"><span class="sc-field__label">وضعیت</span><select class="sc-control" data-category-status><option value="all">همه</option><option value="active">فعال</option><option value="inactive">غیرفعال</option></select></label>
+       <label class="sc-field"><span class="sc-field__label">ترتیب در منو</span><select class="sc-control" data-category-order-menu><option value="0">انتخاب منو…</option></select></label>
+-      <div class="sc-catalog-filterbar__result"><strong data-category-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-category-filters>پاک‌کردن فیلتر</button></div>
++      <div class="sc-catalog-filterbar__result"><strong data-category-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-category-filters aria-label="پاک‌کردن فیلتر" title="پاک‌کردن فیلتر">پاک‌کردن</button></div>
+     </div>
+     <p class="sc-hint" data-category-reorder-hint hidden>در این حالت ردیف‌ها را بکش یا از بالا/پایین استفاده کن؛ ترتیب فقط برای منوی انتخاب‌شده ذخیره می‌شود.</p>
+     <div class="sc-table-wrap sc-data-panel__table"><table class="sc-table sc-table--responsive"><thead><tr><th>نام</th><th>مخاطب</th><th>منوها</th><th>وضعیت</th><th><span class="sc-visually-hidden">عملیات</span></th></tr></thead><tbody data-categories></tbody></table></div>
+   </section>
+ 
+   <section class="sc-work-panel sc-data-panel" data-panel="menus" hidden>
+-    <div class="sc-section-head"><div><h2>منوها</h2><p>بازه سرو برای سفارش مهمان است؛ کارکنان می‌توانند از منوی فعال خارج از بازه هم سفارش ثبت کنند.</p></div><button class="sc-button" type="button" data-open="menu">منوی جدید</button></div>
+-    <div class="sc-catalog-filterbar sc-catalog-filterbar--compact"><label class="sc-field sc-catalog-search"><span class="sc-field__label">جستجو</span><input class="sc-control" type="search" data-menu-search placeholder="نام منو…"></label><label class="sc-field"><span class="sc-field__label">وضعیت</span><select class="sc-control" data-menu-status><option value="all">همه</option><option value="active">فعال</option><option value="draft">پیش‌نویس</option><option value="inactive">غیرفعال</option></select></label><div class="sc-catalog-filterbar__result"><strong data-menu-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-menu-filters>پاک‌کردن فیلتر</button></div></div>
++    <div class="sc-section-head"><div><h2>منوها</h2><details class="sc-catalog-section-help"><summary aria-label="راهنمای این بخش" title="راهنمای این بخش"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>بازه سرو برای سفارش مهمان است؛ کارکنان می‌توانند از منوی فعال خارج از بازه هم سفارش ثبت کنند.</p></details></div><button class="sc-button" type="button" data-open="menu">منوی جدید</button></div>
++    <div class="sc-catalog-filterbar sc-catalog-filterbar--compact"><label class="sc-field sc-catalog-search"><span class="sc-field__label">جستجو</span><input class="sc-control" type="search" data-menu-search placeholder="نام منو…"></label><label class="sc-field"><span class="sc-field__label">وضعیت</span><select class="sc-control" data-menu-status><option value="all">همه</option><option value="active">فعال</option><option value="draft">پیش‌نویس</option><option value="inactive">غیرفعال</option></select></label><div class="sc-catalog-filterbar__result"><strong data-menu-result-count>۰ نتیجه</strong><button class="sc-button sc-button--secondary" type="button" data-clear-menu-filters aria-label="پاک‌کردن فیلتر" title="پاک‌کردن فیلتر">پاک‌کردن</button></div></div>
+     <div class="sc-table-wrap sc-data-panel__table"><table class="sc-table sc-table--responsive"><thead><tr><th>نام</th><th>وضعیت</th><th>زمان سرو</th><th>ترتیب</th><th><span class="sc-visually-hidden">عملیات</span></th></tr></thead><tbody data-menus></tbody></table></div>
+   </section>
+ 
+   <section class="sc-work-panel sc-data-panel" data-panel="tags" hidden>
+-    <div class="sc-section-head"><div><h2>برچسب‌ها</h2><p>برچسب‌ها برای جستجو، فیلتر و گروه‌بندی آیتم‌ها هستند و مستقل از دسته‌بندی‌اند.</p></div><button class="sc-button" type="button" data-open="tag">برچسب جدید</button></div>
++    <div class="sc-section-head"><div><h2>برچسب‌ها</h2><details class="sc-catalog-section-help"><summary aria-label="راهنمای این بخش" title="راهنمای این بخش"><svg class="sc-ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 9h.01M11 12h1v4h1"/></svg></summary><p>برچسب‌ها برای جستجو، فیلتر و گروه‌بندی آیتم‌ها هستند و مستقل از دسته‌بندی‌اند.</p></details></div><button class="sc-button" type="button" data-open="tag">برچسب جدید</button></div>
+     <div class="sc-table-wrap sc-data-panel__table"><table class="sc-table sc-table--responsive"><thead><tr><th>نام</th><th>استفاده</th><th>وضعیت</th><th>ترتیب</th><th><span class="sc-visually-hidden">عملیات</span></th></tr></thead><tbody data-tags></tbody></table></div>
+   </section>
+ 
+--- a/local/public/index.php
++++ b/local/public/index.php
+@@ -117,12 +117,12 @@
+ $yesterdayHasSettlements=(int)($yesterdaySummary['completed_settlements']??0)>0;
+ $metrics=[];
+ if($canReports){
+-    $metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>$reportsError?'—':home_money((int)$todaySummary['net_sales'],$dashboardRialMode),'delta'=>($reportsError||!$todayHasSettlements||!$yesterdayHasSettlements)?null:home_delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasSettlements?'هنوز تسویهٔ موفقی ثبت نشده':(!$yesterdayHasSettlements?'دیروز تسویهٔ موفقی ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];
+-    if($canAccounts)$metrics[]=['icon'=>'ticket','tone'=>'info','label'=>'جمع حساب‌های باز','value'=>$openAccountsError?'—':home_open_money($openAccounts['amount_toman']??null,$dashboardRialMode),'delta'=>null,'helper'=>$openAccountsError?'مبلغ فعلاً نامشخص است':'مانده تسویه‌نشده '.home_fa_num((int)($openAccounts['account_count']??0)).' حساب','href'=>'/operator/?view=open','live_open_accounts'=>true];
+-    $metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>$reportsError?'—':home_fa_num((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$reportsError?'موقتاً در دسترس نیست':'کل سفارش‌های ثبت‌شده','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];
++    $metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>$reportsError?'نامشخص':home_money((int)$todaySummary['net_sales'],$dashboardRialMode),'delta'=>($reportsError||!$todayHasSettlements||!$yesterdayHasSettlements)?null:home_delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasSettlements?'هنوز تسویهٔ موفقی ثبت نشده':(!$yesterdayHasSettlements?'دیروز تسویهٔ موفقی ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];
++    if($canAccounts){$openKnown=!$openAccountsError&&is_int($openAccounts['amount_toman']??null)&&$openAccounts['amount_toman']>=0&&is_int($openAccounts['account_count']??null)&&$openAccounts['account_count']>=0;$metrics[]=['icon'=>'ticket','tone'=>'info','label'=>'جمع حساب‌های باز','value'=>$openKnown?home_open_money($openAccounts['amount_toman'],$dashboardRialMode):'نامشخص','delta'=>null,'helper'=>!$openKnown?'مبلغ فعلاً نامشخص است':'مانده تسویه‌نشده '.home_fa_num($openAccounts['account_count']).' حساب','href'=>'/operator/?view=open','live_open_accounts'=>true];}
++    $metrics[]=['icon'=>'cart','tone'=>'info','label'=>'سفارش‌های امروز','value'=>$reportsError?'نامشخص':home_fa_num((int)$todaySummary['order_count']),'delta'=>null,'helper'=>$reportsError?'موقتاً در دسترس نیست':'سفارش‌های مشتری؛ بدون مصرف پرسنل','href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=orders'];
+ }
+-if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>$opsError?'—':home_fa_num((int)($ops['metrics']['open_tables']??0)),'delta'=>null,'helper'=>$opsError?'موقتاً در دسترس نیست':'نشست باز در سالن','href'=>'/operator/?view=open'];
+-if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>$reportsError?'—':($todayHasInvoices?home_money((int)$todaySummary['avg_ticket'],$dashboardRialMode):'—'),'delta'=>($reportsError||!$todayHasInvoices||!$yesterdayHasInvoices)?null:home_delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasInvoices?'هنوز فاکتور نهایی ثبت نشده':('میانگین '.home_fa_num((int)$todaySummary['invoice_count']).' فاکتور نهایی')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
++if($canOps)$metrics[]=['icon'=>'table','tone'=>'neutral','label'=>'میزهای فعال','value'=>($opsError||!is_int($ops['metrics']['open_tables']??null)||$ops['metrics']['open_tables']<0)?'نامشخص':home_fa_num($ops['metrics']['open_tables']),'delta'=>null,'helper'=>($opsError||!is_int($ops['metrics']['open_tables']??null)||$ops['metrics']['open_tables']<0)?'وضعیت میزهای فعال فعلاً نامشخص است':'نشست باز در سالن','href'=>'/operator/?view=open'];
++if($canReports)$metrics[]=['icon'=>'ticket','tone'=>'warning','label'=>'میانگین فاکتور','value'=>$reportsError?'نامشخص':($todayHasInvoices?home_money((int)$todaySummary['avg_ticket'],$dashboardRialMode):'—'),'delta'=>($reportsError||!$todayHasInvoices||!$yesterdayHasInvoices)?null:home_delta((int)$todaySummary['avg_ticket'],(int)$yesterdaySummary['avg_ticket']),'helper'=>$reportsError?'موقتاً در دسترس نیست':(!$todayHasInvoices?'هنوز فاکتور نهایی ثبت نشده':('میانگین '.home_fa_num((int)$todaySummary['invoice_count']).' فاکتور نهایی')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=avg_ticket'];
+ 
+ $attentionPreviousDay=static function(string $stamp)use($todayKey,$tz,$clockSection):string{
+     $cutoff=(string)($clockSection['value']['cutoff']??'');
+--- a/public/assets/product-ui.css
++++ b/public/assets/product-ui.css
+@@ -6755,3 +6755,13 @@
+ .sc-page-help>summary:focus-visible{outline:2px solid var(--sc-focus);outline-offset:2px}
+ .sc-page-help>summary .sc-ui-icon{inline-size:17px;block-size:17px}
+ .sc-shell__content .sc-page-header__copy--inline .sc-page-help>p{position:absolute;z-index:25;inset-inline-start:0;inset-block-start:100%;inline-size:min(480px,100%);box-sizing:border-box;padding:10px 12px;border:1px solid var(--sc-border);border-radius:9px;margin:4px 0 0;color:var(--sc-text);background:var(--sc-surface-raised);box-shadow:var(--sc-panel-shadow);white-space:normal;overflow:visible;text-overflow:clip;line-height:1.75}
++
++/* Post-release: account chooser is content-sized, with a bounded scrolling list. */
++.sc-login-flow-chooser.sc-login-stable-picker[open]{height:fit-content;max-height:min(550px,calc(100dvh - 24px));grid-template-rows:auto auto auto minmax(0,1fr)}
++.sc-login-stable-picker .sc-login-stable-list{overflow-y:auto}
++
++/* Keep page help beside the title; don't clip the opened help panel on mobile. */
++.sc-shell__content .sc-page-header__main{overflow:visible}
++.sc-shell__content .sc-page-header__copy--inline{flex-direction:row;align-items:center;justify-content:center;flex-wrap:nowrap}
++.sc-shell__content .sc-page-header__copy--inline .sc-page-help>p{display:block;-webkit-line-clamp:unset;border-inline-start:1px solid var(--sc-border);max-inline-size:100%;padding:10px 12px}
++.sc-shell__content .sc-page-header__copy--inline .sc-page-help:not([open])>p{display:none}
+--- a/public/assets/scds/guest.css
++++ b/public/assets/scds/guest.css
+@@ -657,7 +657,7 @@
+    Keep explicit hidden, cover, gallery and editorial media choices intact. */
+ @media(max-width:560px){
+  html:has(body.sg-body),html.sg-layer-open:has(body.sg-body){scrollbar-gutter:auto}
+- body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item{display:grid;grid-template-columns:minmax(0,44%) minmax(0,1fr);grid-template-areas:'media copy';min-block-size:154px}
++ body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item{display:grid;grid-template-columns:min(50%,216px) minmax(0,1fr);grid-template-areas:'media copy';min-block-size:154px}
+  body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item>.sg-item-media{inline-size:calc(100% - 12px);block-size:auto;min-block-size:0;aspect-ratio:1;align-self:center;margin:6px;object-fit:contain!important}
+  body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item-copy{min-inline-size:0;padding:10px 10px 10px 3px}
+  body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item-copy h3{overflow-wrap:anywhere;line-height:1.55}
+@@ -677,3 +677,17 @@
+ body.sg-body:not(.sg-v-featured-spotlight):not(.sg-v-featured-grid) .sg-featured-copy h3{margin:0;overflow-wrap:anywhere}
+ body.sg-body:not(.sg-v-featured-spotlight):not(.sg-v-featured-grid) .sg-featured-meta{padding-top:4px;flex-wrap:wrap;gap:4px}
+ body.sg-body:not(.sg-v-featured-spotlight):not(.sg-v-featured-grid) .sg-featured-meta>strong{white-space:normal;overflow-wrap:anywhere}
++
++/* A17: same square inset frame for every default card, independent of
++   intrinsic photo ratio, missing photos and copy height. Preserve whole images. */
++body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item>.sg-item-media{box-sizing:border-box;inline-size:calc(100% - 12px);block-size:auto;aspect-ratio:1 / 1;min-block-size:0;max-block-size:none;min-inline-size:0;align-self:start;margin:6px;border:1px solid var(--sg-line);border-radius:17px;background:var(--sg-surface-soft);object-fit:contain!important}
++@media (min-width:561px) and (max-width:940px){
++ body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item{grid-template-columns:min(45%,216px) minmax(0,1fr)}
++}
++@media (min-width:941px){
++ body.sg-body:not(.sg-v-item-media-hidden):not(.sg-v-item-media-top):not(.sg-v-item-media-cover):not(.sg-v-catalog-ledger):not(.sg-v-catalog-gallery):not(.sg-v-catalog-editorial) .sg-app .sg-item{grid-template-columns:min(40%,216px) minmax(0,1fr)}
++}
++body.sg-body:not(.sg-v-featured-spotlight):not(.sg-v-featured-grid) .sg-featured-media{align-self:start;aspect-ratio:1 / 1;block-size:auto;min-block-size:0;box-sizing:border-box;background:var(--sg-surface-soft);border:1px solid var(--sg-line);border-radius:17px}
++body.sg-body:not(.sg-v-featured-spotlight):not(.sg-v-featured-grid) .sg-featured-media>img,
++body.sg-body:not(.sg-v-featured-spotlight):not(.sg-v-featured-grid) .sg-featured-media>.sg-featured-placeholder{background:var(--sg-surface-soft);object-fit:contain!important;object-position:center}
++
+--- a/public/assets/staff-app/public-invoice-history.js
++++ b/public/assets/staff-app/public-invoice-history.js
+@@ -7,17 +7,21 @@
+ const date=s=>{const d=String(s||'');return d?(window.SoknaLocale?.date?.(d)||d.replace(/-/g,'/').replace(/[0-9]/g,x=>'۰۱۲۳۴۵۶۷۸۹'[Number(x)])):'—'};
+ const fail=m=>{error.hidden=false;error.textContent=m};
+ const clear=()=>{error.textContent='';error.hidden=true};
+-let page=1,hasMore=false,seq=0,detailSeq=0;
++let page=0,hasMore=false,loading=false,filters={},seq=0,detailSeq=0;
++const updateMore=()=>{more.hidden=!hasMore;more.disabled=loading};
+ const query=(action,other={})=>{const url=new URL(root.dataset.api,location.href);url.searchParams.set('action',action);Object.entries(other).forEach(([k,v])=>{if(v!==undefined&&v!==''&&v!==null)url.searchParams.set(k,String(v))});return url};
+ async function loadApi(action,args){const response=await fetch(query(action,args),{credentials:'same-origin',headers:{'Accept':'application/json'}});const j=await response.json();if(!response.ok||j.success===false)throw new Error(j.message||'دریافت اطلاعات مالی انجام نشد.');return j;}
+ const statusLabel=r=>window.SoknaStaffDataPanels.invoiceState(r);
+ const documentMoney=r=>window.SoknaStaffDataPanels.invoiceFinal(r);
+ function renderRow(r){const b=wrap('button','sc-invoice-history__row');b.type='button';b.dataset.invoiceId=String(r.id);const top=wrap('span','sc-invoice-history__head');top.append(wrap('strong','sc-canonical-id','فاکتور '+(r.invoice_number||r.id)),wrap('span','sc-invoice-history__badge',statusLabel(r)));b.append(top);const bottom=wrap('span','sc-invoice-history__body');bottom.append(wrap('small','',String(r.table_name||'میز نامشخص')+' · '+date(r.receipt_business_date)),wrap('strong','',documentMoney(r)));b.append(bottom);b.addEventListener('click',()=>showDetail(Number(r.id)));return b}
+-async function load(reset=true){const token=++seq;clear();if(reset){page=1;list.replaceChildren();detailSeq++;detail.hidden=true;detail.replaceChildren()}const args=Object.fromEntries(new FormData(form).entries());args.page=page;
+- try{const j=await loadApi('invoice_history',args);if(token!==seq)return;const data=j.invoice_history||{},rows=data.rows||[],cov=data.coverage||{};scope.textContent=`پوشش همگام‌شده: ${date(cov.from)} تا ${date(cov.to)}${cov.truncated?' · فقط اسناد جدیدتر منتقل شده‌اند؛ فهرست کامل نیست.':' · این آرشیو فقط محدوده نمایش‌داده‌شده را پوشش می‌دهد.'}`;
++async function load(reset=true){if(!reset&&(loading||!hasMore))return;const token=++seq;clear();
++ if(reset){page=0;hasMore=false;filters=Object.fromEntries(new FormData(form).entries());list.replaceChildren();detailSeq++;detail.hidden=true;detail.replaceChildren();scope.textContent='در حال دریافت محدوده اسناد…'}
++ const requestedPage=page+1;loading=true;updateMore();list.setAttribute('aria-busy','true');
++ try{const j=await loadApi('invoice_history',{...filters,page:requestedPage});if(token!==seq)return;const data=j.invoice_history||{},rows=data.rows||[],cov=data.coverage||{};scope.textContent=`پوشش همگام‌شده: ${date(cov.from)} تا ${date(cov.to)}${cov.truncated?' · فقط اسناد جدیدتر منتقل شده‌اند؛ فهرست کامل نیست.':' · این آرشیو فقط محدوده نمایش‌داده‌شده را پوشش می‌دهد.'}`;
+  if(!rows.length&&reset)list.append(wrap('div','sc-empty','در اسناد همگام‌شده مطابق این فیلتر موردی پیدا نشد.'));
+- rows.forEach(r=>list.append(renderRow(r)));hasMore=data.pagination?.has_more===true;more.hidden=!hasMore;
++ rows.forEach(r=>list.append(renderRow(r)));page=requestedPage;hasMore=data.pagination?.has_more===true;
+  }catch(e){if(token===seq){fail(e.message);if(reset)scope.textContent='تاریخچه فعلاً قابل تأیید نیست؛ برای آرشیو کامل از لوکال استفاده کنید.'}}
++ finally{if(token===seq){loading=false;updateMore();list.removeAttribute('aria-busy')}}
+ }
+ async function showDetail(id){const token=++detailSeq;clear();detail.hidden=false;detail.replaceChildren(wrap('p','sc-muted','در حال دریافت سند…'));detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+  try{const j=await loadApi('invoice_detail',{id});if(token!==detailSeq)return;const r=j.invoice||{};if(Number(r.id)!==id)throw new Error('شناسه سند دریافت‌شده با درخواست مطابقت ندارد.');detail.replaceChildren();
+@@ -31,7 +35,7 @@
+  const close=wrap('button','sc-button sc-button--secondary sc-invoice-standard__close','بستن');close.type='button';close.setAttribute('aria-label','بستن جزئیات فاکتور');close.addEventListener('click',()=>{detailSeq++;detail.hidden=true;detail.replaceChildren()});box.querySelector('.sc-invoice-standard__end').append(close);detail.append(box);
+  }catch(e){if(token===detailSeq)detail.replaceChildren(wrap('div','sc-alert sc-alert--warning',e.message+' برای سابقه کامل‌تر، سیستم اصلی کافه را بررسی کنید.'))}}
+ form.addEventListener('submit',e=>{e.preventDefault();load(true)});
+-more.addEventListener('click',()=>{if(hasMore){page++;load(false)}});
++more.addEventListener('click',()=>load(false));
+ load(true);
+ const invoiceId=new URL(location.href).searchParams.get('invoice_id');if(invoiceId&&/^[1-9][0-9]{0,12}$/.test(invoiceId)){const tab=document.querySelector('a[href="#report-invoices"]');tab?.click();showDetail(Number(invoiceId))}
+ })();
+--- a/public/src/Remote/PublicInvoiceHistoryArchive.php
++++ b/public/src/Remote/PublicInvoiceHistoryArchive.php
+@@ -13,13 +13,15 @@
+           &&($archive['status']??'')==='available'
+           &&($archive['basis']??'')==='receipt_business_day_for_archive__session_open_business_day_for_sale'
+           &&self::day((string)($range['from']??'')) &&self::day((string)($range['to']??''))
++          &&$range['from']<=$range['to']
+           &&is_array($archive['rows']??null) &&is_bool($archive['truncated']??null);
+     }
+     public static function browse(array $archive,string $q='',string $from='',string $to='',int $page=1): ?array
+     {
+         $range=(array)$archive['range'];
++        $from=self::fold(trim($from));$to=self::fold(trim($to));
+         if($from!==''&&!self::day($from)||$to!==''&&!self::day($to)||($from!==''&&$to!==''&&$from>$to))return null;
+-        if(($from!==''&&$from<$range['from'])||($to!==''&&$to>$range['to']))return null;
++        if(($from!==''&&($from<$range['from']||$from>$range['to']))||($to!==''&&($to<$range['from']||$to>$range['to'])))return null;
+         $q=self::fold(substr(trim($q),0,400));$filtered=[];
+         foreach($archive['rows'] as $r){if(!is_array($r))continue;
+             $day=(string)($r['receipt_business_date']??'');
+@@ -43,6 +45,6 @@
+     private static function day(string $day):bool
+     {return preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D',$day,$m)===1&&checkdate((int)$m[2],(int)$m[3],(int)$m[1]);}
+     private static function fold(string $x):string
+-    {$x=strtr($x,['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9','ي'=>'ی','ك'=>'ک']);
++    {$x=strtr($x,['۰'=>'0','۱'=>'1','۲'=>'2','۳'=>'3','۴'=>'4','۵'=>'5','۶'=>'6','۷'=>'7','۸'=>'8','۹'=>'9','٠'=>'0','١'=>'1','٢'=>'2','٣'=>'3','٤'=>'4','٥'=>'5','٦'=>'6','٧'=>'7','٨'=>'8','٩'=>'9','ي'=>'ی','ك'=>'ک']);
+       return function_exists('mb_strtolower')?mb_strtolower($x,'UTF-8'):strtolower($x);}
+ }
+--- a/public/src/Remote/RemoteStaffPageRenderer.php
++++ b/public/src/Remote/RemoteStaffPageRenderer.php
+@@ -169,7 +169,12 @@
+         $reports=(array)($reportsModel['payload']??[]);$operationsRead=$this->core->remoteReadModels()->read($session,'operations');$operationsModel=(int)($operationsRead['status']??0)===200&&is_array($operationsRead['body']['payload']??null)?(array)$operationsRead['body']:[];$operations=(array)($operationsModel['payload']??[]);$ops=is_array($operations['hall']??null)?$operations['hall']:[];$notificationRead=$this->core->remoteReadModels()->read($session,'notifications');
+         $notificationModel=(int)($notificationRead['status']??0)===200&&is_array($notificationRead['body']['payload']??null)?(array)$notificationRead['body']:[];
+         $notifications=(array)($notificationModel['payload']??[]);$inventoryRead=$this->core->remoteReadModels()->read($session,'operations_workspace');$inventoryModel=(int)($inventoryRead['status']??0)===200&&is_array($inventoryRead['body']['payload']??null)?(array)$inventoryRead['body']:[];$inventoryWorkspace=(array)($inventoryModel['payload']??[]);$opsProjectionUnavailable=!self::dashboardProjectionAvailable($operationsRead);$inventoryProjectionUnavailable=!self::dashboardProjectionAvailable($inventoryRead);
+-        $canAccounts=$this->hasAny($session,['cashier_accounts','shift_supervision']);$canReports=$reports!==[];$canOps=$ops!==[];$inventoryItems=is_array($inventoryWorkspace['inventory']['items']??null)?$inventoryWorkspace['inventory']['items']:[];$canInventory=$inventoryItems!==[];
++        $canAccounts=$this->hasAny($session,['cashier_accounts','shift_supervision']);$canReports=$canAccounts;$canOps=$this->hasAny($session,['orders_floor','cashier_accounts','shift_supervision']);
++        // Card visibility follows the same role policy as Local, not the presence of a read model.
++        // All displayed values still come exclusively from the authorized read response.
++        if(!$canReports){$reports=[];$reportsModel=[];}
++        if(!$canOps){$operations=[];$operationsModel=[];$ops=[];}
++        $opsProjectionUnavailable=$ops===[]||!self::dashboardProjectionAvailable($operationsRead);$inventoryItems=is_array($inventoryWorkspace['inventory']['items']??null)?$inventoryWorkspace['inventory']['items']:[];$canInventory=$inventoryItems!==[];
+         $dashboard=is_array($reports['dashboard']??null)?$reports['dashboard']:[];$range=is_array($dashboard['range']??null)?$dashboard['range']:[];$tz=new \DateTimeZone('Asia/Tehran');$today=new \DateTimeImmutable('now',$tz);$sourceBusinessDate=PublicDashboardFinance::businessDate($reports);
+         $businessDateUnavailable=$sourceBusinessDate===null||(string)($reports['business_clock']['business_date']??'')!==$sourceBusinessDate;
+         if($sourceBusinessDate!==null)$today=new \DateTimeImmutable($sourceBusinessDate,$tz);
+@@ -185,7 +190,7 @@
+         $notificationItems=($todayNotice['today_available']??false)===true
+             ?array_values(array_filter((array)($todayNotice['today_items']??[]),static function($row):bool{
+                 $title=trim((string)($row['title']??''));return !str_starts_with($title,'QA Notification ');
+-            })) : [];$reportsError=$canReports?null:['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.'];$opsError=!$canOps?['message'=>'وضعیت سالن و سفارش‌ها فعلاً در دسترس نیست.']:($opsProjectionUnavailable?['message'=>'ارتباط زنده با لوکال برقرار نیست؛ داده‌های سالن ممکن است قدیمی باشند. برای عملیات و وضعیت جاری، اتصال باید دوباره برقرار شود.']:null);$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
++            })) : [];$reportsError=$canReports&&$reports===[]?['message'=>'داده‌های فروش و گزارش امروز فعلاً در دسترس نیست.']:null;$opsError=$canOps&&$opsProjectionUnavailable?['message'=>'ارتباط زنده با لوکال برقرار نیست؛ داده‌های سالن ممکن است قدیمی باشند. برای عملیات و وضعیت جاری، اتصال باید دوباره برقرار شود.']:null;$inventoryError=!$canInventory?['message'=>'وضعیت اقلام انبار فعلاً در دسترس نیست.']:($inventoryProjectionUnavailable?['message'=>'اطلاعات موجودی هنوز با لوکال همگام نشده؛ کمبود یا نبود کمبود قابل تأیید نیست.']:null);$notificationsError=$notifications!==[]?null:['message'=>'فعالیت‌ها و اعلان‌های اخیر فعلاً در دسترس نیست.'];
+         $fa=static fn(string|int|float $v):string=>strtr((string)$v,['0'=>'۰','1'=>'۱','2'=>'۲','3'=>'۳','4'=>'۴','5'=>'۵','6'=>'۶','7'=>'۷','8'=>'۸','9'=>'۹',','=>'٬']);$money=static fn(int $v):string=>$fa(number_format($v)).' تومان';$delta=static fn(int $current,int $reference):?int=>$reference>0?(int)round((($current-$reference)/$reference)*100):null;$relative=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{$dt=(new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz);$now=new \DateTimeImmutable('now',$tz);$sec=max(0,$now->getTimestamp()-$dt->getTimestamp());if($sec<60)return 'همین حالا';if($sec<3600)return $fa(max(1,(int)floor($sec/60))).' دقیقه پیش';if($sec<86400)return $fa((int)floor($sec/3600)).' ساعت پیش';return $fa((int)floor($sec/86400)).' روز پیش';}catch(\Throwable){return '—';}};
+         $lastFinanceSyncAt=(string)($reportsModel['last_sync_at']??'');$financeAsOf=$todayProjectionStale?('آخرین گزارش دریافت‌شده'.($lastFinanceSyncAt!==''?' · '.$relative($lastFinanceSyncAt):'')):null;$metrics=[];$todayHas=$todayHasReceipt;$yesterdayHas=$yesterdayHasReceipt;if($canReports||$canAccounts){$metrics[]=['icon'=>'chart','tone'=>'success','label'=>'فروش خالص امروز','value'=>($reportsError||$todayProjectionUnavailable)?'—':$money((int)$todaySummary['net_sales']),'delta'=>($reportsError||$todayProjectionUnavailable||!$todayHas||!$yesterdayHas)?null:$delta((int)$todaySummary['net_sales'],(int)$yesterdaySummary['net_sales']),'helper'=>$todayProjectionUnavailable?'اطلاعات روز کاری جاری تأیید نشده':(!$todayHas?'تسویهٔ قطعی برای این روز ثبت نشده':(!$yesterdayHas?'دیروز تسویه‌ای ثبت نشده':'نسبت به دیروز')),'href'=>'/reports/?from='.$todayKey.'&to='.$todayKey.'&focus=sales'];if($canAccounts){
+             $open=$operations['open_accounts']??[];$known=self::dashboardProjectionAvailable($operationsRead)&&($open['status']??'')==='ready'&&is_int($open['amount_toman']??null)&&$open['amount_toman']>=0&&is_int($open['account_count']??null)&&$open['account_count']>=0;
+@@ -196,7 +201,7 @@
+         $cachedAsOf=static function(array $model)use($tz,$fa):?string{
+             $stamp=trim((string)($model['last_sync_at']??''));if($stamp==='')return null;
+             try{ $at=\Sokna\Shared\IranTime::parse($stamp,'UTC');if($at>new \DateTimeImmutable('now',$tz))return null;
+-                return 'غیرزنده · '.\Sokna\Shared\IranTime::display($stamp,'UTC');
++                return 'غیرزنده · دریافت '.\Sokna\Shared\IranTime::display($stamp,'UTC');
+             }catch(\Throwable){return null;}
+         };
+         $reportStamp=$cachedAsOf($reportsModel);$opsStamp=$cachedAsOf($operationsModel);
+@@ -209,7 +214,7 @@
+                 $amount=$publicSnapshot[$field]??null;
+                 $metric['value']=is_int($amount)?($field==='order_count'?$fa($amount):$money($amount)):'نامشخص';
+                 if($cachedDay!==$todayKey)$metric['label']=match($field){'net_sales'=>'فروش خالص','order_count'=>'سفارش‌ها',default=>'میانگین فاکتور'};
+-                $metric['helper']=$cachedDay!==$todayKey?'غیرزنده · روز کاری '.$cachedDayLabel:$reportStamp;
++                $metric['helper']=$cachedDay!==$todayKey?'روز کاری '.$cachedDayLabel.' · '.$reportStamp:$reportStamp;
+                 $metric['delta']=null;$metric['cached']=true;
+                 $metric['href']=str_replace(['from='.$todayKey,'to='.$todayKey],['from='.$cachedDay,'to='.$cachedDay],$metric['href']);
+             }elseif($opsProjectionUnavailable&&$opsStamp!==null&&$label==='جمع حساب‌های باز'&&($open['status']??'')==='ready'&&is_int($open['amount_toman']??null)&&$open['amount_toman']>=0&&is_int($open['account_count']??null)&&$open['account_count']>=0){
+@@ -217,7 +222,16 @@
+             }elseif($opsProjectionUnavailable&&$opsStamp!==null&&$label==='میزهای فعال'&&is_int($ops['metrics']['open_tables']??null)&&$ops['metrics']['open_tables']>=0){
+                 $metric['value']=$fa($ops['metrics']['open_tables']);$metric['helper']=$opsStamp;$metric['cached']=true;
+             }
+-            if($metric['value']==='—'&&($todayProjectionUnavailable||$opsProjectionUnavailable))$metric['value']='نامشخص';
++            // Missing/unreliable is not a proven zero or a known absence of final invoices.
++            if($metric['value']==='—'){
++                $isReport=in_array($label,['فروش خالص امروز','سفارش‌های امروز','میانگین فاکتور'],true);
++                $knownNoInvoice=$label==='میانگین فاکتور'&&!$todayProjectionUnavailable&&!$reportsError
++                    &&is_int($dashboard['today_summary']['invoice_count']??null)&&$dashboard['today_summary']['invoice_count']===0
++                    &&(string)($range['to']??'')===$todayKey;
++                if(!$knownNoInvoice)$metric['value']='نامشخص';
++                if(!$isReport&&$label==='میزهای فعال')$metric['helper']='وضعیت میزهای فعال فعلاً نامشخص است';
++                if($isReport&&$label==='میانگین فاکتور'&&!$knownNoInvoice&&!$todayProjectionUnavailable)$metric['helper']='مبنای میانگین فاکتور فعلاً نامشخص است';
++            }
+         }unset($metric);
+         $attentionPreviousDay=static function(string $stamp)use($todayKey,$tz,$reports):string{
+             $cutoff=(string)($reports['business_clock']['cutoff']??'');
+@@ -240,7 +254,7 @@
+         $dashE=static fn(string $v):string=>htmlspecialchars($v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');$dashUrl=function(string $path):string{if(in_array($path,['/preparation','/waiter','/staff/preparation'],true))$path='/staff/preparation/';$map=['/preparation/'=>'/staff/preparation/','/waiter/'=>'/staff/preparation/','/operator/'=>'/staff/operator/','/reports/'=>'/staff/reports/','/operations/'=>'/staff/operations/','/notifications/'=>'/staff/notifications/'];foreach($map as $from=>$to)if(str_starts_with($path,$from)){$path=$to.substr($path,strlen($from));break;}return htmlspecialchars($this->u($path),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');};$dashIcon=static fn(string $name):string=>'<svg class="sc-ui-icon" aria-hidden="true" focusable="false"><use href="'.htmlspecialchars(ProductShell::asset('/assets/ui-sprite.svg'),ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'#icon-'.htmlspecialchars($name,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8').'"></use></svg>';$dashFaNum=$fa;$dashMoney=$money;$dashClock=static function(string $value)use($tz,$fa):string{if(trim($value)==='')return '—';try{return $fa((new \DateTimeImmutable($value,new \DateTimeZone('Asia/Tehran')))->setTimezone($tz)->format('H:i'));}catch(\Throwable){return '—';}};$dashNotificationIcon=static function(array $item):string{$u=strtolower((string)($item['target_url']??''));if(str_contains($u,'operator')||str_contains($u,'order'))return 'cart';if(str_contains($u,'operation')||str_contains($u,'inventory'))return 'archive';if(str_contains($u,'print')||str_contains($u,'integration'))return 'print';if(str_contains($u,'system'))return 'settings';return 'bell';};$dashUnit=static function(int $quantity,string $unit)use($fa):string{if($unit==='g'&&abs($quantity)>=1000)return $fa(rtrim(rtrim(number_format($quantity/1000,2,'.',''),'0'),'.')).' کیلوگرم';if($unit==='ml'&&abs($quantity)>=1000)return $fa(rtrim(rtrim(number_format($quantity/1000,2,'.',''),'0'),'.')).' لیتر';$labels=['g'=>'گرم','ml'=>'میلی‌لیتر','count'=>'عدد'];return $fa($quantity).' '.($labels[$unit]??$unit);};$dashDegraded=static function(?array $error,string $fallback)use($dashE):string{if($error===null)return '';$message=trim((string)($error['message']??''))?:$fallback;return '<div class="sc-empty sc-dashboard-degraded"><strong>'.$dashE($message).'</strong></div>';};
+         // General connectivity/freshness is already available from the status dot
+         // in ProductShell on mobile AND desktop. Keep action-specific warnings below.
+-        $dashboardCached=$todayProjectionUnavailable||$opsProjectionUnavailable;
++        $dashboardCached=($canReports&&$todayProjectionUnavailable)||($canOps&&$opsProjectionUnavailable);
+         require dirname(__DIR__,2).'/resources/shared-staff-ui/dashboard-workspace.php';
+     }
+ 
