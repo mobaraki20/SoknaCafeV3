@@ -29,7 +29,6 @@ jobs:
     env:
       QA_DB_PASSWORD: synthetic-a2329-ci-only
       QA_ROUTE: ${{ matrix.route }}
-      QA_CONTAINER: ${{ job.services.mariadb.id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,6 +90,8 @@ jobs:
             php qa/a23-29/public-route.php "$phase" "$L/old-web" "$L" | tee "$L/$phase-log.txt"
           done
       - name: Real independent database and original file backup before owner transition
+        env:
+          QA_CONTAINER: ${{ job.services.mariadb.id }}
         shell: bash
         run: |
           set -euo pipefail
