@@ -1,0 +1,167 @@
+name: A23 Windows scratch crash and recovery regression
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-scratch-windows.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/cp76/out
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Real Windows large encrypted business recovery to an independent installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $receipt=Get-Content "$env:RUNNER_TEMP/cp76/out/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $pkg='LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          $sha='707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10'
+          if($receipt.local.web_sha256 -cne $sha -or $receipt.production_authorized -ne $false -or $receipt.delivery_authorized -ne $false){throw 'INVALID_CANDIDATE_RECEIPT'}
+          if((Get-FileHash "$env:RUNNER_TEMP/cp76/out/$pkg" -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'CANDIDATE_ARCHIVE_DRIFT'}
+          $version='3.0.0-g6.2-workspace.231gl-a21-postrelease-20261128'
+          $s=Get-Content 'qa/factory/checkpoint78-standard-clean-web.ps1' -Raw
+          $s=$s.Replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip',$pkg).Replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',$sha).Replace('3.0.0-g6.2-workspace.231gg-checkpoint76-qa',$version)
+          $patch=(Resolve-Path 'qa/a23/read-scratch.patch').Path
+          if((Get-FileHash $patch -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f7008cbe42c3c3e1c9b4d105d16898aca6541bf15ddf8ab7abb62db417971214'){throw 'A23_PATCH_DRIFT'}
+          $env:SOKNA_A23_SCRATCH_PATCH=$patch
+          $test=@'
+          <?php
+          declare(strict_types=1);
+          use Sokna\Local\Domain\Recovery\BusinessBackupService;
+          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
+          use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
+          use Sokna\Local\Core\Observability;
+          use Sokna\Local\Setup\BrowserSetupService;
+          if(PHP_SAPI!=='cli'||PHP_OS_FAMILY!=='Windows'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_R186_CI_ONLY')!=='YES')exit(2);
+          $lab=realpath($argv[1]??'');$tmp=realpath(getenv('RUNNER_TEMP'));if(!$lab||!$tmp||dirname($lab)!==$tmp||!str_starts_with(basename($lab),'sokna-r301-native-'))exit(2);
+          require $lab.'/Web/bootstrap.php';$cfg=require $lab.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_ci_clean_windows'||(int)$cfg['db']['port']!==39745)exit(2);
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$source=$cfg['app']['data_dir'];
+          if(($argv[2]??'')==='inspect-child'){$core->businessBackup()->inspectEncrypted($lab.'/a23-offline-business.skbf','synthetic-a23-offline-recovery-only');exit(0);}
+          function ck($v,$m){if(!$v)throw new RuntimeException($m);echo "PASS $m\n";}
+          function callCli(string $target,array $args):array{$pr=proc_open(array_merge([PHP_BINARY,'-c',php_ini_loaded_file(),$target.'/Web/tools/reconcile-interrupted-backup.php'],$args),[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$io,dirname(PHP_BINARY));if(!is_resource($pr))throw new RuntimeException('CLI process');fclose($io[0]);$out=stream_get_contents($io[1]);$err=stream_get_contents($io[2]);fclose($io[1]);fclose($io[2]);$code=proc_close($pr);return [$code,$out,$err];}
+          class UncertainPDO extends PDO{public string $scenario='';public function commit():bool{if($this->scenario==='')return parent::commit();$m=$this->scenario;$this->scenario='';$ok=$m==='committed'?parent::commit():parent::rollBack();if(!$ok)throw new RuntimeException('fixture transaction failed');throw new RuntimeException('synthetic acknowledgement unavailable');}}
+          $actor=$p->query("SELECT id,role FROM users WHERE username='ci-admin' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);ck(is_array($actor),'actual source administrator');
+          $p->exec("INSERT INTO subscribers(name,mobile,mobile_normalized,active) VALUES('QA recovery subscriber','00000000000','00000000000',1)");$sub=(int)$p->lastInsertId();
+          $clock=$core->businessClock()->assignment();$table=(int)$p->query('SELECT id FROM cafe_tables ORDER BY id LIMIT 1')->fetchColumn();$item=(int)$p->query('SELECT id FROM items ORDER BY id LIMIT 1')->fetchColumn();ck($table>0&&$item>0,'source catalog and table');
+          $p->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,?,?,?)")->execute(['qa-win-recovery-session',$table,$table,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$sid=(int)$p->lastInsertId();
+          $p->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',100000,?,?,?,?,?)")->execute(['qa-win-recovery-order','qa-win-recovery-token',$table,$sid,15000,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$oid=(int)$p->lastInsertId();
+          $p->prepare('INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,?,?,?,?,?)')->execute([$oid,$item,'QA recovery product',100000,1,1,'hot_bar',100000]);
+          $core->tax()->setEnabled(false,$actor);$settle=$core->settlements();$a=$settle->account($sid);$r=$settle->settle(['session_id'=>$sid,'expected_session_id'=>$sid,'expected_remaining_total'=>$a['remaining_total'],'expected_signature'=>$a['signature'],'mode'=>'full','destination'=>'subscriber','subscriber_id'=>$sub,'request_id'=>'qa-win-recovery-payment','print_receipt'=>false],$actor);ck((int)($r['settlement_id']??0)>0,'actual source settlement');
+          
+          $p->exec("INSERT INTO print_agents(name,token_hash,token_hint,active) VALUES('A23 source only',REPEAT('c',64),'qa-source',0)");$agent=(int)$p->lastInsertId();
+          $p->prepare("UPDATE print_destinations SET label='A23 source only',agent_id=?,windows_queue_name='A23-source-only',active=0 WHERE destination_key='customer_receipt'")->execute([$agent]);
+          $p->exec("INSERT INTO print_jobs(public_token,idempotency_key,job_type,destination_key,status,payload_json,content_sha256,entity_type) VALUES(REPEAT('a',32),'a23-source-only-job','customer','customer_receipt','cancelled','{}',REPEAT('b',64),'qa')");
+          ck((int)$p->query("SELECT COUNT(*) FROM print_jobs WHERE idempotency_key='a23-source-only-job'")->fetchColumn()===1,'source-only print state fixture');
+          $big=$source.'/guest-media/qa-a23-large.bin';$fh=fopen($big,'xb');if(!$fh)throw new RuntimeException('large media fixture');for($i=0;$i<520;$i++){if(fwrite($fh,random_bytes(1048576))!==1048576)throw new RuntimeException('media fixture write');}fclose($fh);
+          $media=MediaSnapshotCodec::scan($source);$backup=$lab.'/a23-offline-business.skbf';$pass='synthetic-a23-offline-recovery-only';
+          $meta=$core->businessBackup()->createEncrypted($backup,$pass,0);$size=filesize($backup);$hash=hash_file('sha256',$backup);ck($size>536870912&&$hash===$meta['sha256'],'actual restorable encrypted backup exceeds 512 MiB');
+          $scratch=$source.'/recovery-read-scratch-v1';ck(is_dir($scratch)&&glob($scratch.'/business-*.ndjson.gz')===[],'normal create cleans scratch');
+          $child=proc_open([PHP_BINARY,'-c',php_ini_loaded_file(),__FILE__,$lab,'inspect-child'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$pipes,dirname(PHP_BINARY));ck(is_resource($child),'separate actual Windows inspect process');fclose($pipes[0]);$seen=false;$found=null;
+          try{
+            $deadline=microtime(true)+35;while(microtime(true)<$deadline){clearstatcache();$files=glob($scratch.'/business-inspect-*.ndjson.gz');if(count($files)===1&&filesize($files[0])>=1048576){$found=$files[0];$seen=true;break;}if(!proc_get_status($child)['running'])break;usleep(10000);}
+            ck($seen,'observed actual decrypted scratch in Windows');
+            try{$core->businessBackup()->inspectEncrypted($backup,$pass);throw new RuntimeException('active scratch unexpectedly accepted');}catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){ck($e->errorCode==='backup_scratch_busy'&&is_file($found),'active scratch protected');}
+            ck(proc_terminate($child,9),'terminate actual inspect process');$deadline=microtime(true)+15;while(proc_get_status($child)['running']&&microtime(true)<$deadline)usleep(20000);ck(!proc_get_status($child)['running'],'child actually stopped');
+          }finally{if(proc_get_status($child)['running'])proc_terminate($child,9);fclose($pipes[1]);fclose($pipes[2]);proc_close($child);}
+          clearstatcache();ck(is_file($found),'abandoned scratch exists before cleanup');
+          $legacy=$source.'/recovery-tmp';if(!is_dir($legacy))mkdir($legacy,0700);$sentinel=$legacy.'/business-restore-0000000000000000.ndjson.gz';file_put_contents($sentinel,'synthetic restore sentinel');$other=$scratch.'/keep.txt';file_put_contents($other,'keep');
+          $inspection=$core->businessBackup()->inspectEncrypted($backup,$pass);ck($inspection['stream_verified']===true&&$inspection['target_ready']===false,'actual encrypted stream inspected on nonempty source');
+          ck(glob($scratch.'/business-*.ndjson.gz')===[]&&file_get_contents($sentinel)==='synthetic restore sentinel'&&file_get_contents($other)==='keep','abandoned scratch cleaned only in owned namespace');ck(hash_file('sha256',$backup)===$hash,'ciphertext unchanged after crash and inspect');unlink($sentinel);unlink($other);
+          function rows(PDO $pdo):array{$a=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','users','inventory_items'] as $n)$a[$n]=$pdo->query('SELECT * FROM `'.$n.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);return $a;}
+          $before=rows($p);
+          $target=$lab.'-a23-offline-target';$dest=$target.'/Data';$name='sokna_ci_a23_offline';
+          ck(is_file($target.'/Web/tools/setup-machine.php')&&!is_file($target.'/config.php')&&!is_file($target.'/install.lock'),'fresh independent target');
+          $p->exec("CREATE DATABASE sokna_ci_a23_offline CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          $p->exec("CREATE USER 'a23_target'@'127.0.0.1' IDENTIFIED BY 'synthetic-a23-db-only'");
+          $p->exec("GRANT ALL PRIVILEGES ON sokna_ci_a23_offline.* TO 'a23_target'@'127.0.0.1'");
+          $targetPdo=new PDO('mysql:host=127.0.0.1;port=39745;dbname='.$name.';charset=utf8mb4','a23_target','synthetic-a23-db-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          try{$targetPdo->query('SELECT COUNT(*) FROM sokna_ci_clean_windows.users');throw new RuntimeException('unexpected source access');}catch(PDOException $e){ck(true,'destination DB credentials cannot read source business DB');}
+          $conf=$target.'/input.json';$pw=$target.'/pass.txt';
+          file_put_contents($conf,json_encode(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'39745','name'=>$name,'user'=>'a23_target','pass'=>'synthetic-a23-db-only'],'create_database'=>false,'admin_user'=>'a23-empty-target','admin_password'=>'synthetic-a23-target-only','cafe_name'=>'A23 disposable target','table_count'=>3],JSON_THROW_ON_ERROR));
+          file_put_contents($pw,$pass);
+          $init=$target.'/qa-setup.php';file_put_contents($init,'<?php require __DIR__."/Web/bootstrap.php"; require_once __DIR__."/Web/src/Setup/BrowserSetupService.php"; $s=new \Sokna\Local\Setup\BrowserSetupService(__DIR__,__DIR__."/Web");$state=$s->status(); if(($state["state"]??"")!=="new")throw new RuntimeException("TARGET_NOT_NEW"); echo json_encode($s->installNew(json_decode(file_get_contents($argv[1]),true,512,JSON_THROW_ON_ERROR)),JSON_THROW_ON_ERROR);');
+          function separate(array $cmd):array{$pr=proc_open(array_merge([PHP_BINARY,'-c',php_ini_loaded_file()],$cmd),[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$io,dirname(PHP_BINARY));ck(is_resource($pr),'actual separate CLI process');fclose($io[0]);$o=stream_get_contents($io[1]);$e=stream_get_contents($io[2]);fclose($io[1]);fclose($io[2]);return [proc_close($pr),$o,$e];}
+          [$code,$o,$e]=separate([$init,$conf]);echo "standard setup exit=$code ".$e.PHP_EOL;ck($code===0,'actual standard BrowserSetup creates independent seed');$j=json_decode($o,true,512,JSON_THROW_ON_ERROR);ck(($j['success']??false)===true,'standard setup receipt');$id=$j['installation_id'];ck($id!==$cfg['installation']['id'],'new installation identity');
+          $adapter=$target.'/Web/tools/restore-business-backup.php';$bytes=base64_decode('PD9waHAKZGVjbGFyZShzdHJpY3RfdHlwZXM9MSk7Ci8vIEV4cGxpY2l0IGxvY2FsIG9wZXJhdG9yIHJlY292ZXJ5LiBFeGlzdGluZyBCcm93c2VyIFNldHVwIGFuZCBCdXNpbmVzc0JhY2t1cFNlcnZpY2UgcmVtYWluIGF1dGhvcml0YXRpdmUuCmlmKFBIUF9TQVBJIT09J2NsaScpe2h0dHBfcmVzcG9uc2VfY29kZSg0MDQpO2V4aXQoMik7fQppZigoJGFyZ3ZbMV0/PycnKSE9PSdyZXN0b3JlJ3x8IWluX2FycmF5KCctLWNvbmZpcm0tc2VydmljZXMtc3RvcHBlZCcsJGFyZ3YsdHJ1ZSkpewogICAgZndyaXRlKFNUREVSUiwiT2ZmbGluZSByZWNvdmVyeSBvbmx5LiBTdG9wIGFsbCBhcHBsaWNhdGlvbiB3cml0ZXJzIGFuZCBwYXNzIC0tY29uZmlybS1zZXJ2aWNlcy1zdG9wcGVkLlxuIik7ZXhpdCgyKTsKfQpmdW5jdGlvbiBvZmZsaW5lX2FyZyhhcnJheSAkYXJncyxzdHJpbmcgJG5hbWUpOnN0cmluZ3sKICAgICRtYXRjaGVzPWFycmF5X3ZhbHVlcyhhcnJheV9maWx0ZXIoJGFyZ3Msc3RhdGljIGZuKCRhKT0+c3RyX3N0YXJ0c193aXRoKCRhLCRuYW1lLic9JykpKTsKICAgIGlmKGNvdW50KCRtYXRjaGVzKSE9PTEpcmV0dXJuICcnOwogICAgcmV0dXJuIHN1YnN0cigkbWF0Y2hlc1swXSxzdHJsZW4oJG5hbWUpKzEpOwp9CmZ1bmN0aW9uIG9mZmxpbmVfZmFpbChzdHJpbmcgJGNvZGUsaW50ICRleGl0PTIpOm5ldmVyewogICAgZndyaXRlKFNUREVSUixqc29uX2VuY29kZShbJ3N1Y2Nlc3MnPT5mYWxzZSwnY29kZSc9PiRjb2RlXSxKU09OX1RIUk9XX09OX0VSUk9SKS5QSFBfRU9MKTtleGl0KCRleGl0KTsKfQokdGFyZ2V0PW9mZmxpbmVfYXJnKCRhcmd2LCctLXRhcmdldC1pbnN0YWxsYXRpb24nKTskc291cmNlPW9mZmxpbmVfYXJnKCRhcmd2LCctLWlucHV0Jyk7JHNoYT1zdHJ0b2xvd2VyKG9mZmxpbmVfYXJnKCRhcmd2LCctLXNoYTI1NicpKTskcGFzc0ZpbGU9b2ZmbGluZV9hcmcoJGFyZ3YsJy0tcGFzc3BocmFzZS1maWxlJyk7CmlmKCR0YXJnZXQ9PT0nJ3x8IXByZWdfbWF0Y2goJy9eW2EtZjAtOV17NjR9JC9EJywkc2hhKXx8JHNvdXJjZT09PScnfHwkcGFzc0ZpbGU9PT0nJylvZmZsaW5lX2ZhaWwoJ3JlY292ZXJ5X2FyZ3VtZW50c19pbnZhbGlkJyk7CmlmKGlzX2xpbmsoJHNvdXJjZSl8fCFpc19maWxlKCRzb3VyY2UpfHwhaXNfcmVhZGFibGUoJHNvdXJjZSl8fGlzX2xpbmsoJHBhc3NGaWxlKXx8IWlzX2ZpbGUoJHBhc3NGaWxlKXx8IWlzX3JlYWRhYmxlKCRwYXNzRmlsZSl8fHJlYWxwYXRoKCRzb3VyY2UpPT09cmVhbHBhdGgoJHBhc3NGaWxlKSlvZmZsaW5lX2ZhaWwoJ3JlY292ZXJ5X2ZpbGVfaW52YWxpZCcpOwokcGFzc1Jhdz1maWxlX2dldF9jb250ZW50cygkcGFzc0ZpbGUsZmFsc2UsbnVsbCwwLDEwMjcpO2lmKCFpc19zdHJpbmcoJHBhc3NSYXcpfHxzdHJsZW4oJHBhc3NSYXcpPjEwMjYpb2ZmbGluZV9mYWlsKCdyZWNvdmVyeV9wYXNzcGhyYXNlX2ludmFsaWQnKTskcGFzcz1ydHJpbSgkcGFzc1JhdywiXHJcbiIpO3Vuc2V0KCRwYXNzUmF3KTtpZihzdHJsZW4oJHBhc3MpPDEyfHxzdHJsZW4oJHBhc3MpPjEwMjQpb2ZmbGluZV9mYWlsKCdyZWNvdmVyeV9wYXNzcGhyYXNlX2ludmFsaWQnKTsKJHdlYj1kaXJuYW1lKF9fRElSX18pOyRyb290PWRpcm5hbWUoJHdlYik7JGNvbmZpZ1BhdGg9JHJvb3QuJy9jb25maWcucGhwJzskbG9ja1BhdGg9JHJvb3QuJy9pbnN0YWxsLmxvY2snOyRiaW5kaW5nUGF0aD0kd2ViLicvLnNva25hLWluc3RhbGxhdGlvbi5qc29uJzsKdHJ5ewogICAgZm9yZWFjaChbJGNvbmZpZ1BhdGgsJGxvY2tQYXRoLCRiaW5kaW5nUGF0aF0gYXMgJHBhdGgpaWYoIWlzX2ZpbGUoJHBhdGgpfHxpc19saW5rKCRwYXRoKSlvZmZsaW5lX2ZhaWwoJ3JlY292ZXJ5X3RhcmdldF9ub3RfYm91bmQnKTsKICAgICRjb25maWc9cmVxdWlyZSAkY29uZmlnUGF0aDskbG9jaz1qc29uX2RlY29kZSgoc3RyaW5nKWZpbGVfZ2V0X2NvbnRlbnRzKCRsb2NrUGF0aCksdHJ1ZSwzMixKU09OX1RIUk9XX09OX0VSUk9SKTskYmluZGluZz1qc29uX2RlY29kZSgoc3RyaW5nKWZpbGVfZ2V0X2NvbnRlbnRzKCRiaW5kaW5nUGF0aCksdHJ1ZSwzMixKU09OX1RIUk9XX09OX0VSUk9SKTskdmVyc2lvbj10cmltKChzdHJpbmcpZmlsZV9nZXRfY29udGVudHMoJHdlYi4nL1ZFUlNJT04udHh0JykpOwogICAgaWYoIWlzX2FycmF5KCRjb25maWcpfHwhaXNfYXJyYXkoJGxvY2spfHwhaXNfYXJyYXkoJGJpbmRpbmcpfHwkdmVyc2lvbj09PScnfHwoJGNvbmZpZ1snaW5zdGFsbGF0aW9uJ11bJ2lkJ10/PycnKSE9PSR0YXJnZXR8fCgkbG9ja1snZm9ybWF0J10/PycnKSE9PSdzb2tuYS1pbnN0YWxsLWxvY2stdjMnfHwoJGxvY2tbJ2luc3RhbGxhdGlvbl9pZCddPz8nJykhPT0kdGFyZ2V0fHwoJGJpbmRpbmdbJ2Zvcm1hdCddPz8nJykhPT0nc29rbmEtbG9jYWwtaW5zdGFsbGF0aW9uLWJpbmRpbmctdjEnfHwoJGJpbmRpbmdbJ2luc3RhbGxhdGlvbl9pZCddPz8nJykhPT0kdGFyZ2V0fHwoJGJpbmRpbmdbJ3dlYl92ZXJzaW9uJ10/PycnKSE9PSR2ZXJzaW9uKW9mZmxpbmVfZmFpbCgncmVjb3ZlcnlfdGFyZ2V0X25vdF9ib3VuZCcpOwogICAgaWYoIWhhc2hfZXF1YWxzKCRzaGEsKHN0cmluZyloYXNoX2ZpbGUoJ3NoYTI1NicsJHNvdXJjZSkpKW9mZmxpbmVfZmFpbCgncmVjb3Zlcnlfc291cmNlX2hhc2hfbWlzbWF0Y2gnKTsKICAgIHJlcXVpcmVfb25jZSAkd2ViLicvYm9vdHN0cmFwLnBocCc7JGNvcmU9c29rbmFfbG9jYWxfYm9vdHN0cmFwKCRjb25maWcpOyRkYXRhPShzdHJpbmcpKCRjb25maWdbJ2FwcCddWydkYXRhX2RpciddPz8nJyk7CiAgICBpZigkZGF0YT09PScnfHxyZWFscGF0aCgkZGF0YSk9PT1mYWxzZXx8cmVhbHBhdGgoJGNvcmUtPm9ic2VydmFiaWxpdHkoKS0+ZGF0YVJvb3QoKSkhPT1yZWFscGF0aCgkZGF0YSkpb2ZmbGluZV9mYWlsKCdyZWNvdmVyeV9kYXRhX3Jvb3RfbWlzbWF0Y2gnKTsKICAgICRkYj0kY29yZS0+ZGF0YWJhc2UoKTskcT0kZGItPnByZXBhcmUoIlNFTEVDVCBzZXR0aW5nX3ZhbHVlIEZST00gc2V0dGluZ3MgV0hFUkUgc2V0dGluZ19rZXk9J2luc3RhbGxhdGlvbi5pZCciKTskcS0+ZXhlY3V0ZSgpO2lmKCRxLT5mZXRjaENvbHVtbigpIT09JHRhcmdldClvZmZsaW5lX2ZhaWwoJ3JlY292ZXJ5X2RhdGFiYXNlX2lkZW50aXR5X21pc21hdGNoJyk7JHEtPmNsb3NlQ3Vyc29yKCk7CiAgICAvLyBObyBtaWdyYXRpb24sIHJlc2V0LCBkZWxldGUgb3IgYnlwYXNzIGhlcmUuIFRoZSBleGlzdGluZyBlbmdpbmUgcHJvdmVzIHByaXN0aW5lIHRhcmdldCwKICAgIC8vIHZhbGlkYXRlcyB0aGUgYXV0aGVudGljYXRlZCBzdHJlYW0sIGFuZCBvd25zIHRyYW5zYWN0aW9uLCBtZWRpYSBhbmQgYXV0aG9yaXR5IGZlbmNpbmcuCiAgICAkcmVzdWx0PSRjb3JlLT5idXNpbmVzc0JhY2t1cCgpLT5yZXN0b3JlRW5jcnlwdGVkVG9FbXB0eVRhcmdldCgkc291cmNlLCRwYXNzLDApOwogICAgdW5zZXQoJHBhc3MpOwogICAgaWYoKCRyZXN1bHRbJ3Jlc3RvcmVkJ10/P2ZhbHNlKSE9PXRydWUpb2ZmbGluZV9mYWlsKCdyZWNvdmVyeV9vdXRjb21lX3VudmVyaWZpZWQnLDEpOwogICAgZWNobyBqc29uX2VuY29kZShbJ3N1Y2Nlc3MnPT50cnVlLCdyZXN0b3JlZCc9PnRydWUsJ3RhcmdldF9pbnN0YWxsYXRpb25faWQnPT4kdGFyZ2V0LCdzb3VyY2Vfc2hhMjU2Jz0+JHNoYSwnb3BlcmF0aW9uYWxfcmVhZHknPT5mYWxzZSwnbmV4dF9hY3Rpb24nPT4ndmVyaWZ5X3JlY292ZXJ5X3JlY2VpcHRfYW5kX3JlZW5yb2xsX3B1YmxpY19iZWZvcmVfaW50YWtlJywncmVjb3ZlcnknPT4kcmVzdWx0XSxKU09OX1VORVNDQVBFRF9VTklDT0RFfEpTT05fVEhST1dfT05fRVJST1IpLlBIUF9FT0w7Cn1jYXRjaChcU29rbmFcTG9jYWxcRG9tYWluXFJlY292ZXJ5XFJlY292ZXJ5RXhjZXB0aW9uICRlKXtmd3JpdGUoU1RERVJSLGpzb25fZW5jb2RlKFsnc3VjY2Vzcyc9PmZhbHNlLCdjb2RlJz0+JGUtPmVycm9yQ29kZSwnbWVzc2FnZSc9PiRlLT5nZXRNZXNzYWdlKCldLEpTT05fVU5FU0NBUEVEX1VOSUNPREUpLlBIUF9FT0wpO2V4aXQoMSk7fWNhdGNoKFRocm93YWJsZSl7b2ZmbGluZV9mYWlsKCdyZWNvdmVyeV9vdXRjb21lX3VudmVyaWZpZWRfcHJlc2VydmVfZmlsZXMnLDEpO30K',true);ck(hash('sha256',$bytes)==='9fed2a2a36202d976a827426f72d79f50892ed2c9be6492af32ea1998c70a11f','exact QA adapter SHA');file_put_contents($adapter,$bytes);$targetPdo->exec("SET time_zone='+03:30'");
+          $printSeed=$targetPdo->query('SELECT * FROM print_destinations ORDER BY destination_key')->fetchAll(PDO::FETCH_ASSOC);ck(count($printSeed)>0,'fresh destination defaults exist');
+          ck($printSeed!==$p->query('SELECT * FROM print_destinations ORDER BY destination_key')->fetchAll(PDO::FETCH_ASSOC),'source print state distinct from target');
+          $args=[$adapter,'restore','--target-installation='.$id,'--input='.$backup,'--sha256='.$hash,'--passphrase-file='.$pw];
+          [$code,$o,$e]=separate($args);ck($code===2,'missing stopped-services confirmation rejected');
+          $wrong=$args;$wrong[2]='--target-installation=wrong-a23-id';$wrong[]='--confirm-services-stopped';[$code,$o,$e]=separate($wrong);ck($code===2&&str_contains($e,'recovery_target_not_bound'),'wrong destination identity rejected');
+          $wrong=$args;$wrong[4]='--sha256='.str_repeat('0',64);$wrong[]='--confirm-services-stopped';[$code,$o,$e]=separate($wrong);ck($code===2&&str_contains($e,'recovery_source_hash_mismatch'),'wrong backup hash rejected');
+          $args[]='--confirm-services-stopped';[$code,$stdout,$stderr]=separate($args);@unlink($pw);@unlink($conf);@unlink($init);echo "offline adapter exit=$code ".$stdout." ".$stderr.PHP_EOL;ck($code===0,'actual offline adapter recovered large backup without HTTP upload');
+          $j=json_decode($stdout,true,512,JSON_THROW_ON_ERROR);ck(($j['success']??false)===true&&($j['operational_ready']??true)===false&&$j['target_installation_id']===$id,'new machine restore receipt without false operational readiness');
+          $tcfg=require $target.'/config.php';$tlock=json_decode(file_get_contents($target.'/install.lock'),true,512,JSON_THROW_ON_ERROR);
+          ck($tcfg['installation']['id']===$id&&$tlock['installation_id']===$id&&$tcfg['runtime']['local_token']!==$cfg['runtime']['local_token'],'new config/lock/runtime identity');
+          ck((int)$targetPdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn()===93,'all destination migrations');
+          ck(rows($targetPdo)===$before,'financial, user and inventory rows exact');
+          ck(MediaSnapshotCodec::scan($dest)===$media,'all media byte hashes exact');
+          ck($targetPdo->query("SELECT setting_value FROM settings WHERE setting_key='installation.id'")->fetchColumn()===$id,'DB identity bound to destination');
+          ck((new PublicAuthorityStateService($targetPdo,$id))->phase()==='reenroll_required','Public authority fenced pending reenrollment');
+          foreach(['print_agents','print_jobs','public_projection_outbox','public_sync_state'] as $t){ck((int)$targetPdo->query('SELECT COUNT(*) FROM `'.$t.'`')->fetchColumn()===0,'excluded machine/transport state '.$t);}
+          ck($targetPdo->query('SELECT * FROM print_destinations ORDER BY destination_key')->fetchAll(PDO::FETCH_ASSOC)===$printSeed,'fresh destination print defaults preserved byte for byte');
+          ck((int)$p->query("SELECT COUNT(*) FROM print_jobs WHERE idempotency_key='a23-source-only-job'")->fetchColumn()===1&&(int)$p->query("SELECT COUNT(*) FROM print_agents WHERE name='A23 source only'")->fetchColumn()===1,'source-only print state preserved');
+          ck(rows($p)===$before&&hash_file('sha256',$backup)===$hash&&MediaSnapshotCodec::scan($source)===$media,'source and backup preserved');
+          file_put_contents(getenv('RUNNER_TEMP').'/a23-scratch-regression-receipt.json',json_encode(['status'=>'PASS','actual_windows'=>true,'actual_mariadb'=>true,'actual_cli'=>true,'qa_adapter_sha256'=>'9fed2a2a36202d976a827426f72d79f50892ed2c9be6492af32ea1998c70a11f','source_app_stopped'=>true,'scratch_candidate_sha256'=>'3a7209987a35ee88734fec66de94e5dd9004762e175ef610348d3c3c77c9b4d3','actual_windows_inspect_process_killed'=>true,'abandoned_scratch_cleaned_on_next_operation'=>true,'active_scratch_protected'=>true,'legacy_restore_sentinel_preserved'=>true,'windows_acl_independently_tested'=>false,'backup_bytes'=>$size,'backup_sha256'=>$hash,'financial_rows_exact'=>true,'target_print_defaults_exact'=>true,'source_print_agent_job_excluded'=>true,'media_exact'=>true,'target_identity_distinct'=>true,'public_reenroll_required'=>true,'source_db_inaccessible_to_target_credential'=>true,'physical_print_tested'=>false,'public_cutover_tested'=>false,'synthetic_only'=>true],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));echo "GROUP PASS A23-L13 L17 large offline restore\n";
+          
+          '@
+          $testPath=Join-Path $env:RUNNER_TEMP 'a23-offline-recover.php'
+          Set-Content $testPath $test -Encoding utf8NoBOM
+          $inject=@'
+          Stop-Service SoknaApache -ErrorAction Stop
+          Need ((Get-Service SoknaApache).Status -eq 'Stopped') 'APPLICATION_WRITER_NOT_STOPPED'
+          foreach($n in @('SoknaRuntime','SoknaPrintAgent','SoknaPrintWorker')){ $svc=Get-Service $n -ErrorAction SilentlyContinue; Need ($null -eq $svc -or $svc.Status -eq 'Stopped') 'OTHER_WRITER_ACTIVE' }
+          $target=$lab+'-a23-offline-target'
+          New-Item -ItemType Directory -Path $target | Out-Null
+          Expand-Archive $pack (Join-Path $target 'Web')
+          foreach($root in @((Join-Path $lab 'Web'),(Join-Path $target 'Web'))){
+            $f=Join-Path $root 'src/Domain/Recovery/BusinessBackupService.php'
+            Need ((Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant() -ceq 'c2029d1fe5bb8ef11fd3becb3e08537e5c43b25e38d741d11e8f00b6a01e7420') 'ORIGINAL_BACKUP_CLASS_DRIFT'
+            & git -C $root apply -p2 --whitespace=nowarn $env:SOKNA_A23_SCRATCH_PATCH
+            Need ($LASTEXITCODE -eq 0) 'SCRATCH_PATCH_FAILED'
+            Need ((Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant() -ceq '3a7209987a35ee88734fec66de94e5dd9004762e175ef610348d3c3c77c9b4d3') 'PATCHED_CLASS_DRIFT'
+            Run (Join-Path $phpRoot 'php.exe') @('-l',$f)
+          }
+          Run (Join-Path $phpRoot 'php.exe') @((Join-Path $env:RUNNER_TEMP 'a23-offline-recover.php'),$lab)
+          '@
+          $marker=' $receipt=@{status='
+          if(!$s.Contains($marker)){throw 'NATIVE_SCRIPT_MARKER'}
+          $s=$s.Replace($marker,($inject + [Environment]::NewLine + $marker))
+          $p=Join-Path $env:RUNNER_TEMP 'a23-native-offline.ps1'
+          Set-Content $p $s -Encoding utf8NoBOM
+          & $p
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_RECOVERY_FAILED'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-WINDOWS-SCRATCH-REGRESSION-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a23-scratch-regression-receipt.json
+            ${{ runner.temp }}/a23-offline-recover.php
+          if-no-files-found: warn
+          retention-days: 30
