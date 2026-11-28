@@ -13,11 +13,11 @@ $mode=$argv[2]??'';
 if($mode==='print'){
  $service=$core->printTemplates();
  foreach(['customer','preparation'] as $kind){
-  $base=(int)$service->installStandard($kind,$actor)['package_id'];$old=$service->details($base,$actor);$template=$old['template'];$oldFooter=(int)$template['footer_font_size'];$template['footer_font_size']=$oldFooter<72?$oldFooter+1:$oldFooter-1;
+  $base=(int)$service->installStandard($kind,$actor)['package_id'];$old=$service->details($base,$actor);$template=$old['template'];$oldFooter=(int)($template['footer_font_size']??$template['base_font_size']);$template['footer_font_size']=$oldFooter<72?$oldFooter+1:$oldFooter-1;
   $service->activate($base,$actor);$new=$service->saveVersion($base,['name'=>$old['package']['name'],'version'=>$old['suggested_version'],'template'=>$template],$actor);$id=(int)$new['package_id'];ck($id!==$base,"$kind distinct saved version");
   // New service object reads the persisted canonical DB record.
   $again=new \Sokna\Local\Domain\Printing\PrintTemplatePackageService($p);$got=$again->details($id,$actor);ck((int)$got['template']['footer_font_size']===$template['footer_font_size'],"$kind persisted footer value");
-  ck($got['template']===$template,"$kind other settings preserved");ck($again->details($base,$actor)['template']===$old['template'],"$kind original immutable");
+  ck($got['template']==$template,"$kind other settings preserved");ck($again->details($base,$actor)['template']===$old['template'],"$kind original immutable");
   $again->activate($id,$actor);ck($again->details($id,$actor)['active']===true,"$kind new active");$again->rollback($base,$actor);ck($again->details($base,$actor)['active']===true&&!$again->details($id,$actor)['active'],"$kind rollback to original");
  }
 }elseif($mode==='catalog'){
