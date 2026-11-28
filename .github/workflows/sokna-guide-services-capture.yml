@@ -1,0 +1,106 @@
+name: SOKNA guide Windows Services native capture
+on:
+  workflow_dispatch:
+  push:
+    branches: [docs/guide-native-capture-20261128]
+    paths: ['.github/workflows/sokna-guide-services-capture.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capture:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 41169910298
+          artifact-ids: 13031151235
+          path: input
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Capture actual released installer and manager
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Get-ChildItem input -Recurse -Filter SOKNA-Windows-Services-Setup-1.1.26.exe | Select-Object -First 1
+          if(!$setup){throw 'Missing exact release'}
+          $hash=(Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($hash -ne 'c40f8cf57f3d1af9baa44473f818155f1244686776846ebaa355191fbae08a88'){throw 'Release hash mismatch'}
+          python -m pip install pywinauto pillow
+          if($LASTEXITCODE){throw 'Python dependencies unavailable'}
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          $env:GUIDE_SETUP=$setup.FullName
+          @'
+          import os, time, subprocess, json, hashlib, sys
+          sys.stdout.reconfigure(encoding='utf-8',errors='replace')
+          sys.stderr.reconfigure(encoding='utf-8',errors='replace')
+          from pathlib import Path
+          from pywinauto import Desktop
+          from PIL import ImageStat
+          out=Path('evidence')
+          records=[]
+          def wait_window(pid, timeout=40):
+              end=time.monotonic()+timeout
+              while time.monotonic()<end:
+                  wins=[w for w in Desktop(backend='win32').windows() if w.process_id()==pid and w.is_visible() and w.rectangle().width()>250 and w.rectangle().height()>180]
+                  if wins: return max(wins,key=lambda w:w.rectangle().width()*w.rectangle().height())
+                  time.sleep(.5)
+              raise RuntimeError('No real visible window')
+          def shot(w,name):
+              try:w.set_focus()
+              except Exception:pass
+              time.sleep(1)
+              img=w.capture_as_image()
+              if img is None or max(ImageStat.Stat(img.convert('RGB')).stddev)<8:raise RuntimeError('Blank capture')
+              p=out/(name+'.png');img.save(p)
+              records.append(dict(name=p.name,title=w.window_text(),size=img.size,sha256=hashlib.sha256(p.read_bytes()).hexdigest()))
+              print('REAL_CAPTURE',name,w.window_text(),img.size,flush=True)
+          exe=os.environ['GUIDE_SETUP']
+          app=subprocess.Popen([exe])
+          manager=None
+          try:
+              end=time.monotonic()+70
+              seen=set()
+              while time.monotonic()<end:
+                  wins=[v for v in Desktop(backend='win32').windows() if v.is_visible() and v.rectangle().width()>250 and ('SOKNA' in v.window_text() or 'سکنا' in v.window_text() or 'سوکنا' in v.window_text())]
+                  for w in wins:
+                      title=w.window_text()
+                      try:
+                          buttons=[x for x in w.descendants(class_name='TNewButton') if x.is_visible() and x.is_enabled()]
+                          if not buttons:continue
+                          signature=(title,tuple(x.window_text() for x in buttons))
+                          if signature not in seen:
+                              shot(w,'02-01-wizard-%02d'%(len(seen)+1));seen.add(signature)
+                          # Inno shell only; no service Install/Repair button is clicked.
+                          preferred=[x for x in buttons if any(s in x.window_text().replace('&','').lower() for s in ('next','install','finish'))]
+                          if preferred:
+                              preferred[0].click();time.sleep(2)
+                      except Exception as e:print('WIZARD_CONTROL',type(e).__name__,flush=True)
+                  manager=Path(os.environ['ProgramFiles'])/'SOKNA Windows Services'/'SoknaSetupUi.exe'
+                  if manager.is_file() and app.poll() is not None:break
+                  time.sleep(.5)
+              if not manager or not manager.is_file():raise RuntimeError('Exact shell not installed through native wizard')
+              # Open actual installed Dashboard only, do not click service mutation.
+              proc=subprocess.Popen([str(manager)])
+              try:
+                  w=wait_window(proc.pid,45)
+                  shot(w,'02-02-service-dashboard')
+                  (out/'controls.json').write_text(json.dumps([{'class':x.friendly_class_name(),'text':x.window_text()} for x in w.descendants() if x.friendly_class_name() not in ('Edit','RichEdit')],ensure_ascii=False,indent=2),encoding='utf-8')
+              finally:
+                  if proc.poll() is None:proc.terminate();proc.wait(timeout=15)
+          finally:
+              if app.poll() is None:app.terminate();app.wait(timeout=15)
+              (out/'receipt.json').write_text(json.dumps({'version':'1.1.26','release_sha256':'c40f8cf57f3d1af9baa44473f818155f1244686776846ebaa355191fbae08a88','run_id':os.environ['GITHUB_RUN_ID'],'scope':'official historical Windows Services 1.1.26 shell and UI only; no component installation or field acceptance','captures':records},ensure_ascii=False,indent=2),encoding='utf-8')
+          if not any(r['name']=='02-02-service-dashboard.png' for r in records):raise RuntimeError('No valid manager screenshot')
+          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\guide_capture.py"
+          python "$env:RUNNER_TEMP\guide_capture.py"
+          if($LASTEXITCODE){throw 'Capture failed'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-GUIDE-02-REAL-UI-EVIDENCE
+          path: evidence
+          if-no-files-found: warn
