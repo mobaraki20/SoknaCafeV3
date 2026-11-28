@@ -1,0 +1,92 @@
+name: A23 device takeover isolation and intake audit
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-takeover-audit.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+          P2="$RUNNER_TEMP/candidate/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip"
+          echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
+          unzip -q "$P2" -d "$W/public"
+          php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
+      - name: Observe exact Public takeover behavior with independent synthetic tenants
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          cat > "$W/takeover.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);$root=$w.'/public';require $root.'/bootstrap.php';$cfg=require $root.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150_public')exit(2);
+          $core=sokna_public_bootstrap($cfg);$p=$core->database();$svc=$core->takeover();
+          function ck($ok,$msg){if(!$ok)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          $row=function(string $id)use($p){$q=$p->prepare('SELECT installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_epoch,authority_state,revoked_at FROM installations WHERE installation_id=?');$q->execute([$id]);return $q->fetch(PDO::FETCH_ASSOC);};
+          $insert=$p->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_state) VALUES(?,?,1,1,1,'active')");
+          foreach(['qa-a23-source-a','qa-a23-source-b','qa-a23-foreign-dest'] as $id)$insert->execute([$id,$id]);
+          $findings=[];$a='qa-a23-source-a';$b='qa-a23-source-b';$target='qa-a23-fresh-dest';$foreign='qa-a23-foreign-dest';
+          $offer=$svc->createOffer($a,$target,300,'synthetic QA');$r=$svc->complete($target,$offer['enrollment_code'],bin2hex(random_bytes(32)),'QA fresh');
+          $new=$row($target);$old=$row($a);ck($r['ok']&&!(bool)$old['active']&&(bool)$new['active'],'fresh takeover transaction revokes source');
+          $findings['premature_intake']=['reproduced'=>(bool)$new['order_intake_enabled']||(bool)$new['remote_enabled'],'destination_state'=>$new['authority_state'],'before_any_sync'=>true];
+          $before=$row($foreign);$sourceBefore=$row($b);
+          try{$offer2=$svc->createOffer($b,$foreign,300,'synthetic QA');$svc->complete($foreign,$offer2['enrollment_code'],bin2hex(random_bytes(32)),'QA overwritten foreign');$findings['existing_destination']=['reproduced'=>$row($foreign)!==$before,'source_revoked'=>!(bool)$row($b)['active'],'foreign_identity_row_changed'=>$row($foreign)!==$before];}
+          catch(\Sokna\PublicEdge\Emergency\PublicUpdateException $e){$findings['existing_destination']=['reproduced'=>false,'code'=>$e->errorCode,'both_unchanged'=>$row($foreign)===$before&&$row($b)===$sourceBefore];}
+          echo json_encode($findings,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR).PHP_EOL;
+          file_put_contents($w.'/takeover-audit-receipt.json',json_encode(['status'=>'OBSERVED','synthetic_only'=>true,'actual_mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'exact_public_sha256'=>'641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','findings'=>$findings,'scope'=>'service-level MariaDB; not full Local/Public HTTP cutover'],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          PHP
+          php "$W/takeover.php" "$W" | tee "$W/takeover-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-TAKEOVER-AUDIT-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/takeover-audit-receipt.json
+            ${{ runner.temp }}/a22/takeover-log.txt
+            ${{ runner.temp }}/a22/takeover.php
+          retention-days: 30
