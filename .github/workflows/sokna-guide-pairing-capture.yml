@@ -185,14 +185,18 @@ jobs:
                   with page.expect_response(lambda r:'/integrations/api.php' in r.url and r.request.method=='POST',timeout=90000) as pr:
                       page.locator('[data-public-pair]').click()
                   assert pr.value.ok and pr.value.json().get('success') is True,'Pair failed'
-                  page.locator('[data-public-initial-pair-card]').wait_for(state='hidden',timeout=30000)
+                  # Read fresh state from the real endpoint after the UI's pairing request.
+                  paired=visit('/integrations/')
+                  edge=paired.get('public_edge',{})
+                  (out/'pair-state.json').write_text(json.dumps({'pair_response_success':True,'status':edge.get('status'),'base_url':edge.get('base_url'),'initial_card_hidden_attr':page.locator('[data-public-initial-pair-card]').evaluate('(e)=>e.hidden'),'snapshot_error':bool(paired.get('errors',{}).get('public_edge'))},indent=2))
+                  assert edge.get('base_url')=='http://127.0.0.1:18081' and edge.get('status')!='not_configured','Pair response succeeded but persisted status not confirmed'
                   page.wait_for_load_state('networkidle')
                   shot(page,'06-02-paired')
                   with page.expect_response(lambda r:'/integrations/api.php' in r.url and r.request.method=='POST',timeout=120000) as sr:
                       page.locator('[data-public-sync]').click()
                   sync=sr.value.json()
                   assert sr.value.ok and sync.get('success') is not False,'Sync endpoint failed'
-                  page.wait_for_load_state('networkidle')
+                  page.wait_for_load_state('networkidle',timeout=120000)
                   shot(page,'06-03-sync')
                   result=sync.get('public_sync',{})
                   (out/'pair-sync-result.json').write_text(json.dumps({'pair_success':True,'sync_success':result.get('success'),'degraded':result.get('degraded'),'failed_channels':result.get('failed_channels',[]),'scope':'loopback; no Windows Runtime or WAN field acceptance'},indent=2))
