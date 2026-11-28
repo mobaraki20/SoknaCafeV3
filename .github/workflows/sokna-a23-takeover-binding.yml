@@ -603,7 +603,9 @@ jobs:
           use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
           if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $w=realpath($argv[1]??'');$temp=realpath(getenv('RUNNER_TEMP'));if(!$w||!$temp||dirname($w)!==$temp||basename($w)!=='a22')exit(2);
-          require $w.'/local/bootstrap.php';require $w.'/public/bootstrap.php';$cfg=require $w.'/config.php';$pcfg=require $w.'/public/config.php';
+          require $w.'/local/bootstrap.php';
+          // The real Public HTTP server loads its own full bootstrap in a separate process.
+          foreach(['Core/Config','Core/Database','Core/Migrations','Core/Bootstrap','Emergency/PublicUpdateException','Emergency/EmergencyAccessService','Emergency/PairingSecretStore','Guest/GuestMediaStore','Authority/AuthorityEpochService'] as $class)require_once $w.'/public/src/'.$class.'.php';$cfg=require $w.'/config.php';$pcfg=require $w.'/public/config.php';
           if($cfg['db']['name']!=='sokna_cp150'||$cfg['db']['host']!=='127.0.0.1'||$pcfg['db']['name']!=='sokna_cp150_public'||$pcfg['db']['host']!=='127.0.0.1'||$pcfg['app']['base_url']!=='http://127.0.0.1:18766/public')exit(2);
           $checks=[];function ck($ok,$m){global $checks;if(!$ok)throw new RuntimeException($m);$checks[]=$m;echo 'PASS '.$m.PHP_EOL;}
           function sql(PDO $p,string $sql,array $a=[]):PDOStatement{$q=$p->prepare($sql);$q->execute($a);return $q;}
@@ -615,7 +617,7 @@ jobs:
             $r=file_get_contents($base.$path,false,stream_context_create(['http'=>$opt]));$h=$http_response_header??[];$status=0;foreach($h as $line){if(preg_match('~^HTTP/\S+ (\d+)~',$line,$m))$status=(int)$m[1];if(preg_match('/^Set-Cookie: (sokna_public_emergency=[^;]+)/i',$line,$m))$cookie=$m[1];}return ['status'=>$status,'body'=>(string)$r,'headers'=>$h];
           }
           function csrf(array $r):string{if(!preg_match('/name="csrf" value="([a-f0-9]{48})"/',$r['body'],$m))throw new RuntimeException('owner csrf unavailable status '.$r['status']);return $m[1];}
-          $local=sokna_local_bootstrap($cfg);$p=$local->database();$pub=sokna_public_bootstrap($pcfg);$q=$pub->database();$iid=$cfg['installation']['id'];$base=$pcfg['app']['base_url'];$auth=$pub->authorityEpoch();
+          $local=sokna_local_bootstrap($cfg);$p=$local->database();$pub=\Sokna\PublicEdge\Core\Bootstrap::fromArray($pcfg);$q=$pub->database();$iid=$cfg['installation']['id'];$base=$pcfg['app']['base_url'];$auth=$pub->authorityEpoch();
           $originalConfig=hash_file('sha256',$w.'/public/config.php');ck($auth->effectiveDefaultInstallationId($iid)===$iid,'ordinary current default preserved');
           // The test fixture created exact 35jc schema before applying the candidate. Emulate DDL-committed/ledger-not-yet-written boundary.
           $version='0013_verified_takeover_binding';$legacy='qa-a23-historical-old';$legacyNew='qa-a23-historical-new';
@@ -661,7 +663,7 @@ jobs:
           PHP
           sha256sum -c <<HASHES
           9928dec7d46c1f090fb38d74a5c8ff17fe761b56893ad902449859eea30b8c39  $W/binding.patch
-          fb27800d18ceef98a98115aeec25de59d7be88f10805085d28b60982a0bf6cfb  $W/takeover-binding.php
+          a5a2acb5bf71ad8477baf775d79354e9a631cfc2b6a63c51b4a8fd0b2cda6237  $W/takeover-binding.php
           HASHES
           cd "$W"
           patch --batch --forward -p1 < binding.patch
