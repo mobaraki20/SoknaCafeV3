@@ -305,14 +305,17 @@ jobs:
           $dir=$cfg['app']['data_dir'].'/private-move';if(!is_dir($dir))mkdir($dir,0700,true);$journal=$dir.'/replacement-current.json';ck(!file_exists($journal),'fresh fixture journal');
           $state=['format'=>'sokna-simple-public-replacement-v1','operation_id'=>$op,'source_base_url'=>$cfg['public']['base_url'],'target_base_url'=>$target,'new_secret'=>$secret,'nonce'=>$nonce,'source_public_hash'=>hash('sha256',json_encode($cfg['public'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'kind'=>'fresh_unpaired','expected_epoch'=>1,'stage'=>'pairing_uncertain'];file_put_contents($journal,json_encode($state,JSON_THROW_ON_ERROR));chmod($journal,0600);$jsha=hash_file('sha256',$journal);
           $svc=new PublicMoveSimpleReplacement($local,$ledger,$iid,$cfg['app']['data_dir']);ck($svc->status()['resume_kind']==='probe_fresh_pairing','real ledger recognizes resumable fresh pairing');
-          $wrong=$pubCfg;$wrong['app']['default_installation_id']='qa-a23-other-binding';writeCfg($pubPath,$wrong);try{
-           ck((require $pubPath)['app']['default_installation_id']==='qa-a23-other-binding','wrong config visible on disk');
-           $rawCfg=$cfg;$rawCfg['public']=['base_url'=>$target,'shared_secret'=>$secret];$rawClient=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient(\Sokna\Local\Core\Config::fromArray($rawCfg),null,null,null);
-           $raw=$rawClient->postRaw('/api/v1/local/authority/status',['authority_epoch'=>1],5);$rawBody=$raw['body']??[];echo 'WRONG_BINDING_OBSERVED '.json_encode(['status'=>$raw['status']??null,'default_binding_matches'=>$rawBody['default_binding_matches']??null,'authority_state'=>$rawBody['authority_state']??null,'error'=>$rawBody['error']??null],JSON_THROW_ON_ERROR).PHP_EOL;
-           ck(($raw['status']??0)===200&&($rawBody['default_binding_matches']??null)===false,'actual HTTP observes wrong default binding');
-           reject(fn()=>$svc->finish($op),'public_fresh_replacement_proof_invalid');ck(hash_file('sha256',$journal)===$jsha&&hash_file('sha256',$cfgPath)===$beforeHash&&$paused()==='active:1:0:1','wrong public binding preserves Local config, journal and paused intake');
-          }finally{writeCfg($pubPath,$pubCfg);}
-          $proof=$client->probeFreshReplacementPairing($target,$secret);ck(($proof['default_binding_matches']??false)===true,'restored binding visible over HTTP');
+          // Separate immutable wrong-binding HTTP fixture. No hot config reload is involved.
+          $wrongPath=$w.'/wrong-public-config.php';$wrongCfg=require $wrongPath;$wrongTarget='http://127.0.0.1:18768/public';
+          ck($wrongCfg['app']['default_installation_id']==='qa-a23-other-binding'&&$wrongCfg['app']['base_url']===$wrongTarget,'independent wrong config on disk');
+          $rawCfg=$cfg;$rawCfg['public']=['base_url'=>$wrongTarget,'shared_secret'=>$secret];$rawClient=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient(\Sokna\Local\Core\Config::fromArray($rawCfg),null,null,null);
+          $raw=$rawClient->postRaw('/api/v1/local/authority/status',['authority_epoch'=>1],5);$rawBody=$raw['body']??[];echo 'WRONG_BINDING_OBSERVED '.json_encode(['status'=>$raw['status']??null,'default_binding_matches'=>$rawBody['default_binding_matches']??null,'authority_state'=>$rawBody['authority_state']??null,'error'=>$rawBody['error']??null],JSON_THROW_ON_ERROR).PHP_EOL;
+          ck(($raw['status']??0)===200&&($rawBody['default_binding_matches']??null)===false,'independent HTTP observes wrong default binding');
+          $negative=$state;$negative['target_base_url']=$wrongTarget;file_put_contents($journal,json_encode($negative,JSON_THROW_ON_ERROR));$negativeHash=hash_file('sha256',$journal);
+          reject(fn()=>$svc->finish($op),'public_fresh_replacement_proof_invalid');ck(hash_file('sha256',$journal)===$negativeHash&&hash_file('sha256',$cfgPath)===$beforeHash&&$paused()==='active:1:0:1','wrong public binding preserves Local config, journal and paused intake');
+          // Restore the original synthetic positive fixture journal; no product mutation.
+          file_put_contents($journal,json_encode($state,JSON_THROW_ON_ERROR));ck(hash_file('sha256',$journal)===$jsha,'positive fixture restored');
+          $proof=$client->probeFreshReplacementPairing($target,$secret);ck(($proof['default_binding_matches']??false)===true,'positive independent binding visible over HTTP');
           // Lost/uncertain pairing can now resume only with the same signed staged secret.
           $before=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','users','inventory_items'] as $t)$before[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
           $result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;
@@ -325,7 +328,7 @@ jobs:
           sha256sum -c <<HASHES
           295476eaead63b58f70d5debe9b2620b1b30a517e7fd5aca41d6082d8b95daad  $W/ui.patch
           d0a5a60533e584eec8aa4a70ee753fdc436dff0a0631d64e07ce30e658afaa07  $W/resume.patch
-          e69614cee916159ca9e510eff7a691d94ebcb244c635330ac8096a611db560d6  $W/real-resume.php
+          65630dcec56ee96648caf769b3112db5c3436194f105c11388ea41396b88b26e  $W/real-resume.php
           HASHES
           cd "$W"
           patch --batch --forward -p1 < ui.patch
@@ -340,10 +343,12 @@ jobs:
           45047d14f2673cc09547ba74460925bbebf19b908b098b7077cc8769f95a19d8  local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
           84162971d80e2244631e56bfd92d07d0a1a0a00b26b7ee83eb5f7dac88cd1140  local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
           HASHES
-          SOKNA_PUBLIC_CONFIG="$W/public/config.php" PHP_CLI_SERVER_WORKERS=6 php -d opcache.enable_cli=0 -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/real-resume-http.log" 2>&1 & pp=$!
-          trap 'kill "$pp" 2>/dev/null || true' EXIT
+          php -r '$c=require $argv[1]; $c["app"]["default_installation_id"]="qa-a23-other-binding"; $c["app"]["base_url"]="http://127.0.0.1:18768/public"; file_put_contents($argv[2],"<?php return ".var_export($c,true).";");' "$W/public/config.php" "$W/wrong-public-config.php"
+          SOKNA_PUBLIC_CONFIG="$W/public/config.php" php -d opcache.enable_cli=0 -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/real-resume-http.log" 2>&1 & pp=$!
+          SOKNA_PUBLIC_CONFIG="$W/wrong-public-config.php" php -d opcache.enable_cli=0 -S 127.0.0.1:18768 -t "$W/public" "$W/public/index.php" > "$W/wrong-resume-http.log" 2>&1 & wp=$!
+          trap 'kill "$pp" "$wp" 2>/dev/null || true' EXIT
           sleep 2
-          kill -0 "$pp"
+          kill -0 "$pp" "$wp"
           php -d opcache.enable_cli=0 "$W/real-resume.php" "$W" | tee "$W/real-resume-log.txt"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -353,5 +358,6 @@ jobs:
             ${{ runner.temp }}/a22/a23-resume-receipt.json
             ${{ runner.temp }}/a22/real-resume-log.txt
             ${{ runner.temp }}/a22/real-resume-http.log
+            ${{ runner.temp }}/a22/wrong-resume-http.log
             ${{ runner.temp }}/a22/real-resume.php
           retention-days: 30
