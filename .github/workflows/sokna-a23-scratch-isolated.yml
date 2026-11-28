@@ -37,7 +37,7 @@ jobs:
           New-Item -ItemType Directory -Force $lab|Out-Null
           function Need([bool]$ok,[string]$code){if(!$ok){throw $code}}
           function Write-LF([string]$path,[string]$content){[IO.File]::WriteAllText($path,($content.Replace("`r`n","`n").TrimEnd("`r","`n")+"`n"),[Text.UTF8Encoding]::new($false))}
-          function Check-Hash([string]$p,[string]$h){Need ((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $h) ('HASH_DRIFT '+[IO.Path]::GetFileName($p))}
+          function Check-Hash([string]$p,[string]$h){$actual=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant();Write-Host ('HASH '+[IO.Path]::GetFileName($p)+' actual='+$actual+' expected='+$h);Need ($actual -ceq $h) ('HASH_DRIFT '+[IO.Path]::GetFileName($p))}
           $pack=Join-Path $env:RUNNER_TEMP 'candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
           Check-Hash $pack '707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10'
           $web=Join-Path $lab 'Web'
@@ -141,9 +141,9 @@ jobs:
           $patchPath=Join-Path $lab 'scratch.patch'
           Write-LF $patchPath $patch
           Check-Hash $patchPath 'f7008cbe42c3c3e1c9b4d105d16898aca6541bf15ddf8ab7abb62db417971214'
-          & git -C $web apply -p2 --whitespace=nowarn --check $patchPath
+          & git -c core.autocrlf=false -c core.eol=lf -C $web apply -p2 --whitespace=nowarn --check $patchPath
           Need ($LASTEXITCODE -eq 0) 'PATCH_CHECK_FAILED'
-          & git -C $web apply -p2 --whitespace=nowarn $patchPath
+          & git -c core.autocrlf=false -c core.eol=lf -C $web apply -p2 --whitespace=nowarn $patchPath
           Need ($LASTEXITCODE -eq 0) 'PATCH_FAILED'
           Check-Hash $class '3a7209987a35ee88734fec66de94e5dd9004762e175ef610348d3c3c77c9b4d3'
           $lock=Get-Content "$env:RUNNER_TEMP/helper/QA-release-lock.json" -Raw|ConvertFrom-Json
