@@ -1,0 +1,111 @@
+name: A23 real concurrent backup consistency
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-concurrent-backup.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+      - name: Verify a real second MariaDB connection commits between backup table reads
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          cat > "$W/concurrent.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          function ck($ok,$m){if(!$ok)throw new RuntimeException($m);echo "PASS $m\n";}
+          class CoordinatedReader extends PDO {
+            public ?Closure $afterItemRead=null;
+            public bool $fired=false;
+            public function query(string $query,?int $fetchMode=null,mixed ...$fetchModeArgs): PDOStatement|false {
+              $r=$fetchMode===null?parent::query($query):parent::query($query,$fetchMode,...$fetchModeArgs);
+              if(!$this->fired&&$this->afterItemRead!==null&&str_starts_with($query,'SELECT * FROM `order_items` ORDER BY ')){
+                $this->fired=true;($this->afterItemRead)();
+              }
+              return $r;
+            }
+          }
+          $dsn='mysql:host=127.0.0.1;port=3306;dbname=sokna_cp150;charset=utf8mb4';$opts=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false];
+          $reader=new CoordinatedReader($dsn,'root',getenv('QA_DB_PASSWORD'),$opts);$writer=new PDO($dsn,'root',getenv('QA_DB_PASSWORD'),$opts);
+          ck($reader->query('SELECT CONNECTION_ID()')->fetchColumn()!==$writer->query('SELECT CONNECTION_ID()')->fetchColumn(),'two independent real sessions');
+          $core=sokna_local_bootstrap($cfg);$id=(string)$cfg['installation']['id'];$root=$cfg['app']['data_dir'];$obs=new \Sokna\Local\Core\Observability($root);
+          $row=$writer->query("SELECT o.id AS oid, oi.id AS lid,o.total_amount,oi.line_total FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.public_code='qa150-order-0'")->fetch();ck(is_array($row),'synthetic order present');
+          $oid=(int)$row['oid'];$lid=(int)$row['lid'];$oldOrder=(int)$row['total_amount'];$oldLine=(int)$row['line_total'];$newOrder=$oldOrder+12345;$newLine=$oldLine+12345;
+          $reader->afterItemRead=function()use($writer,$oid,$lid,$newOrder,$newLine){
+            $writer->beginTransaction();
+            $writer->prepare('UPDATE orders SET total_amount=? WHERE id=?')->execute([$newOrder,$oid]);
+            $writer->prepare('UPDATE order_items SET line_total=? WHERE id=?')->execute([$newLine,$lid]);$writer->commit();
+            ck((int)$writer->query("SELECT total_amount FROM orders WHERE id=".$oid)->fetchColumn()===$newOrder,'writer committed during open backup snapshot');
+          };
+          $backup=new \Sokna\Local\Domain\Recovery\BusinessBackupService($reader,$obs,$id,null,null,$root);
+          $path=$w.'/concurrent.skbf';$pass='synthetic-a23-snapshot-only';$meta=$backup->createEncrypted($path,$pass,0);
+          ck($reader->fired&&hash_file('sha256',$path)===$meta['sha256'],'backup completed with interleaved commit and exact encrypted SHA');
+          $plain=$w.'/inspect-synthetic.gz';$dec=new ReflectionMethod($backup,'decryptFile');$dec->invoke($backup,$path,$plain,$pass);
+          try{
+            $gz=gzopen($plain,'rb');$a=[];$manifest=null;
+            while(($line=gzgets($gz))!==false){$j=json_decode($line,true,64,JSON_THROW_ON_ERROR);if(($j['kind']??'')==='manifest')$manifest=$j['value'];if(($j['kind']??'')!=='row')continue;$v=$j['value'];if($j['table']==='orders'&&(int)$v['id']===$oid)$a['order']=(int)$v['total_amount'];if($j['table']==='order_items'&&(int)$v['id']===$lid)$a['line']=(int)$v['line_total'];}
+            gzclose($gz);ck($manifest['snapshot_consistency']==='innodb-repeatable-read-single-transaction-v1','manifest consistency contract');
+            ck($a===['line'=>$oldLine,'order'=>$oldOrder]||$a===['order'=>$oldOrder,'line'=>$oldLine],'authenticated backup contains both pre-commit amounts');
+            ck((int)$writer->query("SELECT total_amount FROM orders WHERE id=".$oid)->fetchColumn()===$newOrder&&(int)$writer->query("SELECT line_total FROM order_items WHERE id=".$lid)->fetchColumn()===$newLine,'live DB contains both post-commit amounts');
+          }finally{@unlink($plain);}
+          $proof=$backup->inspectEncrypted($path,$pass);ck($proof['stream_verified']===true,'full stream verified');
+          file_put_contents($w.'/a23-concurrent-receipt.json',json_encode(['status'=>'PASS','synthetic_only'=>true,'actual_mariadb'=>$writer->query('SELECT VERSION()')->fetchColumn(),'actual_interleaved_commit'=>true,'backup_amounts'=>$a,'live_amounts'=>['order'=>$newOrder,'line'=>$newLine],'backup_sha256'=>$meta['sha256'],'stream_verified'=>true,'scope'=>'order and order item consistent read view; not full load or concurrent media writer'],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));echo "GROUP PASS A23-L04\n";
+          PHP
+          php "$W/concurrent.php" "$W" | tee "$W/concurrent-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-CONCURRENT-BACKUP-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/a23-concurrent-receipt.json
+            ${{ runner.temp }}/a22/concurrent-log.txt
+            ${{ runner.temp }}/a22/concurrent.php
+          retention-days: 30
