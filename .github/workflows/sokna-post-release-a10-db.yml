@@ -1,4 +1,4 @@
-name: SOKNA A21 archive freshness and bounded media synchronization
+name: SOKNA A21 final archive privacy and Persian digit UI assertions
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -176,7 +176,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A21-ARCHIVE-MEDIA-FINAL-NO-INSTALL
+          name: SOKNA-A21-ARCHIVE-MEDIA-ACCEPTANCE-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
