@@ -319,16 +319,22 @@ jobs:
           // Lost/uncertain pairing can now resume only with the same signed staged secret.
           $before=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','users','inventory_items'] as $t)$before[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
           $result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;
-          for($i=0;$i<2&&($result['status']??'')==='sync_retry';$i++){$result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;}
+          $progress=[];$attempt=0;$previousRemaining=null;
+          while(($result['status']??'')==='sync_retry'&&$attempt<32){
+           ck(($result['auto_retry']??false)===true,'safe resumable progress');
+           $remaining=(int)($result['media_remaining']??-1);ck($remaining>=0&&($previousRemaining===null||$remaining<$previousRemaining),'media remaining strictly decreases');$previousRemaining=$remaining;$progress[]=$remaining;
+           ck(hash_file('sha256',$cfgPath)===$beforeHash&&is_file($journal)&&$paused()==='active:1:0:1','partial sync preserves old config and closed intake');
+           $attempt++;$result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;
+          }
           $complete=($result['completed']??false)===true;foreach($before as $t=>$rows)ck($p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC)===$rows,'business rows unchanged '.$t);
           if($complete){$new=require $cfgPath;ck($new['public']['base_url']===$target&&hash_equals($secret,$new['public']['shared_secret']),'committed exact destination binding');ck(!file_exists($journal)&&$ledger->status($iid,$op)['status']==='completed','journal resolved and ledger completed');ck($paused()==='active:1:1:0','destination intake only after sync');}
           else{ck(is_file($journal),'incomplete operation journal preserved');ck($paused()==='active:1:0:1','incomplete sync remains paused');}
-          file_put_contents($w.'/a23-resume-receipt.json',json_encode(['status'=>$complete?'PASS':'PARTIAL','actual_mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'actual_http'=>true,'synthetic_postcommit_journal'=>true,'owner_consent_or_original_pairing_tested'=>false,'old_host_not_running'=>true,'guard_recovery_config_preserved'=>true,'wrong_binding_rejected'=>true,'same_secret_signed_proof'=>true,'result'=>$result,'business_rows_preserved'=>true,'full_sync_activation'=>$complete,'new_identity_takeover_tested'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));ck($complete,'full fresh replacement resumed and activated');
+          file_put_contents($w.'/a23-resume-receipt.json',json_encode(['status'=>$complete?'PASS':'PARTIAL','actual_mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'actual_http'=>true,'synthetic_postcommit_journal'=>true,'owner_consent_or_original_pairing_tested'=>false,'old_host_not_running'=>true,'guard_recovery_config_preserved'=>true,'wrong_binding_rejected'=>true,'same_secret_signed_proof'=>true,'result'=>$result,'media_remaining_history'=>$progress,'resume_attempts'=>$attempt+1,'business_rows_preserved'=>true,'full_sync_activation'=>$complete,'new_identity_takeover_tested'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));ck($complete,'full fresh replacement resumed and activated');
           PHP
           sha256sum -c <<HASHES
           295476eaead63b58f70d5debe9b2620b1b30a517e7fd5aca41d6082d8b95daad  $W/ui.patch
           d0a5a60533e584eec8aa4a70ee753fdc436dff0a0631d64e07ce30e658afaa07  $W/resume.patch
-          65630dcec56ee96648caf769b3112db5c3436194f105c11388ea41396b88b26e  $W/real-resume.php
+          be296fa6c1b9336bbe473a60e2cc4e114549333785f9f0f56088a1d5628f8700  $W/real-resume.php
           HASHES
           cd "$W"
           patch --batch --forward -p1 < ui.patch
