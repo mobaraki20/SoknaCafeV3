@@ -37,11 +37,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p evidence /tmp/sokna-docs-lab/local/Web /tmp/sokna-docs-lab/public
+          mkdir -p evidence
+          sudo mkdir -p /srv/sokna-docs-lab
+          sudo chown "$USER":"$(id -gn)" /srv/sokna-docs-lab
+          mkdir -p /srv/sokna-docs-lab/local/Web /srv/sokna-docs-lab/public
           python - <<'PY'
           import zipfile,pathlib,hashlib
           p=pathlib.Path('input')
-          pairs=[('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip','707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','/tmp/sokna-docs-lab/local/Web'),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip','641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','/tmp/sokna-docs-lab/public')]
+          pairs=[('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip','707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','/srv/sokna-docs-lab/local/Web'),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip','641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','/srv/sokna-docs-lab/public')]
           for name,expected,dest in pairs:
               found=[x for x in p.rglob('*.zip') if hashlib.sha256(x.read_bytes()).hexdigest()==expected]
               assert len(found)==1,(name,'no exact archive',list(p.iterdir()))
@@ -57,8 +60,8 @@ jobs:
           Listen 127.0.0.1:18081
           <VirtualHost 127.0.0.1:18080>
               ServerName 127.0.0.1
-              DocumentRoot /tmp/sokna-docs-lab/local/Web/public
-              <Directory /tmp/sokna-docs-lab/local/Web/public>
+              DocumentRoot /srv/sokna-docs-lab/local/Web/public
+              <Directory /srv/sokna-docs-lab/local/Web/public>
                   Options FollowSymLinks
                   AllowOverride All
                   Require all granted
@@ -66,8 +69,8 @@ jobs:
           </VirtualHost>
           <VirtualHost 127.0.0.1:18081>
               ServerName 127.0.0.1
-              DocumentRoot /tmp/sokna-docs-lab/public
-              <Directory /tmp/sokna-docs-lab/public>
+              DocumentRoot /srv/sokna-docs-lab/public
+              <Directory /srv/sokna-docs-lab/public>
                   Options FollowSymLinks
                   AllowOverride All
                   Require all granted
@@ -75,16 +78,16 @@ jobs:
           </VirtualHost>
           CONF
           sudo a2enconf sokna-docs-lab
-          mkdir -p /tmp/sokna-docs-lab/local/SetupCache/ui-fonts /tmp/sokna-docs-lab/public/storage/ui-fonts
+          mkdir -p /srv/sokna-docs-lab/local/SetupCache/ui-fonts /srv/sokna-docs-lab/public/storage/ui-fonts
           cp 'official-font/fonts/webfonts/Vazirmatn[wght].woff2' /tmp/vazirmatn.woff2
           echo '4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92  /tmp/vazirmatn.woff2' | sha256sum -c
-          cp /tmp/vazirmatn.woff2 /tmp/sokna-docs-lab/local/SetupCache/ui-fonts/Vazirmatn-Variable.woff2
-          cp /tmp/vazirmatn.woff2 /tmp/sokna-docs-lab/public/storage/ui-fonts/Vazirmatn-Variable.woff2
-          sudo chown -R www-data:www-data /tmp/sokna-docs-lab
+          cp /tmp/vazirmatn.woff2 /srv/sokna-docs-lab/local/SetupCache/ui-fonts/Vazirmatn-Variable.woff2
+          cp /tmp/vazirmatn.woff2 /srv/sokna-docs-lab/public/storage/ui-fonts/Vazirmatn-Variable.woff2
+          sudo chown -R www-data:www-data /srv/sokna-docs-lab
           sudo apache2ctl configtest
           sudo systemctl restart apache2
-          curl -f http://127.0.0.1:18080/setup/ -o /dev/null
-          curl -f http://127.0.0.1:18081/setup/ -o /dev/null
+          curl -f http://127.0.0.1:18080/setup/ -o /dev/null || { sudo tail -80 /var/log/apache2/error.log; exit 1; }
+          curl -f http://127.0.0.1:18081/setup/ -o /dev/null || { sudo tail -80 /var/log/apache2/error.log; exit 1; }
           python -m pip install playwright
           python -m playwright install --with-deps chromium
       - name: Capture actual setup screens and perform installation through UI
@@ -127,7 +130,7 @@ jobs:
                   assert resp.value.json()['preflight']['ok']
                   page.locator('[data-preflight] .sc-setup__check').first.wait_for()
                   shot(page,'03-01-default-setup')
-                  page.locator('[data-data-dir]').fill('/tmp/sokna-docs-lab/local/Data/LocalWeb')
+                  page.locator('[data-data-dir]').fill('/srv/sokna-docs-lab/local/Data/LocalWeb')
                   req(page,'[data-action="preflight"]','preflight')
                   shot(page,'03-02-preflight')
                   fields(page)
