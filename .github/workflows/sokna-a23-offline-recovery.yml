@@ -1,0 +1,127 @@
+name: A23 Windows large offline recovery
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-offline-recovery.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/cp76/out
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - name: Real Windows large encrypted business recovery to an independent installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $receipt=Get-Content "$env:RUNNER_TEMP/cp76/out/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $pkg='LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          $sha='707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10'
+          if($receipt.local.web_sha256 -cne $sha -or $receipt.production_authorized -ne $false -or $receipt.delivery_authorized -ne $false){throw 'INVALID_CANDIDATE_RECEIPT'}
+          if((Get-FileHash "$env:RUNNER_TEMP/cp76/out/$pkg" -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sha){throw 'CANDIDATE_ARCHIVE_DRIFT'}
+          $version='3.0.0-g6.2-workspace.231gl-a21-postrelease-20261128'
+          $s=Get-Content 'qa/factory/checkpoint78-standard-clean-web.ps1' -Raw
+          $s=$s.Replace('LOCAL-231GG-CLEAN-WEB-QA-DO-NOT-INSTALL.zip',$pkg).Replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',$sha).Replace('3.0.0-g6.2-workspace.231gg-checkpoint76-qa',$version)
+          $test=@'
+          <?php
+          declare(strict_types=1);
+          use Sokna\Local\Domain\Recovery\BusinessBackupService;
+          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
+          use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
+          use Sokna\Local\Core\Observability;
+          use Sokna\Local\Setup\BrowserSetupService;
+          if(PHP_SAPI!=='cli'||PHP_OS_FAMILY!=='Windows'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_R186_CI_ONLY')!=='YES')exit(2);
+          $lab=realpath($argv[1]??'');$tmp=realpath(getenv('RUNNER_TEMP'));if(!$lab||!$tmp||dirname($lab)!==$tmp||!str_starts_with(basename($lab),'sokna-r301-native-'))exit(2);
+          require $lab.'/Web/bootstrap.php';$cfg=require $lab.'/config.php';if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_ci_clean_windows'||(int)$cfg['db']['port']!==39745)exit(2);
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$source=$cfg['app']['data_dir'];
+          function ck($v,$m){if(!$v)throw new RuntimeException($m);echo "PASS $m\n";}
+          function callCli(string $target,array $args):array{$pr=proc_open(array_merge([PHP_BINARY,'-c',php_ini_loaded_file(),$target.'/Web/tools/reconcile-interrupted-backup.php'],$args),[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$io,dirname(PHP_BINARY));if(!is_resource($pr))throw new RuntimeException('CLI process');fclose($io[0]);$out=stream_get_contents($io[1]);$err=stream_get_contents($io[2]);fclose($io[1]);fclose($io[2]);$code=proc_close($pr);return [$code,$out,$err];}
+          class UncertainPDO extends PDO{public string $scenario='';public function commit():bool{if($this->scenario==='')return parent::commit();$m=$this->scenario;$this->scenario='';$ok=$m==='committed'?parent::commit():parent::rollBack();if(!$ok)throw new RuntimeException('fixture transaction failed');throw new RuntimeException('synthetic acknowledgement unavailable');}}
+          $actor=$p->query("SELECT id,role FROM users WHERE username='ci-admin' AND role='admin' AND active=1")->fetch(PDO::FETCH_ASSOC);ck(is_array($actor),'actual source administrator');
+          $p->exec("INSERT INTO subscribers(name,mobile,mobile_normalized,active) VALUES('QA recovery subscriber','00000000000','00000000000',1)");$sub=(int)$p->lastInsertId();
+          $clock=$core->businessClock()->assignment();$table=(int)$p->query('SELECT id FROM cafe_tables ORDER BY id LIMIT 1')->fetchColumn();$item=(int)$p->query('SELECT id FROM items ORDER BY id LIMIT 1')->fetchColumn();ck($table>0&&$item>0,'source catalog and table');
+          $p->prepare("INSERT INTO table_sessions(public_token,table_id,status,live_table_guard,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,'active',?,?,?,?,?)")->execute(['qa-win-recovery-session',$table,$table,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$sid=(int)$p->lastInsertId();
+          $p->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',100000,?,?,?,?,?)")->execute(['qa-win-recovery-order','qa-win-recovery-token',$table,$sid,15000,$clock['business_date'],$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$oid=(int)$p->lastInsertId();
+          $p->prepare('INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,?,?,?,?,?,?)')->execute([$oid,$item,'QA recovery product',100000,1,1,'hot_bar',100000]);
+          $core->tax()->setEnabled(false,$actor);$settle=$core->settlements();$a=$settle->account($sid);$r=$settle->settle(['session_id'=>$sid,'expected_session_id'=>$sid,'expected_remaining_total'=>$a['remaining_total'],'expected_signature'=>$a['signature'],'mode'=>'full','destination'=>'subscriber','subscriber_id'=>$sub,'request_id'=>'qa-win-recovery-payment','print_receipt'=>false],$actor);ck((int)($r['settlement_id']??0)>0,'actual source settlement');
+          
+          $big=$source.'/guest-media/qa-a23-large.bin';$fh=fopen($big,'xb');if(!$fh)throw new RuntimeException('large media fixture');for($i=0;$i<520;$i++){if(fwrite($fh,random_bytes(1048576))!==1048576)throw new RuntimeException('media fixture write');}fclose($fh);
+          $media=MediaSnapshotCodec::scan($source);$backup=$lab.'/a23-offline-business.skbf';$pass='synthetic-a23-offline-recovery-only';
+          $meta=$core->businessBackup()->createEncrypted($backup,$pass,0);$size=filesize($backup);$hash=hash_file('sha256',$backup);ck($size>536870912&&$hash===$meta['sha256'],'actual restorable encrypted backup exceeds 512 MiB');
+          function rows(PDO $pdo):array{$a=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','users','inventory_items'] as $n)$a[$n]=$pdo->query('SELECT * FROM `'.$n.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);return $a;}
+          $before=rows($p);
+          $target=$lab.'/a23-offline-target';$dest=$target.'/Data';$name='sokna_ci_a23_offline';
+          ck(is_file($target.'/Web/tools/setup-machine.php')&&!is_file($target.'/config.php')&&!is_file($target.'/install.lock'),'fresh independent target');
+          $p->exec("CREATE DATABASE sokna_ci_a23_offline CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+          $p->exec("CREATE USER 'a23_target'@'127.0.0.1' IDENTIFIED BY 'synthetic-a23-db-only'");
+          $p->exec("GRANT ALL PRIVILEGES ON sokna_ci_a23_offline.* TO 'a23_target'@'127.0.0.1'");
+          $targetPdo=new PDO('mysql:host=127.0.0.1;port=39745;dbname='.$name.';charset=utf8mb4','a23_target','synthetic-a23-db-only',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          try{$targetPdo->query('SELECT COUNT(*) FROM sokna_ci_clean_windows.users');throw new RuntimeException('unexpected source access');}catch(PDOException $e){ck(true,'destination DB credentials cannot read source business DB');}
+          $conf=$target.'/input.json';$pw=$target.'/pass.txt';$id='local-a23-disposable-target';
+          file_put_contents($conf,json_encode(['installation_id'=>$id,'data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'39745','name'=>$name,'user'=>'a23_target','pass'=>'synthetic-a23-db-only']],JSON_THROW_ON_ERROR));
+          file_put_contents($pw,$pass);
+          $pr=proc_open([PHP_BINARY,'-c',php_ini_loaded_file(),$target.'/Web/tools/setup-machine.php','--mode=recover','--config-file='.$conf,'--recovery-file='.$backup,'--passphrase-file='.$pw],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$io,dirname(PHP_BINARY));ck(is_resource($pr),'actual separate setup recovery CLI started');fclose($io[0]);$stdout=stream_get_contents($io[1]);$stderr=stream_get_contents($io[2]);fclose($io[1]);fclose($io[2]);$code=proc_close($pr);@unlink($pw);@unlink($conf);echo "setup recovery exit=$code ".$stdout." ".$stderr.PHP_EOL;ck($code===0,'actual CLI recovered large backup without HTTP upload');
+          $j=json_decode($stdout,true,512,JSON_THROW_ON_ERROR);ck(($j['success']??false)===true&&($j['machine_identity_reprovisioned']??false)===true&&$j['installation_id']===$id,'new machine identity receipt');
+          $tcfg=require $target.'/config.php';$tlock=json_decode(file_get_contents($target.'/install.lock'),true,512,JSON_THROW_ON_ERROR);
+          ck($tcfg['installation']['id']===$id&&$tlock['installation_id']===$id&&$tcfg['runtime']['local_token']!==$cfg['runtime']['local_token'],'new config/lock/runtime identity');
+          ck((int)$targetPdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn()===93,'all destination migrations');
+          ck(rows($targetPdo)===$before,'financial, user and inventory rows exact');
+          ck(MediaSnapshotCodec::scan($dest)===$media,'all media byte hashes exact');
+          ck($targetPdo->query("SELECT setting_value FROM settings WHERE setting_key='installation.id'")->fetchColumn()===$id,'DB identity bound to destination');
+          ck((new PublicAuthorityStateService($targetPdo,$id))->phase()==='reenroll_required','Public authority fenced pending reenrollment');
+          foreach(['print_agents','print_destinations','print_jobs','public_projection_outbox','public_sync_state'] as $t){ck((int)$targetPdo->query('SELECT COUNT(*) FROM `'.$t.'`')->fetchColumn()===0,'excluded machine/transport state '.$t);}
+          ck(rows($p)===$before&&hash_file('sha256',$backup)===$hash&&MediaSnapshotCodec::scan($source)===$media,'source and backup preserved');
+          file_put_contents(getenv('RUNNER_TEMP').'/a23-offline-restore-receipt.json',json_encode(['status'=>'PASS','actual_windows'=>true,'actual_mariadb'=>true,'actual_cli'=>true,'source_app_stopped'=>true,'backup_bytes'=>$size,'backup_sha256'=>$hash,'financial_rows_exact'=>true,'media_exact'=>true,'target_identity_distinct'=>true,'public_reenroll_required'=>true,'source_db_inaccessible_to_target_credential'=>true,'physical_print_tested'=>false,'public_cutover_tested'=>false,'synthetic_only'=>true],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));echo "GROUP PASS A23-L13 L17 large offline restore\n";
+          
+          '@
+          $testPath=Join-Path $env:RUNNER_TEMP 'a23-offline-recover.php'
+          Set-Content $testPath $test -Encoding utf8NoBOM
+          $inject=@'
+          Stop-Service SoknaApache -ErrorAction Stop
+          Need ((Get-Service SoknaApache).Status -eq 'Stopped') 'APPLICATION_WRITER_NOT_STOPPED'
+          foreach($n in @('SoknaRuntime','SoknaPrintAgent','SoknaPrintWorker')){ $svc=Get-Service $n -ErrorAction SilentlyContinue; Need ($null -eq $svc -or $svc.Status -eq 'Stopped') 'OTHER_WRITER_ACTIVE' }
+          $target=Join-Path $lab 'a23-offline-target'
+          New-Item -ItemType Directory -Path $target | Out-Null
+          Expand-Archive $pack (Join-Path $target 'Web')
+          Run (Join-Path $phpRoot 'php.exe') @((Join-Path $env:RUNNER_TEMP 'a23-offline-recover.php'),$lab)
+          '@
+          $marker=' $receipt=@{status='
+          if(!$s.Contains($marker)){throw 'NATIVE_SCRIPT_MARKER'}
+          $s=$s.Replace($marker,($inject + [Environment]::NewLine + $marker))
+          $p=Join-Path $env:RUNNER_TEMP 'a23-native-offline.ps1'
+          Set-Content $p $s -Encoding utf8NoBOM
+          & $p
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_RECOVERY_FAILED'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-WINDOWS-LARGE-RECOVERY-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a23-offline-restore-receipt.json
+            ${{ runner.temp }}/a23-offline-recover.php
+          if-no-files-found: warn
+          retention-days: 30
