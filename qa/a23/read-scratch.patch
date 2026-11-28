@@ -1,0 +1,92 @@
+--- a/local/src/Domain/Recovery/BusinessBackupService.php
++++ b/local/src/Domain/Recovery/BusinessBackupService.php
+@@ -44,8 +44,9 @@
+         self::requireSodium();
+         self::validatePassphrase($passphrase);
+         $destination=$this->safeDestination($destination);
+-        $tmp=$this->tempPath('business-backup','.ndjson.gz');
++        $scratch=$this->acquireReadScratch($destination);$tmp=null;
+         try{
++            $tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-backup-'.bin2hex(random_bytes(16)).'.ndjson.gz';
+             $mediaLock=$this->acquireMediaWriteLock();
+             try{$manifest=$this->writeSnapshot($tmp,$actorUserId);}finally{fclose($mediaLock);}
+             $this->encryptFile($tmp,$destination,$passphrase);
+@@ -57,7 +58,7 @@
+                 'excluded_machine_identity'=>$manifest['excluded_machine_identity'],
+                 'schema_versions'=>$manifest['schema_versions'],'created_at'=>$manifest['created_at'],
+             ];
+-        }finally{ @unlink($tmp); }
++        }finally{ if($tmp!==null)@unlink($tmp);fclose($scratch['lock']); }
+     }
+ 
+     public function restoreEncryptedToEmptyTarget(string $source,string $passphrase,int $actorUserId=0): array
+@@ -77,8 +78,8 @@
+     public function inspectEncrypted(string $source,string $passphrase): array
+     {
+         self::requireSodium();self::validatePassphrase($passphrase);
+-        $tmp=$this->tempPath('business-inspect','.ndjson.gz');
+-        try{$this->decryptFile($source,$tmp,$passphrase);
++        $scratch=$this->acquireReadScratch($source);$tmp=null;
++        try{$tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-inspect-'.bin2hex(random_bytes(16)).'.ndjson.gz';$this->decryptFile($source,$tmp,$passphrase);
+             $manifest=$this->readManifest($tmp);
+             $schema=$manifest['schema_version']??0;
+             if(!in_array($schema,[1,2],true))throw new RecoveryException('backup_contract','فرمت پشتیبان پشتیبانی نمی‌شود.',422);
+@@ -101,7 +102,7 @@
+                 $manifest['target_kind']=$proof===null?'empty':'verified_fresh_seed';
+                 $manifest['target_ready']=true;
+             }catch(RecoveryException $e){$manifest['target_issue']=['code'=>$e->errorCode,'message'=>$e->getMessage()];}
+-            return $manifest;}finally{@unlink($tmp);}
++            return $manifest;}finally{if($tmp!==null)@unlink($tmp);fclose($scratch['lock']);}
+     }
+ 
+     /**
+@@ -746,6 +747,49 @@
+         return $path;
+     }
+ 
++    /** Dedicated, versioned scratch namespace for pre-mutation operations only.
++     * Never sweep recovery-tmp, restore journals, or user backup destinations.
++     * After a killed process, the next holder of the stable lock removes only
++     * abandoned scratch files in this namespace. This is not secure erase.
++     */
++    private function acquireReadScratch(string $externalPath): array
++    {
++        $root=realpath($this->observability->dataRoot());
++        if($root===false||!is_dir($root))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
++        $dir=$root.DIRECTORY_SEPARATOR.'recovery-read-scratch-v1';
++        if(is_link($dir)||(!is_dir($dir)&&!@mkdir($dir,0700)&&!is_dir($dir)))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
++        $canonical=static function(string $p):string{$p=rtrim(str_replace('\\','/',$p),'/');return PHP_OS_FAMILY==='Windows'?strtolower($p):$p;};
++        $actual=realpath($dir);
++        if($actual===false||$canonical($actual)!==$canonical($dir)||is_link($dir))throw new RecoveryException('temp_unavailable','مسیر موقت پشتیبان معتبر نیست.',500);
++        if(PHP_OS_FAMILY!=='Windows'&&((fileperms($dir)&0077)!==0))throw new RecoveryException('temp_unavailable','مجوز فضای موقت پشتیبان معتبر نیست.',500);
++        $external=realpath($externalPath);
++        if($external===false){$parent=realpath(dirname($externalPath));if($parent!==false)$external=$parent.DIRECTORY_SEPARATOR.basename($externalPath);}
++        if($external!==false&&($canonical($external)===$canonical($dir)||str_starts_with($canonical($external),$canonical($dir).'/')))throw new RecoveryException('invalid_path','مسیر موقت داخلی برای فایل پشتیبان مجاز نیست.',422);
++        $lockPath=$dir.DIRECTORY_SEPARATOR.'.scratch.lock';
++        if(is_link($lockPath)||(file_exists($lockPath)&&!is_file($lockPath)))throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
++        $lock=@fopen($lockPath,'c+b');
++        if(!$lock)throw new RecoveryException('temp_unavailable','قفل فضای موقت در دسترس نیست.',500);
++        try{
++            if(!flock($lock,LOCK_EX|LOCK_NB))throw new RecoveryException('backup_scratch_busy','عملیات دیگری روی پشتیبان در جریان است.',409);
++            clearstatcache(true,$lockPath);
++            $ls=@lstat($lockPath);$fs=fstat($lock);
++            if(is_link($lockPath)||!is_array($ls)||!is_array($fs)||$ls['ino']!==$fs['ino']||$ls['dev']!==$fs['dev']||$ls['nlink']!==1)throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
++            @chmod($lockPath,0600);
++            $entries=@scandir($dir);
++            if($entries===false)throw new RecoveryException('temp_unavailable','فضای موقت قابل بررسی نیست.',500);
++            // Validate every candidate before removing anything. Never follow links.
++            $orphans=[];
++            foreach($entries as $entry){
++                if(!preg_match('/^business-(?:backup|inspect)-[a-f0-9]{32}\.ndjson\.gz$/D',$entry))continue;
++                $file=$dir.DIRECTORY_SEPARATOR.$entry;$st=@lstat($file);
++                if(!is_array($st)||is_link($file)||!is_file($file)||$st['nlink']!==1||$canonical((string)realpath($file))!==$canonical($file))throw new RecoveryException('backup_scratch_cleanup_pending','فایل موقت نامعتبر است؛ نیازمند بررسی.',409);
++                $orphans[]=$file;
++            }
++            foreach($orphans as $file)if(!@unlink($file))throw new RecoveryException('backup_scratch_cleanup_pending','پاک‌سازی فایل موقت کامل نشد.',500);
++            return ['dir'=>$dir,'lock'=>$lock];
++        }catch(Throwable $e){fclose($lock);throw $e;}
++    }
++
+     private function tempPath(string $prefix,string $suffix): string
+     {
+         $dir=$this->observability->dataRoot().DIRECTORY_SEPARATOR.'recovery-tmp';if(!is_dir($dir)&&!@mkdir($dir,0700,true)&&!is_dir($dir))throw new RecoveryException('temp_unavailable','فضای موقت بازیابی آماده نیست.',500);
