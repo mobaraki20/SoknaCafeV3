@@ -290,7 +290,7 @@ jobs:
           $w=realpath($argv[1]);if(!$w||basename($w)!=='a22')exit(2);require $w.'/local/bootstrap.php';$cfgPath=$w.'/config.php';$cfg=require $cfgPath;$pubPath=$w.'/public/config.php';$pubCfg=require $pubPath;
           if(($cfg['db']['name']??'')!=='sokna_cp150'||($pubCfg['db']['name']??'')!=='sokna_cp150_public'||($cfg['db']['host']??'')!=='127.0.0.1'||($pubCfg['db']['host']??'')!=='127.0.0.1')exit(2);
           function ck($x,$m){if(!$x)throw new RuntimeException($m);echo "PASS $m\n";}
-          function writeCfg($p,$c){file_put_contents($p,'<?php return '.var_export($c,true).';');}
+          function writeCfg($p,$c){$tmp=$p.'.qa-next';if(file_put_contents($tmp,'<?php return '.var_export($c,true).';')===false||!rename($tmp,$p))throw new RuntimeException('config fixture write');clearstatcache(true,$p);if(function_exists('opcache_invalidate'))@opcache_invalidate($p,true);}
           function sql(PDO $p,$s,array $a=[]){$q=$p->prepare($s);$q->execute($a);return $q;}
           function reject(callable $f,string $code){try{$f();throw new RuntimeException('unexpected accepted');}catch(PublicEdgeSyncException $e){ck($e->errorCode===$code,'rejected '.$code);}}
           $iid=$cfg['installation']['id'];$target=$cfg['public']['base_url'];$secret=$cfg['public']['shared_secret'];ck($target==='http://127.0.0.1:18766/public'&&$pubCfg['app']['default_installation_id']===$iid,'exact disposable target binding');
@@ -305,7 +305,14 @@ jobs:
           $dir=$cfg['app']['data_dir'].'/private-move';if(!is_dir($dir))mkdir($dir,0700,true);$journal=$dir.'/replacement-current.json';ck(!file_exists($journal),'fresh fixture journal');
           $state=['format'=>'sokna-simple-public-replacement-v1','operation_id'=>$op,'source_base_url'=>$cfg['public']['base_url'],'target_base_url'=>$target,'new_secret'=>$secret,'nonce'=>$nonce,'source_public_hash'=>hash('sha256',json_encode($cfg['public'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'kind'=>'fresh_unpaired','expected_epoch'=>1,'stage'=>'pairing_uncertain'];file_put_contents($journal,json_encode($state,JSON_THROW_ON_ERROR));chmod($journal,0600);$jsha=hash_file('sha256',$journal);
           $svc=new PublicMoveSimpleReplacement($local,$ledger,$iid,$cfg['app']['data_dir']);ck($svc->status()['resume_kind']==='probe_fresh_pairing','real ledger recognizes resumable fresh pairing');
-          $wrong=$pubCfg;$wrong['app']['default_installation_id']='qa-a23-other-binding';writeCfg($pubPath,$wrong);try{reject(fn()=>$svc->finish($op),'public_fresh_replacement_proof_invalid');ck(hash_file('sha256',$journal)===$jsha&&hash_file('sha256',$cfgPath)===$beforeHash&&$paused()==='active:1:0:1','wrong public binding preserves Local config, journal and paused intake');}finally{writeCfg($pubPath,$pubCfg);}
+          $wrong=$pubCfg;$wrong['app']['default_installation_id']='qa-a23-other-binding';writeCfg($pubPath,$wrong);try{
+           ck((require $pubPath)['app']['default_installation_id']==='qa-a23-other-binding','wrong config visible on disk');
+           $rawCfg=$cfg;$rawCfg['public']=['base_url'=>$target,'shared_secret'=>$secret];$rawClient=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient(\Sokna\Local\Core\Config::fromArray($rawCfg),null,null,null);
+           $raw=$rawClient->postRaw('/api/v1/local/authority/status',['authority_epoch'=>1],5);$rawBody=$raw['body']??[];echo 'WRONG_BINDING_OBSERVED '.json_encode(['status'=>$raw['status']??null,'default_binding_matches'=>$rawBody['default_binding_matches']??null,'authority_state'=>$rawBody['authority_state']??null,'error'=>$rawBody['error']??null],JSON_THROW_ON_ERROR).PHP_EOL;
+           ck(($raw['status']??0)===200&&($rawBody['default_binding_matches']??null)===false,'actual HTTP observes wrong default binding');
+           reject(fn()=>$svc->finish($op),'public_fresh_replacement_proof_invalid');ck(hash_file('sha256',$journal)===$jsha&&hash_file('sha256',$cfgPath)===$beforeHash&&$paused()==='active:1:0:1','wrong public binding preserves Local config, journal and paused intake');
+          }finally{writeCfg($pubPath,$pubCfg);}
+          $proof=$client->probeFreshReplacementPairing($target,$secret);ck(($proof['default_binding_matches']??false)===true,'restored binding visible over HTTP');
           // Lost/uncertain pairing can now resume only with the same signed staged secret.
           $before=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','users','inventory_items'] as $t)$before[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
           $result=$svc->finish($op);echo 'RESUME '.json_encode($result,JSON_THROW_ON_ERROR).PHP_EOL;
@@ -318,7 +325,7 @@ jobs:
           sha256sum -c <<HASHES
           295476eaead63b58f70d5debe9b2620b1b30a517e7fd5aca41d6082d8b95daad  $W/ui.patch
           d0a5a60533e584eec8aa4a70ee753fdc436dff0a0631d64e07ce30e658afaa07  $W/resume.patch
-          8422927da128b598062018585117a30ba47def03ffeae8f07099e8deef09a6dc  $W/real-resume.php
+          e69614cee916159ca9e510eff7a691d94ebcb244c635330ac8096a611db560d6  $W/real-resume.php
           HASHES
           cd "$W"
           patch --batch --forward -p1 < ui.patch
@@ -333,11 +340,11 @@ jobs:
           45047d14f2673cc09547ba74460925bbebf19b908b098b7077cc8769f95a19d8  local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
           84162971d80e2244631e56bfd92d07d0a1a0a00b26b7ee83eb5f7dac88cd1140  local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
           HASHES
-          PHP_CLI_SERVER_WORKERS=6 php -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/real-resume-http.log" 2>&1 & pp=$!
+          SOKNA_PUBLIC_CONFIG="$W/public/config.php" PHP_CLI_SERVER_WORKERS=6 php -d opcache.enable_cli=0 -S 127.0.0.1:18766 -t "$W/public" "$W/public/index.php" > "$W/real-resume-http.log" 2>&1 & pp=$!
           trap 'kill "$pp" 2>/dev/null || true' EXIT
           sleep 2
           kill -0 "$pp"
-          php "$W/real-resume.php" "$W" | tee "$W/real-resume-log.txt"
+          php -d opcache.enable_cli=0 "$W/real-resume.php" "$W" | tee "$W/real-resume-log.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
