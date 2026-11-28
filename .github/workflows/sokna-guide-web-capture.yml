@@ -1,0 +1,160 @@
+name: SOKNA guide real web capture
+on:
+  push:
+    branches: [docs/guide-native-capture-20261128]
+    paths: ['.github/workflows/sokna-guide-web-capture.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-guide-only
+          MARIADB_ROOT_HOST: '%'
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          artifact-ids: 15254366335
+          path: input
+      - name: Prepare exact archives, real web server and product font
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence /tmp/sokna-docs-lab/local/Web /tmp/sokna-docs-lab/public
+          python - <<'PY'
+          import zipfile,pathlib,hashlib
+          p=pathlib.Path('input')
+          pairs=[('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip','707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','/tmp/sokna-docs-lab/local/Web'),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip','641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','/tmp/sokna-docs-lab/public')]
+          for name,expected,dest in pairs:
+              found=[x for x in p.rglob('*.zip') if hashlib.sha256(x.read_bytes()).hexdigest()==expected]
+              assert len(found)==1,(name,'no exact archive',list(p.iterdir()))
+              with zipfile.ZipFile(found[0]) as z:
+                  assert z.testzip() is None
+                  z.extractall(dest)
+          PY
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2 libapache2-mod-php php-mysql php-mbstring php-zip php-curl php-gd
+          sudo a2enmod rewrite headers
+          cat <<'CONF' | sudo tee /etc/apache2/conf-available/sokna-docs-lab.conf
+          Listen 127.0.0.1:18080
+          Listen 127.0.0.1:18081
+          <VirtualHost 127.0.0.1:18080>
+              ServerName 127.0.0.1
+              DocumentRoot /tmp/sokna-docs-lab/local/Web/public
+              <Directory /tmp/sokna-docs-lab/local/Web/public>
+                  Options FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+          <VirtualHost 127.0.0.1:18081>
+              ServerName 127.0.0.1
+              DocumentRoot /tmp/sokna-docs-lab/public
+              <Directory /tmp/sokna-docs-lab/public>
+                  Options FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+          CONF
+          sudo a2enconf sokna-docs-lab
+          mkdir -p /tmp/sokna-docs-lab/local/SetupCache/ui-fonts /tmp/sokna-docs-lab/public/storage/ui-fonts
+          curl -fL --retry 2 -o /tmp/vazirmatn.woff2 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/webfonts/Vazirmatn%5Bwght%5D.woff2'
+          echo '4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92  /tmp/vazirmatn.woff2' | sha256sum -c
+          cp /tmp/vazirmatn.woff2 /tmp/sokna-docs-lab/local/SetupCache/ui-fonts/Vazirmatn-Variable.woff2
+          cp /tmp/vazirmatn.woff2 /tmp/sokna-docs-lab/public/storage/ui-fonts/Vazirmatn-Variable.woff2
+          sudo chown -R www-data:www-data /tmp/sokna-docs-lab
+          sudo apache2ctl configtest
+          sudo systemctl restart apache2
+          curl -f http://127.0.0.1:18080/setup/ -o /dev/null
+          curl -f http://127.0.0.1:18081/setup/ -o /dev/null
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Capture actual setup screens and perform installation through UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/guide_web.py <<'PY'
+          import hashlib,json,os,secrets
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          out=Path('evidence'); records=[]
+          expected='4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92'
+          def font(page):
+              page.evaluate("async()=>{await document.fonts.ready; await document.fonts.load('400 16px Vazirmatn','سکنا')}")
+              loaded=page.evaluate("()=>[...document.fonts].some(f=>f.family.replace(/[\"']/g,'')==='Vazirmatn'&&f.status==='loaded')")
+              assert loaded,'Product font not loaded'
+          def shot(page,name,section=None):
+              font(page)
+              f=out/(name+'.png')
+              if section:page.locator(section).screenshot(path=str(f))
+              else:page.screenshot(path=str(f),full_page=True)
+              records.append(dict(name=f.name,url=page.url,sha256=hashlib.sha256(f.read_bytes()).hexdigest(),font_sha256=expected))
+              print('REAL_CAPTURE',name,flush=True)
+          def req(page,button,action):
+              with page.expect_response(lambda r:'api.php?action='+action in r.url,timeout=90000) as response:
+                  page.locator(button).click()
+              data=response.value.json()
+              assert response.value.ok and data.get('success') is not False,(action,data.get('message'))
+              return data
+          def fields(page):
+              page.locator('[data-db="user"]').fill('root')
+              page.locator('[data-db="pass"]').fill('disposable-guide-only')
+              page.locator('[data-create-db]').check()
+          try:
+              with sync_playwright() as pw:
+                  browser=pw.chromium.launch(headless=True)
+                  page=browser.new_page(viewport={'width':1440,'height':1000},color_scheme='light')
+                  with page.expect_response(lambda r:'api.php?action=status' in r.url) as resp:
+                      page.goto('http://127.0.0.1:18080/setup/')
+                  assert resp.value.json()['preflight']['ok']
+                  page.locator('[data-preflight] .sc-setup__check').first.wait_for()
+                  shot(page,'03-01-default-setup')
+                  page.locator('[data-data-dir]').fill('/tmp/sokna-docs-lab/local/Data/LocalWeb')
+                  req(page,'[data-action="preflight"]','preflight')
+                  shot(page,'03-02-preflight')
+                  fields(page)
+                  req(page,'[data-action="test-db"]','test_database')
+                  page.locator('[data-admin="user"]').fill('admin')
+                  page.locator('[data-admin="password"]').fill(secrets.token_urlsafe(24))
+                  shot(page,'03-03-db-and-admin')
+                  req(page,'[data-action="install"]','install_new')
+                  page.wait_for_url('**/login.php',timeout=90000)
+                  shot(page,'03-04-login')
+                  p=browser.new_page(viewport={'width':1440,'height':1000},color_scheme='light')
+                  with p.expect_response(lambda r:'api.php?action=status' in r.url) as resp:
+                      p.goto('http://127.0.0.1:18081/setup/')
+                  assert resp.value.json()['preflight']['ok']
+                  p.locator('[data-checks] .check-info').first.wait_for()
+                  shot(p,'05-01-default-setup')
+                  req(p,'[data-preflight]','preflight')
+                  fields(p)
+                  req(p,'[data-test-db]','test_database')
+                  p.locator('[data-owner]').fill(secrets.token_urlsafe(24))
+                  p.locator('[data-emergency]').fill(secrets.token_urlsafe(24))
+                  shot(p,'05-02-db-and-security')
+                  # A real successful Public setup creates a pairing code; do not capture or expose it.
+                  req(p,'[data-install]','install')
+                  print('PUBLIC_INSTALL_UI_PASS',flush=True)
+                  browser.close()
+          finally:
+              (out/'receipt.json').write_text(json.dumps({'scope':'exact controlled web packages on disposable Linux Apache and MariaDB 11.4; not Windows field or hosting panel','run_id':os.environ['GITHUB_RUN_ID'],'local_sha256':'707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','public_sha256':'641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402','captures':records},indent=2))
+          PY
+          python /tmp/guide_web.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-GUIDE-WEB-REAL-UI-EVIDENCE
+          path: evidence
+          if-no-files-found: warn
