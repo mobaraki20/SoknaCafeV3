@@ -1329,7 +1329,7 @@ jobs:
           01ddd72a47eef833f1512edad7ad19d3d60aff8a72c6a14c370c06d817229e37  local/src/Domain/PublicEdge/PublicOriginRebindService.php
           82d438b07ca26f4a70afc9537464035bb8754e30b716b361d4d6ec21b4c8e335  public/.htaccess
           HASHES
-          php -r 'require $argv[1]."/bootstrap.php";$c=sokna_public_bootstrap(require $argv[1]."/config.php");$c->migrations()->migrate();file_put_contents($argv[1]."/install.lock",json_encode(["format"=>"sokna-public-install-lock-v1","public_instance_id"=>"qa-a23-origin-instance","pwa_app_id"=>"pwa-".str_repeat("a",32)],JSON_THROW_ON_ERROR));' "$W/public"
+          php -r 'require $argv[1]."/bootstrap.php";$c=sokna_public_bootstrap(require $argv[1]."/config.php");$c->migrations()->migrate();$cfg=require $argv[1]."/config.php";$iid=$cfg["app"]["default_installation_id"];$c->pairingSecrets()->put($iid,$cfg["relay"]["installation_secrets"][$iid]);file_put_contents($argv[1]."/install.lock",json_encode(["format"=>"sokna-public-install-lock-v1","public_instance_id"=>"qa-a23-origin-instance","pwa_app_id"=>"pwa-".str_repeat("a",32)],JSON_THROW_ON_ERROR));' "$W/public"
           php -d opcache.enable_cli=0 -S 127.0.0.1:18766 -t "$W/public" "$W/origin-router.php" > "$W/origin-http.log" 2>&1 & pp=$!
           php -d opcache.enable_cli=0 -S 127.0.0.1:18768 -t "$W/public" "$W/origin-router.php" > "$W/origin-other-http.log" 2>&1 & qp=$!
           trap 'kill "$pp" "$qp" 2>/dev/null || true' EXIT
