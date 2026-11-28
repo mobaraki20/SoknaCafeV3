@@ -1,0 +1,595 @@
+name: SOKNA A21 exact Local and Public package qualification
+on:
+  push:
+    branches: [qa/post-release-a10-20261128]
+    paths: [.github/workflows/sokna-a21-exact-factory.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download last controlled Local delivery
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46067310389
+          name: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/a11-input/local
+      - name: Download last controlled Public delivery
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46063873053
+          name: SOKNA-PUBLIC-35JB-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/a11-input/public
+      - name: Exact last delivery plus cumulative fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          mkdir -p "$W"
+          python3 - "$W" "$RUNNER_TEMP/a11-input" <<'PY' | tee "$W/source-results.txt"
+          import pathlib,hashlib,sys,zipfile,io
+          W,I=map(pathlib.Path,sys.argv[1:]); H=lambda b:hashlib.sha256(b).hexdigest()
+          def exact(p,h):
+              b=p.read_bytes();assert H(b)==h,(p,H(b));return b
+          local=exact(I/'local/SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip','79ea97f6be0577c9c724865f0fe271cff8dbb3bf078f12825fa91c6b091a5b45')
+          local=zipfile.ZipFile(io.BytesIO(local)).read('artifacts/local/web.zip')
+          assert H(local)=='fafcb63d1c9f7fd1a014836bf2e7f33bf09a1cc30137fa01ab6f056e779d01e8'
+          public=exact(I/'public/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip','09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f')
+          expected={'local':(626,'b8019526c9fcbbe65bc5cf564769e62ca9175b956dfaee8cade6097f60309b52'),'public':(258,'239d2cbb5651463ab24bb5bb867b6dc727318e930ecf13f3b6c9956897faa77c')}
+          for host,b in [('local',local),('public',public)]:
+              z=zipfile.ZipFile(io.BytesIO(b));assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              r=W/host;z.extractall(r)
+              paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file())
+              actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==expected[host],(host,len(paths),actual)
+              print('PASS EXACT DELIVERY',host,len(paths),actual)
+          PY
+          base64 -d qa/post-release-a10/rebase.b64 > "$W/rebase.patch.gz"
+          echo '061db84e5b3175fcb59023ea50815a6a434b59c2b91720ab9f30f12fa42047b0  '"$W/rebase.patch.gz" | sha256sum -c -
+          gzip -dc "$W/rebase.patch.gz" > "$W/rebase.patch"
+          (cd "$W"; git apply --check rebase.patch; git apply rebase.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'f7687a2d4c6af1fbc749fe94c36c3111888a3853c75a277a507c49d5b35cf907'),'public':(258,'07715d03571d542cc1f6c862ec1fb266e6cc2b3995f2c6e291c11cc1ba11c2c2')}
+          for host,(n,sha) in expected.items():
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==sha,(host,len(paths),actual)
+              print('PASS EXACT A11',host,n,actual)
+          PY
+      - name: Exact A12 archive interaction and compact expense form
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/a12.b64 > "$W/a12.patch.gz"
+          echo '4e2ed9794668428c9225497672201e5cb5ec67517617a5199d25ef562ef452a9  '"$W/a12.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a12.patch.gz" > "$W/a12.patch"
+          (cd "$W"; git apply --check a12.patch; git apply a12.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'098c20ccc5a2f61a8d85c6379397f84ba1de56c2d7a96605bfd8889ac97f624e'),'public':(258,'ed4fbf4e1d4778062dd4f4dff9d1711f294343dda81bbd559d2a0e3ef5ad5b73')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A12',host,n,actual)
+          PY
+      - name: A14 shared compact page header exact source
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/a14.b64 > "$W/a14.patch.gz"
+          echo '1519ac76ab50f91923381e342e17b935ad3319e09cc7b62b1b14a36861e6b252  '"$W/a14.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a14.patch.gz" > "$W/a14.patch"
+          (cd "$W"; git apply --check a14.patch; git apply a14.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'d797176c7c6509b4b316cd5c2dd3c1c4a0ceb8f5cce6a188988515b47cf9438a'),'public':(258,'80ad4bde59d592a36cd20f56b58862aa027b694ea04aafe0bcc5e7599a090b25')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A14',host,n,actual)
+          PY
+      - name: Apply and verify exact cumulative A21
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          echo '0d68e3d64773cff1d73ab86a956e985c4d4b3b9ecf4f54c2084398dd621be820  qa/post-release-a10/a21.patch' | sha256sum -c -
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/post-release-a10/a21.patch"; git apply "$GITHUB_WORKSPACE/qa/post-release-a10/a21.patch")
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'e9d4a0e7f524d78dba676990cfbc83ec36ce9fd4d6548c8d3ab3cf8852c23728'),'public':(258,'515d993be47e0e7fd67614955d348ebcc17e80f87ed4b595ac8ae0343b25272c')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A21',host,n,actual)
+          PY
+      - name: Freeze exact A21 candidates using prior CC54 and CC52 factory contracts
+        run: python3 qa/post-release-a10/build_a21.py "$RUNNER_TEMP/cp148-qa" "$RUNNER_TEMP/a11-input" "$RUNNER_TEMP/a21-candidate"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/a21-candidate/*
+          if-no-files-found: error
+          retention-days: 7
+  native:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - {origin: R307, fault: none, ledger: '83', run: '44730988488', artifact: SOKNA-R307-LOCAL-231FW-EXACT-CANDIDATE, file: SOKNA-R307-LOCAL-231FW-FROM-231FV-CONTROLLED-PREFLIGHT.zip}
+          - {origin: GK, fault: none, ledger: '93', run: '46067310389', artifact: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY, file: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip}
+          - {origin: GK, fault: APACHE_STOPPED, ledger: '93', run: '46067310389', artifact: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY, file: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip}
+          - {origin: GK, fault: POINTER_SWITCHED, ledger: '93', run: '46067310389', artifact: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY, file: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip}
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+      SOKNA_BASE_LEDGER: ${{ matrix.ledger }}
+      SOKNA_ORIGIN: ${{ matrix.origin }}
+      SOKNA_FAULT: ${{ matrix.fault }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c0316cf3485467241315c2638dcff47fec3f129d
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f38c20083068e540d593876a2c527c51e0157f92
+          path: native-src
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13.5'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/baseline
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-APACHE-2471-CANDIDATE-QA-ONLY
+          run-id: 45707401488
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/apache
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/delivery
+      - name: Exact final controlled archive via standard native panel on actual 231fw synthetic origin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $base=Get-ChildItem "$env:RUNNER_TEMP/baseline" -Recurse -File -Filter '${{ matrix.file }}'|Select-Object -First 1
+          if(!$base){throw 'BASELINE_MISSING'}
+          $env:SOKNA_BASELINE_ZIP=$base.FullName
+          $target=Join-Path $env:RUNNER_TEMP 'delivery/LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip'
+          $r=Get-Content "$env:RUNNER_TEMP/delivery/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          if($r.status -ne 'PENDING_EXACT_FINAL_GATE' -or $r.delivery_authorized -ne $false -or (Get-FileHash $target -Algorithm SHA256).Hash.ToLowerInvariant() -cne $r.local.sha256){throw 'CANDIDATE_DRIFT'}
+          $env:SOKNA_CURRENT_QA_ZIP=$target
+          $env:SOKNA_MATRIX_TARGET_ZIP=$target
+          $env:SOKNA_A21_WEB_SHA=[string]$r.local.web_sha256
+          @'
+          from pathlib import Path
+          import os
+          p=Path('qa/factory/prepare_checkpoint84_native.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('LOCAL-231GG-CONTROLLED-HOME-CANARY.zip','LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip').replace('CONTROLLED_HOME_CANARY_FIELD_ACCEPTANCE_PENDING','CONTROLLED_CAFE_OPERATOR_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_CANARY_ONLY_NOT_CAFE_PRODUCTION_APPROVAL','CONTROLLED_CAFE_OPERATOR_ONLY_FIELD_ACCEPTANCE_PENDING').replace('CONTROLLED_HOME_EXACT_OUTER_QA_ONLY','A21_EXACT_OUTER_QA_ONLY')
+          s=s.replace('origin=os.environ["SOKNA_ORIGIN"]',"origins['GK']=('79ea97f6be0577c9c724865f0fe271cff8dbb3bf078f12825fa91c6b091a5b45','b8019526c9fcbbe65bc5cf564769e62ca9175b956dfaee8cade6097f60309b52')\norigin=os.environ[\"SOKNA_ORIGIN\"]")
+          s=s.replace("{t for _,t in origins.values()}","{origins[k][1] for k in ('R307','GK')}").replace('2c14b241a3cddf5f1d436144691555b11a97ccc31b4d08b2ea8f8d92f04e3aa6',os.environ['SOKNA_A21_WEB_SHA']).replace("assert fault=='none'","assert fault in ('none','APACHE_STOPPED','POINTER_SWITCHED')").replace("@('GE','GF')","@('GE','GF','GK')")
+          p.with_name('prepare_a21_native.py').write_text(s,encoding='utf-8')
+          '@ | Set-Content "$env:RUNNER_TEMP/prepare-a21.py" -Encoding utf8NoBOM
+          python "$env:RUNNER_TEMP/prepare-a21.py"
+          python qa/factory/prepare_a21_native.py
+          if($LASTEXITCODE -ne 0){throw 'BRIDGE_PREPARATION_FAILED'}
+          Copy-Item qa/checkpoint61/BridgeHarness.cs native-src/qa/sokna-r186/R186Harness.cs -Force
+          Push-Location native-src
+          try {
+            & (Join-Path $env:RUNNER_TEMP 'native-matrix.ps1')
+            if($LASTEXITCODE -ne 0){throw 'BRIDGE_TEST_FAILED'}
+          }finally{Pop-Location}
+      - name: Verify exact native receipt, including interrupted recovery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $r=Get-Content "$env:RUNNER_TEMP/delivery/factory-build-receipt.json" -Raw|ConvertFrom-Json
+          $x=Get-Content "$env:RUNNER_TEMP/matrix-receipt.json" -Raw|ConvertFrom-Json
+          $actual=(Get-FileHash "$env:RUNNER_TEMP/delivery/LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $baseline=if($env:SOKNA_ORIGIN -eq 'GK'){$r.local.baselines[1].local}else{$r.local.baselines[0].local}
+          $forward=$env:SOKNA_FAULT -ne 'APACHE_STOPPED'
+          $phase=if($forward){'COMMITTED'}else{'RECOVERED_TO_PREVIOUS_SLOT'}
+          if($x.status -ne 'PASS' -or $x.candidate_sha256 -cne $actual -or $actual -cne $r.local.sha256 -or $x.phase -ne $phase -or $x.origin -ne $env:SOKNA_ORIGIN -or $x.origin_tree_sha256 -cne $baseline.managed_tree_sha256 -or $x.target_tree_sha256 -cne $r.local.target.managed_tree_sha256 -or $x.migrations -ne 93 -or !$x.independent_restore -or !$x.panel_activation_tested -or $x.actual_field_host){throw 'DELIVERY_GATE'}
+          Write-Output "PASS EXACT NATIVE A21 $env:SOKNA_ORIGIN $env:SOKNA_FAULT $actual"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-NATIVE-${{ matrix.origin }}-${{ matrix.fault }}-RECEIPT
+          path: ${{ runner.temp }}/matrix-receipt.json
+          retention-days: 7
+          if-no-files-found: error
+  public-upgrade:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        origin: [35ip, 35iy, 35jb]
+        route: [routine, emergency]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      QA_ORIGIN: ${{ matrix.origin }}
+      QA_ROUTE: ${{ matrix.route }}
+      SOKNA_CI_DB_PASS: synthetic-cp116-ci-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ae53ee62504a84b07f8d4ea0b215db0608e34e9d
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        if: ${{ matrix.origin != '35ip' }}
+        with:
+          run-id: 45774034628
+          name: SOKNA-CP110-EXACT-35IP-COMPONENT-UPDATE-QA
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 46063873053
+          name: SOKNA-PUBLIC-35JB-CONTROLLED-OPERATOR-DELIVERY
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/prior35jb
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_mysql, zip, mbstring, sodium
+      - name: Exact archived 35ip and previously qualified owner repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/14907451327/zip" -o "$RUNNER_TEMP/origin.zip"
+          echo '3536c7dcc88cfa2501aa88662214f1f1b6e8934f22e00b714756de7657bd5754  '"$RUNNER_TEMP/origin.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/cc37b-receipts"
+          python3 - <<'PYCODE'
+          import os,pathlib,zipfile,hashlib,json,base64,io
+          P=pathlib.Path; t=P(os.environ['RUNNER_TEMP']);H=lambda b:hashlib.sha256(b).hexdigest();J=lambda x:(json.dumps(x,ensure_ascii=False,sort_keys=True,separators=(',',':'))+'\n').encode();tree=lambda d:H(''.join(n+'\0'+H(v)+'\n' for n,v in sorted(d.items())).encode())
+          with zipfile.ZipFile(t/'origin.zip') as z:raw=z.read('SOKNA-PUBLIC-35IP-CLEAN-WEB.zip')
+          assert H(raw)=='1206dd043d87f8e832b9d3660924c1f288bc8565a6854bd09144c9c80956c040'
+          with zipfile.ZipFile(io.BytesIO(raw)) as z:
+              assert z.testzip() is None;old={n:z.read(n) for n in z.namelist() if not n.endswith('/')};z.extractall(t/'old-web')
+          stable={n:v for n,v in old.items() if n=='emergency.php' or n.startswith('src/Emergency/')};managed={n:v for n,v in old.items() if n not in stable};before=tree(managed);assert before=='621b6ebee48ef7876fdd8b0ad8e041628c96e407b1f8a47dc5528307843f603a'
+          clean=t/'prior35jb/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip';assert H(clean.read_bytes())=='09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f'
+          paths=['recovery.php','src/Recovery/StableRecoveryService.php','src/Emergency/PublicUpdateService.php']
+          with zipfile.ZipFile(clean) as z:new={n:z.read(n) for n in paths}
+          after=tree(managed|{n:new[n] for n in paths[:2]});assert after=='0adebb8a0888017289f843be9c9e109bb6710fca114e31fde74da027edd1f584'
+          pins={n:H(b) for n,b in stable.items()};ledger=[P(n).stem for n in sorted(managed) if n.startswith('database/migrations/') and n.endswith('.sql')];assert len(ledger)==11
+          plan={'version':old['VERSION.txt'].decode().strip(),'before':before,'after':after,'stable_before':pins,'stable_after':pins|{paths[2]:H(new[paths[2]])},'patch':{n:{'old':H(old[n]),'new':H(new[n]),'b64':base64.b64encode(new[n]).decode()} for n in paths},'ledger':ledger}
+          helper=P('qa/checkpoint107/repair-template.php').read_text().replace('__PLAN_BASE64__',base64.b64encode(J(plan)).decode()).encode();assert H(helper)=='5f605bb5bfa0c5506d75b7ccc259049ee3df8170217d1d9631f877a6733fba75'
+          (t/'repair37b.php').write_bytes(helper)
+          print('PASS exact prior repair helper reproduced, no new helper or engine modification')
+          PYCODE
+          mysql --protocol=TCP -h127.0.0.1 -uroot -p"$QA_DB_PASSWORD" -e 'CREATE DATABASE sokna_ci_cp107 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'
+          sed 's/5f5010dadaaae7cede43b20ca1e4fc8618362d66f9d31ca288ab96361779b88d/5f605bb5bfa0c5506d75b7ccc259049ee3df8170217d1d9631f877a6733fba75/g' qa/checkpoint107/db-component-test.php > "$RUNNER_TEMP/repair-test.php"
+          php "$RUNNER_TEMP/repair-test.php" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/repair37b.php" | tee "$RUNNER_TEMP/cc37b-receipts/repair.txt"
+          # A real previous activation produces the ledger for the 35iy case.
+          if [[ '${{ matrix.origin }}' != '35ip' ]]; then
+            cat > "$RUNNER_TEMP/prior47.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
+          use Sokna\PublicEdge\Core\Migrations;
+          use Sokna\PublicEdge\Health\PublicHealthService;
+          if(getenv('GITHUB_ACTIONS')!=='true'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          [$s,$phase,$web,$pkg]=$argv;
+          foreach(['src/Shared/IranTime.php','src/Emergency/PublicUpdateException.php','src/Update/RoutinePublicUpdateService.php','src/Core/Migrations.php','src/Core/SafeErrors.php','src/Health/PublicHealthService.php'] as $n)require $web.'/'.$n;
+          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_cp107;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
+          $storage=$web.'/storage';$m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());
+          $z=new ZipArchive();if($z->open($pkg)!==true)exit(2);$manifest=json_decode($z->getFromName('manifest.json'),true,512,JSON_THROW_ON_ERROR);$z->close();if(($manifest['target_managed_tree_sha256']??'')!=='c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6')exit(2);
+          if($phase==='stage'){
+           $r->stageUploadedDeltaZip($pkg,'qa47-prior',true);$r->activateStaged('qa47-prior');
+          }elseif($phase==='commit'){
+           $r->commitActivation('qa47-prior',fn($v)=>$h->status()['body']);
+           $snap=$r->snapshot();if($snap['managed_tree_matches_expected']!==true||$r->managedTreeDigest()!==$manifest['target_managed_tree_sha256']||count($m->verifiedAppliedVersions())!==12)exit(3);
+           echo "PASS previous genuine 35iy activation and authoritative ledger\n";
+          }else exit(2);
+          PHP
+            for phase in stage commit; do
+              php "$RUNNER_TEMP/prior47.php" "$phase" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/prior/SOKNA-PUBLIC-35IY-35IP-CAFE-QA.zip"
+            done | tee "$RUNNER_TEMP/cc37b-receipts/prior-35iy.txt"
+          fi
+          if [[ '${{ matrix.origin }}' == '35jb' ]]; then
+            echo '936f665e4641b3ccaef1c78ff37caa2c395cdb3c3723328999b40105f5cdabb8  '"$RUNNER_TEMP/prior35jb/SOKNA-PUBLIC-35JB-CONTROLLED-UPDATE.zip" | sha256sum -c -
+            sed 's/c71ab6c235f72afdb9762cc5460a63731770c17086dafa290a21398037fabbe6/e4eca22d180b57ad700ea24361a20f439b5372a8ae15f2e077eb7f0e8026339e/g' "$RUNNER_TEMP/prior47.php" > "$RUNNER_TEMP/priorjb.php"
+            for phase in stage commit; do php "$RUNNER_TEMP/priorjb.php" "$phase" "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/prior35jb/SOKNA-PUBLIC-35JB-CONTROLLED-UPDATE.zip"; done
+          fi
+      - name: Actual final controlled ZIP through selected update route
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/emergency37b.php" <<'PHPCODE'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Update\RoutinePublicUpdateService as Routine;
+          use Sokna\PublicEdge\Update\IndependentEmergencyRoutineBridge as Bridge;
+          use Sokna\PublicEdge\Emergency\PublicUpdateException;
+          use Sokna\PublicEdge\Core\Migrations;
+          use Sokna\PublicEdge\Health\PublicHealthService;
+          if(getenv('GITHUB_ACTIONS')!=='true'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only'||$argc!==4)exit(2);
+          [$script,$phase,$web,$pkg]=$argv;
+          function ck($v,$msg){if(!$v)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          $c=json_decode(file_get_contents(dirname($pkg).'/factory-build-receipt.json'),true,512,JSON_THROW_ON_ERROR);ck($c['status']==='PENDING_EXACT_FINAL_GATE'&&!$c['delivery_authorized'],'candidate gate pending');$c=$c['public'];$clean=dirname($pkg).'/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip';ck(hash_file('sha256',$clean)===$c['clean_sha256'],'exact clean');$want=['version'=>$c['target'],'managed_tree_sha256'=>$c['tree'],'protected_pins'=>$c['protected']];ck(hash_file('sha256',$pkg)===$c['update_sha256'],'exact candidate archive');
+
+          foreach(['src/Shared/IranTime.php','src/Emergency/PublicUpdateException.php','src/Update/RoutinePublicUpdateService.php','src/Core/Migrations.php','src/Core/SafeErrors.php','src/Health/PublicHealthService.php','src/Update/IndependentEmergencyRoutineBridge.php'] as $n)require $web.'/'.$n;
+          $storage=$web.'/storage';if(!is_dir($storage))mkdir($storage,0700,true);
+          $db=new PDO('mysql:host=127.0.0.1;port=3306;dbname=sokna_ci_cp107;charset=utf8mb4','root',getenv('QA_DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$m=new Migrations($db,$web.'/database/migrations');$h=new PublicHealthService($db,$web,$storage);$r=new Routine($web,$storage,$web.'/resources/update-trust-v1.json',fn()=>$h->status()['status']===200,fn()=>$m->migrate(),null,fn()=>$m->pendingVersions());$b=new Bridge($r,$storage,fn()=>$m->pendingVersions(),fn()=>$h->status()['body']);
+          if($phase==='stage'){
+           ck(count($m->appliedVersions())===(getenv('QA_ORIGIN')==='35ip'?11:12),'actual baseline DB ledger');
+           $old=$r->currentVersion();$tree=$r->managedTreeDigest();ck($tree===($c['baselines'][array_search(getenv('QA_ORIGIN'),['35ip','35iy','35jb'],true)]['managed_tree_sha256']),'exact prior baseline');
+           $s=$b->snapshot();ck($s['channel']==='emergency_independent_routine_v2'&&$s['managed_tree_matches_expected']===true,'reconciled independent emergency owner');
+           $st=getenv('QA_ROUTE')==='routine'?$r->stageUploadedDeltaZip($pkg,'qa37',true):$b->stageUploadedZip($pkg,'qa37');ck($st['package_sha256']===hash_file('sha256',$pkg)&&$st['version']===$want['version'],'same archive staged by emergency bridge');ck($r->currentVersion()===$old&&$r->managedTreeDigest()===$tree,'stage leaves active tree unchanged');
+           $a=getenv('QA_ROUTE')==='routine'?$r->activateStaged('qa37'):$b->activateStaged('qa37');ck($a['current_version']===$want['version']&&is_array($a['pending_verification'])&&is_file($r->maintenanceLockPath()),'emergency activation stays pending');
+           if(getenv('QA_ROUTE')==='emergency')try{$b->stageUploadedZip($pkg,'qa37');throw new RuntimeException('stage unexpectedly accepted');}catch(PublicUpdateException $e){ck($e->errorCode==='routine_activation_in_progress','pending stage cannot be overwritten');}
+          }elseif($phase==='commit'){
+           ck($r->currentVersion()===$want['version']&&$r->managedTreeDigest()===$want['managed_tree_sha256'],'fresh process exact target tree');
+           $s=getenv('QA_ROUTE')==='routine'?$r->commitActivation('qa37',fn($v)=>$h->status()['body']):$b->commitPending('qa37');ck($s['active_version']===$want['version']&&$s['pending_verification']===null&&$s['db_forward_fence']===null&&!is_file($r->maintenanceLockPath()),'fresh emergency commit');ck(count($m->verifiedAppliedVersions())===12&&(int)$db->query("SELECT COUNT(*) FROM installations WHERE installation_id='cp107-disposable'")->fetchColumn()===1,'preserved real data and migration ledger');
+           foreach($want['protected_pins'] as $n=>$v)ck(hash_file('sha256',$web.'/'.$n)===$v,'protected unchanged '.$n);
+           if(getenv('QA_ROUTE')==='emergency')try{$b->rollback('qa37');throw new RuntimeException('rollback unexpectedly accepted');}catch(PublicUpdateException $e){ck($e->errorCode==='emergency_rollback_not_qualified','unqualified old code rollback rejected');}
+          }else exit(2);
+          PHPCODE
+          php "$RUNNER_TEMP/emergency37b.php" stage "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/candidate/PUBLIC-A21-UPDATE-CANDIDATE-QA-ONLY.zip" | tee "$RUNNER_TEMP/cc37b-receipts/stage.txt"
+          php "$RUNNER_TEMP/emergency37b.php" commit "$RUNNER_TEMP/old-web" "$RUNNER_TEMP/candidate/PUBLIC-A21-UPDATE-CANDIDATE-QA-ONLY.zip" | tee "$RUNNER_TEMP/cc37b-receipts/commit.txt"
+      - name: Record actual exact route completion
+        run: |
+          printf '%s:%s:%s:PASS\n' '${{ matrix.origin }}' '${{ matrix.route }}' "$(sha256sum "$RUNNER_TEMP/candidate/PUBLIC-A21-UPDATE-CANDIDATE-QA-ONLY.zip" | cut -d' ' -f1)" > "$RUNNER_TEMP/cc37b-receipts/route-result.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-PUBLIC-${{ matrix.origin }}-${{ matrix.route }}-RECEIPTS
+          path: ${{ runner.temp }}/cc37b-receipts/*
+          retention-days: 30
+  clean:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mariadb: ['11.4']
+    services:
+      mariadb:
+        image: mariadb:${{ matrix.mariadb }}
+        env:
+          MARIADB_ROOT_PASSWORD: sokna-disposable-public-clean-ci
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/delivery
+      - name: Exact factory bytes and isolated Apache PHP
+        run: |
+          set -euo pipefail
+          sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0755 /var/www/sokna-public-clean-canary
+          python3 - <<'PY'
+          import zipfile,pathlib,os,hashlib,shutil,json
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])/'delivery'
+          p=t/'PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip'
+          c=json.loads((t/'factory-build-receipt.json').read_text())['public'];assert hashlib.sha256(p.read_bytes()).hexdigest()==c['clean_sha256']
+          root=pathlib.Path('/var/www/sokna-public-clean-canary')
+          for sub in ['root/webroot','sub/webroot/public/menu']:
+              dest=root/sub;dest.mkdir(parents=True,exist_ok=False)
+              with zipfile.ZipFile(p) as z:
+                  assert z.testzip() is None;z.extractall(dest)
+          shutil.copyfile(t/'factory-build-receipt.json',root/'contract.json')
+          PY
+          sudo apt-get update -qq
+          sudo apt-get install -y apache2 libapache2-mod-php8.3 php8.3-cli php8.3-mysql php8.3-zip php8.3-mbstring php8.3-curl
+          sudo a2enmod rewrite headers php8.3
+          sudo chown -R www-data:www-data /var/www/sokna-public-clean-canary
+          for row in '18080 root' '18081 sub'; do
+            read -r port name <<< "$row"
+            doc="/var/www/sokna-public-clean-canary/$name/webroot"
+            printf 'Listen 127.0.0.1:%s\n<VirtualHost 127.0.0.1:%s>\nDocumentRoot %s\n<Directory %s>\nOptions FollowSymLinks\nAllowOverride All\nRequire local\n</Directory>\n</VirtualHost>\n' "$port" "$port" "$doc" "$doc" | sudo tee "/etc/apache2/conf-enabled/sokna-ci-$name.conf" >/dev/null
+          done
+          sudo apache2ctl configtest
+          sudo service apache2 restart
+      - name: Real HTTP fresh setup and pairing on exact 35jb root and nested host
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/delivery"
+          python3 - <<'PY'
+          import urllib.request,urllib.error,http.cookiejar,json,pathlib,hashlib,os,subprocess
+          work=pathlib.Path('/var/www/sokna-public-clean-canary');c=json.loads((work/'contract.json').read_text())['public'];rows=[]
+          for port,name,base in [(18080,'root',''),(18081,'sub','/public/menu')]:
+              origin=f'http://127.0.0.1:{port}{base}'
+              web=work/name/'webroot'/base.lstrip('/')
+              op=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+              def get(path):
+                  with op.open(origin+path,timeout=20) as r:return r.status,r.read(),r.headers
+              def post(action,body,want=200):
+                  req=urllib.request.Request(origin+'/setup/api.php?action='+action,json.dumps(body).encode(),{'Content-Type':'application/json'})
+                  try:
+                      with op.open(req,timeout=45) as r:code=r.status; data=json.load(r)
+                  except urllib.error.HTTPError as e:code=e.code;data=json.load(e)
+                  assert code==want,(name,action,code,data.get('code'))
+                  return data
+              code,_,hdr=get('/__sokna_route_probe__');assert code==204 and hdr.get('X-Sokna-Route-Probe')=='ok'
+              code,html,_=get('/setup/index.php');assert code==200 and b'<!doctype html>' in html.lower()
+              _,raw,_=get('/setup/api.php?action=status');j=json.loads(raw);assert j['success'] and not j['setup']['installed'] and j['setup']['base_path']==base and j['preflight']['ok']
+              body={'csrf':j['csrf'],'db':{'host':'127.0.0.1','port':'3306','name':'sokna_ci_'+name,'user':'root','pass':'sokna-disposable-public-clean-ci'},'create_database':True,'routing_probe_ok':True,'owner_password':'disposable-owner-CI-only-20261126','emergency_password':'disposable-emergency-CI-only-20261126','storage_dir':'storage'}
+              installed=post('install',body);assert installed['success'] and installed['installed'] and installed['owner_initialized'] and not installed['paired']
+              _,raw,_=get('/setup/api.php?action=status');s=json.loads(raw);assert s['setup']['installed'] and s['setup']['state']=='ready_to_pair'
+              assert post('install',body,409)['code']=='already_installed'
+              pair=post('pair',{'pairing_code':installed['pairing_code'],'installation_id':'sokna-ci-'+name,'shared_secret':'disposable-CI-pair-secret-only-0123456789','display_name':'QA only'})
+              assert pair['success'] and pair['paired']
+              _,raw,_=get('/health');h=json.loads(raw)
+              assert h['ok'] and h['database']=='ready' and h['applied_migrations']==h['catalog_migrations']==12 and h['pending_migrations']==0 and h['emergency_ready'] and h['version']==c['target'],(name,h)
+              assert all(hashlib.sha256((web/n).read_bytes()).hexdigest()==sha for n,sha in c['protected'].items())
+              # Fresh install must contain no historical update transaction or fence.
+              state=web/'storage/routine-update-v2/state.json'
+              if subprocess.run(['sudo','-u','www-data','test','-f',str(state)]).returncode==0:
+                  st=json.loads(subprocess.check_output(['sudo','-u','www-data','cat',str(state)]));assert st.get('db_forward_fence') is None and st.get('pending_verification') is None and st.get('activation_journal') is None
+              assert subprocess.run(['sudo','-u','www-data','test','-f',str(web/'storage/maintenance.lock')]).returncode==1
+              assert h['routine_update']['active_version']==c['target'] and not h['routine_update']['pending_verification']
+              # Pairing alone deliberately does not publish a guest menu.
+              try:
+                  get('/menu')
+                  raise AssertionError('Unpublished menu unexpectedly available')
+              except urllib.error.HTTPError as e:
+                  assert e.code==503 and 'منوی عمومی هنوز منتشر نشده' in e.read().decode('utf-8'),(name,e.code)
+              # Exercise the real signed Local publish API with synthetic data only.
+              import time,hmac,secrets
+              snapshot={'format':'sokna-guest-snapshot-v1','cafe_name':'SOKNA-QA-CANARY','categories':[{'id':1,'name':'QA Category'}],'items':[{'id':1,'category_id':1,'name':'SOKNA-QA-ITEM','price':1000,'available':True}]}
+              envelope={'format':'sokna-guest-snapshot-v1','snapshot':snapshot,'media_manifest':[]}
+              digest=hashlib.sha256(json.dumps(envelope,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
+              payload={'snapshot':snapshot,'media_manifest':[],'content_hash':digest,'revision_id':'guest-'+digest[:32],'generated_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'authority_epoch':1}
+              raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode()
+              route='/api/v1/local/guest/publish';ts=str(int(time.time()));nonce=secrets.token_hex(16)
+              signing='\n'.join(['sokna-relay-v1','POST',route,ts,nonce,hashlib.sha256(raw).hexdigest()])
+              sig=hmac.new(b'disposable-CI-pair-secret-only-0123456789',signing.encode(),hashlib.sha256).hexdigest()
+              req=urllib.request.Request(origin+route,raw,{'Content-Type':'application/json','X-Sokna-Installation':'sokna-ci-'+name,'X-Sokna-Timestamp':ts,'X-Sokna-Nonce':nonce,'X-Sokna-Signature':sig})
+              try:
+                  with op.open(req,timeout=30) as response:
+                      p=json.load(response);assert response.status==200 and p['ok'] is True,(name,p)
+              except urllib.error.HTTPError as e:
+                  raise AssertionError((name,'signed publish',e.code,e.read().decode('utf-8')[:500]))
+              code,html,_=get('/menu');assert code==200 and b'SOKNA-QA-ITEM' in html,(name,code)
+              rows.append({'layout':base or '/','setup':True,'pairing':True,'duplicate_install_rejected':True,'db_migrations':12,'unpublished_menu_http_503':True,'signed_publish':True,'menu_http_200':True,'emergency_ready':True,'protected_files_unchanged':6})
+              print('PASS actual Apache setup pairing and menu',name,base or '/')
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])
+          src=p/'delivery/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip'
+          b=src.read_bytes();assert hashlib.sha256(b).hexdigest()==c['clean_sha256']
+          (p/'delivery/public-clean-receipt.json').write_text(json.dumps({'status':'PASS_EXACT_CONTROLLED_CLEAN_HTTP','sha256':c['clean_sha256'],'version':c['target'],'layouts':rows,'old_host_update_authorized':False,'production_cafe_authorized':False,'actual_home_install_verified':False,'requires_empty_separate_path_and_db':True},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-PUBLIC-CLEAN-RECEIPT
+          path: ${{ runner.temp }}/delivery/public-clean-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+  local-clean:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/delivery
+      - name: Exact Local clean web payload through product setup
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a21-clean-local"
+          mkdir -p "$W/local"
+          export TMPDIR="$W"
+          python3 - <<'PY'
+          import pathlib,os,zipfile,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'delivery';c=json.loads((d/'factory-build-receipt.json').read_text())['local'];p=d/'LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==c['web_sha256']
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              z.extractall(t/'a21-clean-local/local')
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" | tee "$W/clean-results.txt"
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'delivery';c=json.loads((d/'factory-build-receipt.json').read_text())['local'];p=d/'LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          assert hashlib.sha256(p.read_bytes()).hexdigest()==c['web_sha256']
+          (t/'a21-clean-local/local-clean-receipt.json').write_text(json.dumps({'status':'PASS_EXACT_LOCAL_CLEAN_WEB_SETUP','web_sha256':c['web_sha256'],'target':c['target'],'scope':'web payload; existing prerequisite runtime required; not full Windows provision or field installation'}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-LOCAL-CLEAN-RECEIPT
+          path: ${{ runner.temp }}/a21-clean-local/*receipt.json
+          if-no-files-found: error
+          retention-days: 7
+  delivery:
+    needs: [build, native, public-upgrade, clean, local-clean]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: SOKNA-A21-*-RECEIPT*
+          path: ${{ runner.temp }}/receipts
+      - name: Independent exact package receipt verification
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,os,json,hashlib
+          t=pathlib.Path(os.environ['RUNNER_TEMP']);d=t/'candidate';r=t/'receipts';c=json.loads((d/'factory-build-receipt.json').read_text());H=lambda b:hashlib.sha256(b).hexdigest()
+          assert c['status']=='PENDING_EXACT_FINAL_GATE' and not c['delivery_authorized']
+          for n,h in [('LOCAL-A21-UPDATE-CANDIDATE-QA-ONLY.zip',c['local']['sha256']),('LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip',c['local']['web_sha256']),('PUBLIC-A21-UPDATE-CANDIDATE-QA-ONLY.zip',c['public']['update_sha256']),('PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip',c['public']['clean_sha256'])]: assert H((d/n).read_bytes())==h
+          for origin,fault in [('R307','none'),('GK','none'),('GK','APACHE_STOPPED'),('GK','POINTER_SWITCHED')]:
+              x=json.loads((r/f'SOKNA-A21-NATIVE-{origin}-{fault}-RECEIPT'/'matrix-receipt.json').read_text(encoding='utf-8-sig'));assert x['status']=='PASS' and x['candidate_sha256']==c['local']['sha256'] and x['origin']==origin and x['fault']==fault and x['independent_restore'] and x['panel_activation_tested'] and x['phase']==('RECOVERED_TO_PREVIOUS_SLOT' if fault=='APACHE_STOPPED' else 'COMMITTED') and not x['actual_field_host']
+          for origin in ['35ip','35iy','35jb']:
+              for route in ['routine','emergency']:
+                  assert (r/f'SOKNA-A21-PUBLIC-{origin}-{route}-RECEIPTS'/'route-result.txt').read_text().strip()==f"{origin}:{route}:{c['public']['update_sha256']}:PASS"
+          x=json.loads((r/'SOKNA-A21-PUBLIC-CLEAN-RECEIPT'/'public-clean-receipt.json').read_text());assert x['status']=='PASS_EXACT_CONTROLLED_CLEAN_HTTP' and x['sha256']==c['public']['clean_sha256'] and {a['layout'] for a in x['layouts']}=={'/','/public/menu'}
+          q=json.loads((r/'SOKNA-A21-LOCAL-CLEAN-RECEIPT'/'local-clean-receipt.json').read_text());assert q['status']=='PASS_EXACT_LOCAL_CLEAN_WEB_SETUP' and q['web_sha256']==c['local']['web_sha256']
+          out={'status':'PASS_EXACT_PACKAGES_CONTROLLED_OPERATOR_GATE','source_sha256':c['source_sha256'],'run_id':os.environ['GITHUB_RUN_ID'],'local':c['local'],'public':c['public'],'controlled_operator_delivery_authorized':True,'production_host_accepted':False,'automatic_deployment_authorized':False,'requires_verified_backup_and_exact_preflight':True,'local_clean_scope':'web payload only; existing qualified runtime required','field_checklist_required':True}
+          (t/'A21-DELIVERY-RECEIPT.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('PASS exact A21 controlled operator package gates')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-FACTORY-DELIVERY-RECEIPT
+          path: ${{ runner.temp }}/A21-DELIVERY-RECEIPT.json
+          if-no-files-found: error
+          retention-days: 30
