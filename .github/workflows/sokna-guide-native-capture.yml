@@ -1,5 +1,6 @@
 name: SOKNA guide native capture
 on:
+  workflow_dispatch:
   push:
     branches: [docs/guide-native-capture-20261128]
     paths: ['.github/workflows/sokna-guide-native-capture.yml']
@@ -9,7 +10,7 @@ permissions:
 jobs:
   capture:
     runs-on: windows-2022
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/download-artifact@v4
         with:
