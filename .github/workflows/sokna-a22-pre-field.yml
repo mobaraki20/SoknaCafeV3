@@ -1,0 +1,116 @@
+name: A22 independent grouped QA
+on:
+  push:
+    branches: [qa/a22-pre-field-20261128]
+    paths: ['.github/workflows/sokna-a22-pre-field.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+      - name: Independent remaining-criteria evidence on real MariaDB
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          cat > "$W/measure.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
+          if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();$actor=$p->query("SELECT id,role FROM users WHERE username='qa-target'")->fetch(PDO::FETCH_ASSOC);
+          $cashier=$p->query("SELECT id,role FROM users WHERE username='qa-cashier'")->fetch(PDO::FETCH_ASSOC);
+          $fixture=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
+          $out=['source'=>'707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'synthetic_only'=>true,'groups'=>[]];
+          $fail=0;
+          function group(string $id,callable $f):void{global $out,$fail;try{$out['groups'][$id]=['status'=>'MEASURED','detail'=>$f()];echo "MEASURED $id\n";}catch(Throwable $e){$out['groups'][$id]=['status'=>'ERROR','detail'=>get_class($e).': '.$e->getMessage()];$fail++;echo "ERROR $id ".$e->getMessage()."\n";}}
+          function bench(callable $fn):array{global $p;$fn();$ms=[];$qs=[];$sizes=[];for($i=0;$i<12;$i++){$before=(int)$p->query("SHOW SESSION STATUS LIKE 'Questions'")->fetch(PDO::FETCH_NUM)[1];$t=hrtime(true);$v=$fn();$ms[]=(hrtime(true)-$t)/1e6;$after=(int)$p->query("SHOW SESSION STATUS LIKE 'Questions'")->fetch(PDO::FETCH_NUM)[1];$qs[]=max(0,$after-$before-1);$sizes[]=strlen(json_encode($v,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));}sort($ms);return ['n'=>12,'p50_ms'=>round(($ms[5]+$ms[6])/2,2),'p95_ms'=>round($ms[11],2),'queries_min'=>min($qs),'queries_max'=>max($qs),'json_bytes_min'=>min($sizes),'json_bytes_max'=>max($sizes)];}
+          $day=$fixture['day'];$cat=(int)$fixture['category_id'];$item=(int)$fixture['tax_item'];$clock=$c->businessClock()->assignment();
+          $table=(int)$fixture['hall']['partial']['table'];$sid=(int)$fixture['hall']['partial']['session'];
+          group('ADM-L442',function()use($c,$p,$actor){$a=[];foreach(['','admin','operator','waiter'] as $r){$actual=$c->notifications()->composePreview($r,$actor)['recipients'];$s=$p->prepare('SELECT COUNT(*) FROM users WHERE active=1'.($r===''?'':' AND role=?'));$s->execute($r===''?[]:[$r]);$expected=(int)$s->fetchColumn();if($actual!==$expected)throw new RuntimeException('audience mismatch');$a[$r===''?'all':$r]=$actual;}return $a;});
+          group('HELP-L561',function()use($c,$p,$actor){$r=$c->globalSearch()->search('QA157 family',$actor);return ['partial'=>$r['partial'],'results'=>array_column($r['results'],'type'),'titles'=>array_column($r['results'],'title')];});
+          group('HELP-L564',function()use($c,$p,$cashier,$day,$fixture){$closed=$p->query("SELECT business_order_number FROM orders WHERE public_code='qa160-sub-order'")->fetchColumn();$r=$c->globalSearch()->search('سفارش '.$closed,$cashier);return ['closed_order_number'=>$closed,'partial'=>$r['partial'],'order_hits'=>array_values(array_filter($r['results'],fn($x)=>$x['type']==='order'))];});
+          group('HELP-L570',function()use($c,$actor,$cashier){$r=[];foreach(['مالی','آماده سازی','کاتالوگ','انبار','اقامتگاه'] as $q){foreach(['admin'=>$actor,'cashier'=>$cashier] as $k=>$u){$v=$c->globalSearch()->search($q,$u);$r[$k.':'.$q]=['partial'=>$v['partial'],'nav'=>array_values(array_map(fn($x)=>$x['id'],array_filter($v['results'],fn($x)=>$x['type']==='navigation')))];}}return $r;});
+          group('PREP-L127',function()use($p){return $p->query("SELECT preparation_station,COUNT(*) n FROM order_items GROUP BY preparation_station")->fetchAll(PDO::FETCH_ASSOC);});
+          group('REP-L269',function()use($c,$p,$day){$r=$c->reporting()->report($day,$day);return ['context'=>$r['financial_context'],'transfer_count'=>(int)$p->query('SELECT COUNT(*) FROM accommodation_transfers')->fetchColumn(),'scope'=>'synthetic only; no external accommodation connection'];});
+          group('REP-L268',function()use($c,$p,$day){$r=$c->reporting()->report($day,$day);return ['summary'=>$r['margin']['summary'],'policy'=>$r['margin']['policy'],'scope'=>'existing synthetic settlement and unknown-cost baseline; no positive cost added'];});
+          foreach([0,100,500] as $target){
+            if($target>0){
+              $start=$target===100?0:100;
+              $p->beginTransaction();
+              try{
+                $o=$p->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',100000,?,?,?,?,?)");
+                $l=$p->prepare("INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,'A22 synthetic order',100000,1,1,'hot_bar',100000)");
+                $i=$p->prepare("INSERT INTO items(item_code,category_id,name,price,lifecycle_status,active,available) VALUES(?,?,?,100000,'retired',0,0)");
+                $v=$p->prepare("INSERT INTO inventory_items(item_code,name,base_unit,active) VALUES(?,?,'count',1)");
+                $m=$p->prepare("INSERT INTO guest_media_assets(media_key,sha256,mime,extension,byte_size,width_px,height_px,original_name,original_relpath,active) VALUES(?,?,'image/png','png',100,20,20,?,?,0)");
+                for($j=$start;$j<$target;$j++){
+                  $key='a22-synthetic-'.$j;
+                  $o->execute([$key,$key,$table,$sid,50000+$j,$day,$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$l->execute([(int)$p->lastInsertId(),$item]);
+                  $i->execute([$key,$cat,$key]);$v->execute([$key,$key]);$m->execute([$key,hash('sha256',$key),$key.'.png',$key.'.png']);
+                }
+                $p->commit();
+              }catch(Throwable $e){if($p->inTransaction())$p->rollBack();$out['groups']['seed-'.$target]=['status'=>'ERROR','detail'=>$e->getMessage()];$fail++;break;}
+            }
+            group('PREP-L126-'.$target,fn()=>bench(fn()=>$c->preparation()->feed($actor)));
+            group('OPS-L164-'.$target,fn()=>bench(function()use($c,$actor){$r=$c->operationsWorkspace()->snapshot($actor);if(!empty($r['errors']))throw new RuntimeException('snapshot section errors');return $r;}));
+            group('REP-L283-'.$target,fn()=>bench(fn()=>$c->reporting()->report($day,$day)));
+            group('CAT-L315-'.$target,fn()=>bench(fn()=>$c->catalogAdmin()->snapshot($actor)));
+            group('GUEST-L351-'.$target,fn()=>bench(fn()=>$c->guestContent()->snapshot($actor)));
+          }
+          $out['errors']=$fail;file_put_contents($w.'/a22-results.json',json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));exit($fail?1:0);
+          PHP
+          php "$W/measure.php" "$W" | tee "$W/measure-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A22-GROUPED-MEASUREMENT
+          path: |
+            ${{ runner.temp }}/a22/a22-results.json
+            ${{ runner.temp }}/a22/measure-log.txt
+            ${{ runner.temp }}/a22/fixture-log.txt
+            ${{ runner.temp }}/a22/measure.php
+          retention-days: 30
