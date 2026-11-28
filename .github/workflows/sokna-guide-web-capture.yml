@@ -27,6 +27,12 @@ jobs:
           run-id: 46122453416
           artifact-ids: 15254366335
           path: input
+      - uses: actions/checkout@v4
+        with:
+          repository: rastikerdar/vazirmatn
+          ref: v33.003
+          path: official-font
+          persist-credentials: false
       - name: Prepare exact archives, real web server and product font
         shell: bash
         run: |
@@ -70,7 +76,7 @@ jobs:
           CONF
           sudo a2enconf sokna-docs-lab
           mkdir -p /tmp/sokna-docs-lab/local/SetupCache/ui-fonts /tmp/sokna-docs-lab/public/storage/ui-fonts
-          curl -fL --retry 2 -o /tmp/vazirmatn.woff2 'https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn%5Bwght%5D.woff2' || curl -fL --retry 2 -o /tmp/vazirmatn.woff2 'https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/webfonts/Vazirmatn%5Bwght%5D.woff2'
+          cp 'official-font/fonts/webfonts/Vazirmatn[wght].woff2' /tmp/vazirmatn.woff2
           echo '4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92  /tmp/vazirmatn.woff2' | sha256sum -c
           cp /tmp/vazirmatn.woff2 /tmp/sokna-docs-lab/local/SetupCache/ui-fonts/Vazirmatn-Variable.woff2
           cp /tmp/vazirmatn.woff2 /tmp/sokna-docs-lab/public/storage/ui-fonts/Vazirmatn-Variable.woff2
