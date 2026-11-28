@@ -1,0 +1,145 @@
+name: A23 real business backup HTTPS Vault lifecycle
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-vault-lifecycle.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+          P2="$RUNNER_TEMP/candidate/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip"
+          echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
+          unzip -q "$P2" -d "$W/public"
+          php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
+      - name: Real business backup native HTTPS Vault upload download independent seed and restore
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W-a23-vault-target/local"
+          unzip -q "$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip" -d "$W-a23-vault-target/local"
+          cat > "$W/vault-lifecycle.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          use Sokna\Local\Domain\Recovery\{RemoteVaultUploadClient,RemoteVaultHttpTransport,RemoteVaultDownloadClient,RemoteVaultDownloadHttpTransport,MediaSnapshotCodec,RecoveryException};
+          use Sokna\PublicEdge\Maintenance\{PublicMaintenanceStorage,VaultCredentialStore,VaultPolicyStore};
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);if(!$w||basename($w)!=='a22')exit(2);
+          require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';$pcfg=require $w.'/public/config.php';
+          if($cfg['db']['name']!=='sokna_cp150'||$cfg['db']['host']!=='127.0.0.1'||$pcfg['db']['name']!=='sokna_cp150_public')exit(2);
+          function ck($x,$m){if(!$x)throw new RuntimeException($m);echo "PASS $m\n";}
+          function businessRows(PDO $p):array{$r=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','users','inventory_items','inventory_movements'] as $t)$r[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);return $r;}
+          function child(array $args,string $input=''):array{$p=proc_open($args,[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$io);if(!is_resource($p))throw new RuntimeException('child');fwrite($io[0],$input);fclose($io[0]);$o=stream_get_contents($io[1]);$e=stream_get_contents($io[2]);fclose($io[1]);fclose($io[2]);$rc=proc_close($p);return [$rc,$o,$e];}
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$iid=$cfg['installation']['id'];$data=$cfg['app']['data_dir'];$pass='synthetic-a23-vault-lifecycle-only';
+          $media=$data.'/guest-media';if(!is_dir($media))mkdir($media,0700,true);file_put_contents($media.'/qa-a23-vault-large.bin',random_bytes(9*1048576));
+          $before=businessRows($p);$sourceMedia=MediaSnapshotCodec::scan($data);$made=$core->recoveryWorkspace()->create($pass,0);$id=$made['id'];$path=$core->recoveryWorkspace()->path($id);$sha=hash_file('sha256',$path);$size=filesize($path);
+          ck($size>8*1048576&&$sha===$made['sha256'],'actual commercial encrypted backup above 8 MiB');
+          $inspection=$core->businessBackup()->inspectEncrypted($path,$pass);ck($inspection['stream_verified']===true&&$inspection['source_installation_id']===$iid,'actual authenticated source backup');
+          foreach(['MaintenanceException','PublicMaintenanceStorage','VaultCredentialStore','VaultPolicyStore'] as $f)require_once $w.'/public/src/Maintenance/'.$f.'.php';
+          $storage=new PublicMaintenanceStorage($w.'/public',$pcfg['app']['storage_dir']);$base=$storage->ensureBase();$creds=new VaultCredentialStore($base);$policies=new VaultPolicyStore($base);
+          $u=$creds->provision($iid,['vault.upload'],3600,'disposable',['max_artifact_bytes'=>33554432,'max_chunk_bytes'=>1048576]);$r=$creds->provision($iid,['vault.recovery_read'],3600,'disposable recovery',['max_artifact_bytes'=>33554432,'max_chunk_bytes'=>1048576]);$policies->set(['installation_id'=>$iid,'credential_id'=>'qa-fixture'],['max_remote_bytes'=>67108864,'retention'=>['recent'=>2,'daily'=>0,'weekly'=>0,'monthly'=>0]]);
+          $endpoint='https://127.0.0.1:18794/maintenance.php';$transport=new RemoteVaultHttpTransport($endpoint,$u['credential']);$upload=new RemoteVaultUploadClient(dirname($path),$data.'/vault-ledger-a23');
+          $meta=['source_installation_id'=>$iid,'source_release'=>['version'=>'3.0.0-g6.2-workspace.231gl-a21-postrelease-20261128','managed_tree_sha256'=>'12e65bc60680963c874c8a9b1322c0fc932bd2acad47d7f61cf1af5963f4bc6d'],'created_at'=>$inspection['created_at'],'completed_at'=>gmdate('c'),'protection'=>['encrypted'=>true,'suite'=>'sokna-skb1-argon2id13-secretstream-xchacha20poly1305','key_id'=>'synthetic-a23']];
+          $receipt=$upload->transfer($id,$meta,$transport);ck($receipt['state']==='REMOTE_VERIFIED'&&$receipt['sha256']===$sha&&$receipt['size']===$size,'native verified HTTPS upload and matching durable receipt');
+          ck($upload->transfer($id,$meta,$transport)['remote_receipt_id']===$receipt['remote_receipt_id'],'same backup idempotent upload receipt');
+          // Remove local copy from the recovery path. Source DB is retained only for comparison by test supervisor.
+          $held=$w.'/source-ciphertext-held.skbf';ck(rename($path,$held)&&!file_exists($path),'source backup no longer in recovery directory');
+          $target=$w.'-a23-vault-target';$root=$target.'/local';$dest=$target.'/data';if(!is_dir($root))throw new RuntimeException('target web missing');
+          $p->exec('CREATE DATABASE sokna_a23_vault_target CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$p->exec("CREATE USER 'a23_vault_target'@'%' IDENTIFIED BY 'synthetic-a23-vault-target-only'");$p->exec("GRANT ALL PRIVILEGES ON sokna_a23_vault_target.* TO 'a23_vault_target'@'%'");
+          $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$root);$init=$setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_a23_vault_target','user'=>'a23_vault_target','pass'=>'synthetic-a23-vault-target-only'],'create_database'=>false,'admin_user'=>'qa-vault-dest','admin_password'=>'synthetic-a23-target-only','cafe_name'=>'QA target','table_count'=>3]);ck(($init['success']??false)===true&&$init['installation_id']!==$iid,'independent standard seed and identity');
+          $tcfg=require $target.'/config.php';$tcore=sokna_local_bootstrap($tcfg);$tp=$tcore->database();try{$tp->query('SELECT COUNT(*) FROM sokna_cp150.orders');throw new RuntimeException('source database exposed');}catch(PDOException){ck(true,'target DB credentials cannot access source');}
+          $dlDir=$target.'/download';$arg=['vault_endpoint'=>$endpoint,'vault_bearer'=>$r['credential'],'backup_id'=>$id,'recovery_directory'=>$dlDir];$command=[PHP_BINARY,'-d','openssl.cafile='.$w.'/qa-ca.pem',$root.'/tools/maintenance-recovery-fetch.php'];
+          [$rc,$out,$err]=child($command,json_encode($arg,JSON_THROW_ON_ERROR));$download=json_decode($out,true);ck($rc===0&&($download['state']??'')==='REMOTE_RECOVERY_READY'&&$download['database_mutated']===false,'actual recovery fetch CLI over trusted HTTPS');
+          $file=$download['path'];ck(hash_file('sha256',$file)===$sha&&$download['remote_receipt_id']===$receipt['remote_receipt_id'],'download bytes and receipt identical');
+          $targetInspect=$tcore->businessBackup()->inspectEncrypted($file,$pass);ck($targetInspect['stream_verified']===true&&$targetInspect['target_ready']===true,'target verified fresh seed and encrypted stream');
+          $restored=$tcore->businessBackup()->restoreEncryptedToEmptyTarget($file,$pass,0);ck($restored['restored']===true&&$restored['source_installation_id']===$iid,'restore from downloaded ciphertext');
+          ck(businessRows($tp)===$before,'eight sets of business records exactly preserved');ck(MediaSnapshotCodec::scan($dest)===$sourceMedia,'all media bytes and hashes exactly preserved');
+          ck($tcore->publicAuthorityState()->phase()==='reenroll_required'&&$tcfg['installation']['id']!==$iid,'new identity fenced pending reenrollment');ck(businessRows($p)===$before&&hash_file('sha256',$held)===$sha,'source rows and original encrypted bytes unchanged');
+          file_put_contents($w.'/vault-lifecycle-receipt.json',json_encode(['status'=>'PASS','synthetic_only'=>true,'actual_mariadb'=>$tp->query('SELECT VERSION()')->fetchColumn(),'native_https_upload'=>true,'native_cli_download'=>true,'tls_verified_test_ca'=>true,'backup_bytes'=>$size,'backup_sha256'=>$sha,'remote_receipt_id'=>$receipt['remote_receipt_id'],'business_rows_exact'=>true,'media_exact'=>true,'new_identity_fenced'=>true,'source_ciphertext_absent_from_recovery_path'=>true,'windows_scheduler_tested'=>false,'physical_source_pc_absent'=>false,'real_host_tested'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          PHP
+          cat > "$W/tls-proxy.py" <<'PY'
+          import http.server, http.client, ssl, sys
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def handle_req(self):
+                  if not self.path.startswith('/maintenance.php?'): self.send_error(404);return
+                  n=int(self.headers.get('Content-Length','0'))
+                  if n<0 or n>4194304:self.send_error(413);return
+                  data=self.rfile.read(n) if n else None
+                  headers={k:v for k,v in self.headers.items() if k.lower() not in ('host','connection','transfer-encoding')}
+                  headers['Host']='127.0.0.1:18793';headers['Connection']='close'
+                  c=http.client.HTTPConnection('127.0.0.1',18793,timeout=60)
+                  try:
+                      c.request(self.command,self.path,body=data,headers=headers);r=c.getresponse();body=r.read();self.send_response(r.status)
+                      for k,v in r.getheaders():
+                          if k.lower() not in ('content-length','connection','transfer-encoding','server','date'):self.send_header(k,v)
+                      self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+                  finally:c.close()
+              do_GET=do_POST=do_PUT=handle_req
+          server=http.server.ThreadingHTTPServer(('127.0.0.1',18794),Handler)
+          ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);ctx.load_cert_chain(sys.argv[1],sys.argv[2]);server.socket=ctx.wrap_socket(server.socket,server_side=True);server.serve_forever()
+          PY
+          sha256sum -c <<HASHES
+          0ac3912334b9aedee6daaecd15a5f6270f28ad29c9e24af5455583f48e09c6f6  $W/vault-lifecycle.php
+          0037ea62142bef46afb2c3254f2dd000f2c04a6f4a62b4addc445d1a2f043c44  $W/tls-proxy.py
+          HASHES
+          umask 077
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' -keyout "$W/qa-key.pem" -out "$W/qa-ca.pem" 2>/dev/null
+          php -d opcache.enable_cli=0 -S 127.0.0.1:18793 -t "$W/public" > "$W/vault-http.log" 2>&1 & pp=$!
+          python3 "$W/tls-proxy.py" "$W/qa-ca.pem" "$W/qa-key.pem" > "$W/vault-tls.log" 2>&1 & tp=$!
+          trap 'kill "$pp" "$tp" 2>/dev/null || true' EXIT
+          sleep 2
+          kill -0 "$pp" "$tp"
+          php -d openssl.cafile="$W/qa-ca.pem" "$W/vault-lifecycle.php" "$W" | tee "$W/vault-lifecycle-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-VAULT-LIFECYCLE-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/vault-lifecycle-receipt.json
+            ${{ runner.temp }}/a22/vault-lifecycle-log.txt
+            ${{ runner.temp }}/a22/vault-lifecycle.php
+            ${{ runner.temp }}/a22/tls-proxy.py
+          retention-days: 30
