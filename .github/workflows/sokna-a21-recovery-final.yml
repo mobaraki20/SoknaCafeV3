@@ -89,9 +89,9 @@ jobs:
           code=h.read_text(encoding='utf-8')
           old='if(evidence.MigrationPlan?.RequiresMigration!=true)throw new InvalidDataException("APPEND_ONLY_PLAN_NOT_PROVEN");'
           assert code.count(old)==1
-          new='''var requiresSql=baseline.SchemaFingerprint!=t.GetProperty("schema_fingerprint").GetString();
-                  if(evidence.MigrationPlan is null || evidence.MigrationPlan.RequiresMigration!=requiresSql ||
-                     evidence.UnchangedMigrationsVerified==requiresSql || !evidence.SignedStageVerified ||
+          new='''var requiresSqlForInterruption=baseline.SchemaFingerprint!=t.GetProperty("schema_fingerprint").GetString();
+                  if(evidence.MigrationPlan is null || evidence.MigrationPlan.RequiresMigration!=requiresSqlForInterruption ||
+                     evidence.UnchangedMigrationsVerified==requiresSqlForInterruption || !evidence.SignedStageVerified ||
                      !evidence.PhysicalSiblingVerified || evidence.ExecutionAuthorized || evidence.PanelUpdateReady)
                       throw new InvalidDataException("EXACT_MIGRATION_PLAN_NOT_PROVEN");
                   if(evidence.MigrationPlan.SourceFingerprint!=baseline.SchemaFingerprint ||
