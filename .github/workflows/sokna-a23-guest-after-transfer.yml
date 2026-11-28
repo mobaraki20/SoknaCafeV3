@@ -1,0 +1,1203 @@
+name: A23 real guest order after device transfer
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-guest-after-transfer.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+          P2="$RUNNER_TEMP/candidate/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip"
+          echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
+          unzip -q "$P2" -d "$W/public"
+          php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
+      - name: Full cumulative delta and actual device transfer with lost successful reply
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W-a23-takeover-target/local"
+          unzip -q "$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip" -d "$W-a23-takeover-target/local"
+          cat > "$W/device.patch" <<'PATCH'
+          --- a/local/public/assets/connections-workspace.js
+          +++ b/local/public/assets/connections-workspace.js
+          @@ -1,6 +1,6 @@
+           (()=>{'use strict';const root=document.querySelector('[data-connections-workspace]');if(!root)return;const api=root.dataset.api,csrf=root.dataset.csrf,$=(s,c=root)=>c.querySelector(s),$$=(s,c=root)=>[...c.querySelectorAll(s)],L=window.SoknaLocale||{dateTime:v=>'—',instantDateTime:v=>'—',integer:v=>String(v??'')};let snap=null,originRebindPreview=null,replacementPreflight=null,refreshGeneration=0,connectionReadValid=false,windowsSecretId="",windowsSecretTimer=null;const dirty=new Set(),formRevision={accommodation:0,lan:0};const toast=(m,tone='success',title='')=>window.SoknaUI?.toast?.(m,{tone,title});
+           const elapsed=v=>{if(v==null||!Number.isFinite(Number(v))||Number(v)<0)return 'نامشخص';const n=Number(v);return n<60?`${L.integer(Math.round(n))} ثانیه`:n<3600?`${L.integer(Math.round(n/60))} دقیقه`:n<86400?`${L.integer(Math.round(n/3600))} ساعت`:`${L.integer(Math.round(n/86400))} روز`};
+          -const status=m=>{const x=$('[data-status]');if(!x)return;x.textContent=m||'';x.hidden=!m};const feedback=(scope,m='',bad=true)=>{const x=$(`[data-${scope}-feedback]`);if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const reenrollFeedback=(m='',bad=true)=>{const x=$('[data-public-reenroll-feedback]');if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const badge=(el,text,tone='neutral')=>{if(!el)return;el.textContent=text;el.className='sc-badge'+(tone==='neutral'?'':` sc-badge--${tone}`)};
+          +const status=m=>{const x=$('[data-status]');if(!x)return;x.textContent=m||'';x.hidden=!m};const feedback=(scope,m='',bad=true)=>{const x=$(`[data-${scope}-feedback]`);if(!x)return;x.textContent=m;x.hidden=!m;x.classList.toggle('sc-alert--danger',!!bad)};const badge=(el,text,tone='neutral')=>{if(!el)return;el.textContent=text;el.className='sc-badge'+(tone==='neutral'?'':` sc-badge--${tone}`)};
+           async function request(url,opt={}){let r;try{r=await fetch(url,{cache:'no-store',credentials:'same-origin',...opt})}catch{throw new Error('ارتباط با سامانه برقرار نشد.')}let j={};try{j=await r.json()}catch{throw new Error('پاسخ سامانه قابل خواندن نیست.')}if(!r.ok||j.success===false)throw new Error((j.message||'عملیات انجام نشد.')+(j.support_id?` · کد پیگیری ${j.support_id}`:''));return j}const post=async payload=>{const action=String(payload.action||''),readOnly=action==='public_move_status';if(!readOnly&&!connectionReadValid)throw new Error('ابتدا وضعیت معتبر اتصال‌ها را بازخوانی کن.');const scope=action.startsWith('windows_services_')?'windows_services':action.startsWith('public_')?'public_edge':action.startsWith('accommodation_')?'accommodation':action.startsWith('lan_staff_')?'lan_staff':'';if(!readOnly&&scope&&snap?.errors?.[scope])throw new Error('اطلاعات این اتصال در دسترس نیست؛ ابتدا آن را بازخوانی کن.');return request(api,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify({...payload,csrf_token:csrf})})};
+           function accommodationProbe(){const a=snap?.accommodation;if(!connectionReadValid||snap?.errors?.accommodation||dirty.has('accommodation')||a?.enabled!==true||a.configured!==true||typeof a.base_url!=='string'||!a.base_url||!/^([a-f0-9]{12})$/.test(a.key_fingerprint||''))return null;return {revision:formRevision.accommodation,generation:refreshGeneration,base:a.base_url,fingerprint:a.key_fingerprint};}
+           function accommodationProbeCurrent(probe){const now=accommodationProbe();return now!==null&&now.revision===probe.revision&&now.generation===probe.generation&&now.base===probe.base&&now.fingerprint===probe.fingerprint;}
+          @@ -19,11 +19,24 @@
+             $('[data-public-url]').textContent=p.base_url||p.base_origin||'—';$('[data-public-sync-at]').textContent=p.last_sync_at?(L.instantDateTime||L.dateTime)(p.last_sync_at):'—';
+             const version=$('[data-public-version]');version.textContent=err?'—':shortVersion(p.version);version.title=err?'نسخه زنده تأیید نشده است.':(p.version||'');renderPublicChannels(p);
+             const paired=!!String(p.base_url||'').trim()&&state!=='not_configured';
+          -  const initialCard=$('[data-public-initial-pair-card]');if(initialCard)initialCard.hidden=paired||!!err;const sync=$('[data-public-sync]'),probe=$('[data-public-probe]');if(sync)sync.disabled=!paired||!!err;if(probe)probe.disabled=!paired||!!err;
+          -  const oldTransfer=$('[data-public-reenroll-disclosure]');if(oldTransfer)oldTransfer.hidden=paired;
+          -  const initial=$('[data-public-pair]');if(initial){initial.disabled=paired;initial.title=paired?'اتصال اولیه برای این لوکال مجاز نیست؛ از بازیابی کنترل‌شده استفاده کنید.':'';}
+          -  const pairCode=$('[data-public-pair-code]');if(pairCode)pairCode.disabled=paired;
+          -  const reurl=$('[data-public-reenroll-url]');if(reurl&&!reurl.value.trim())reurl.value=p.base_url||p.base_origin||'';
+          +  const authority=snap.public_authority||{},phase=String(authority.phase||'unknown'),authorityKnown=!snap.errors?.public_authority&&['active','reenroll_required','resync_required'].includes(phase),initialAllowed=authorityKnown&&phase==='active'&&!paired&&!err;
+          +  const initialCard=$('[data-public-initial-pair-card]');if(initialCard)initialCard.hidden=!initialAllowed;const sync=$('[data-public-sync]'),probe=$('[data-public-probe]');if(sync)sync.disabled=!paired||!!err||!authorityKnown||phase==='reenroll_required';if(probe)probe.disabled=!paired||!!err||!authorityKnown||phase!=='active';
+          +  const initial=$('[data-public-pair]');if(initial){initial.disabled=!initialAllowed;initial.title=initialAllowed?'':'اتصال اولیه در وضعیت فعلی مجاز نیست.';}
+          +  const pairCode=$('[data-public-pair-code]');if(pairCode)pairCode.disabled=!initialAllowed;
+          +  const takeover=authority.device_takeover||{},takeoverCard=$('[data-device-takeover-card]'),takeoverStart=$('[data-device-takeover-start]'),takeoverResume=$('[data-device-takeover-resume]');
+          +  const canStart=authorityKnown&&!err&&phase==='reenroll_required'&&takeover.available===true,canResume=authorityKnown&&!err&&takeover.pending===true;
+          +  if(takeoverCard)takeoverCard.hidden=!(canStart||canResume);
+          +  if(takeoverStart)takeoverStart.disabled=!canStart;
+          +  if(takeoverResume){takeoverResume.hidden=!canResume;takeoverResume.disabled=!canResume;}
+          +  const takeoverForm=$('[data-device-takeover-form]');if(takeoverForm)takeoverForm.hidden=!canStart;
+          +  const takeoverPending=$('[data-device-takeover-pending]');if(takeoverPending)takeoverPending.hidden=!canResume;
+          +  const takeoverIds=$('[data-device-takeover-identities]');if(takeoverIds){const hint=takeover.restored_source||{};takeoverIds.textContent=hint.source_installation_id&&hint.target_installation_id?`${hint.source_installation_id} → ${hint.target_installation_id}`:'';}
+          +  const moveSurface=$('[data-public-move-surface]');if(moveSurface)moveSurface.hidden=!authorityKnown||phase!=='active'||takeover.pending===true;
+          +  const recovery=$('[data-public-device-recovery]'),message=$('[data-public-device-recovery-message]'),guide=$('[data-public-device-recovery-guide]');
+          +  if(recovery)recovery.hidden=authorityKnown&&phase==='active';
+          +  if(message)message.textContent=!authorityKnown?'وضعیت بازیابی تأیید نشده است؛ ابتدا اطلاعات اتصال را بازخوانی کنید.':phase==='resync_required'?'اعتبار اتصال ثبت شده است؛ همگام‌سازی و پذیرش نهایی هنوز لازم است.':paired?'بازیابی اعتبار اتصال لازم است؛ ابزارهای بازیابی کنترل‌شده را بررسی کنید.':'اطلاعات بازیابی شده‌اند اما اعتبار اتصال هنوز ثبت نشده است. انتقال شناسه دستگاه به مسیر کنترل‌شده نیاز دارد؛ اتصال اولیه را انجام ندهید.';
+          +  if(guide)guide.hidden=!authorityKnown||!paired||!!err||phase!=='reenroll_required';
+          +  if(!authorityKnown||phase!=='active')badge($('[data-public-badge]'),!authorityKnown?'وضعیت بازیابی نامشخص':phase==='resync_required'?'همگام‌سازی بازیابی لازم است':'بازیابی اتصال لازم است','warning');
+             const a=p.automatic_relay||{},relay=p.relay||{},queued=Number(relay.queued||0),expired=Number(relay.expired_due||0),claimed=Number(relay.claimed||0),staleClaimed=Number(relay.claimed_stale||0),age=p.relay_oldest_queued_age_seconds;
+             const outboundOk=Number(p.sync_error_count||0)===0&&!!p.last_sync_at,outboundLabel=!p.last_sync_at?'هنوز ثبت نشده':Number(p.sync_error_count||0)>0?'نیازمند بررسی':'آخرین ارسال موفق';
+             setPublicSignal('outbound',outboundLabel,p.last_sync_at?`آخرین همگام‌سازی ${(L.instantDateTime||L.dateTime)(p.last_sync_at)}`:'سابقه‌ای ثبت نشده');
+          @@ -308,8 +321,8 @@
+                 }catch(err){feedback('public-replacement',err.message||'بازیابی کامل نشد؛ تا بررسی وضعیت مجدد کد جدید نسازید.');window.scrollTo(0,before);}
+               });
+             });
+          -  $('[data-public-pair-form]').addEventListener('submit',async e=>{e.preventDefault();const b=$('[data-public-pair]');await SoknaUI.busy(b,async()=>{feedback('public');const url=$('[data-public-pair-url]').value.trim(),code=$('[data-public-pair-code]').value.trim();if(!url||!code){feedback('public','آدرس وب عمومی و کد اتصال هر دو لازم‌اند.');return}try{await post({action:'public_pair',base_url:url,pairing_code:code,display_name:$('[data-public-pair-name]').value.trim()});$('[data-public-pair-code]').value='';await refresh('اتصال وب عمومی ثبت شد.')}catch(err){feedback('public',err.message||'اتصال وب عمومی انجام نشد.')}})});$('[data-public-sync]').addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_sync'}),r=j.public_sync||{};await refresh();const auto=snap?.public_edge?.automatic_relay||{};if(r.success&&r.degraded){toast(r.guest_publication?.message||'منو و سفارش به‌روز شد؛ بخشی از تصاویر هنوز در حال همگام‌سازی است.','warning','همگام‌سازی ناقص')}else if(r.success&&auto.status==='ok'){toast('ارسال Local → Public و مسیر برگشت خودکار Public → Local هر دو تأیید شدند.','success','همگام‌سازی')}else if(r.success){toast('ارسال Local → Public موفق بود؛ مسیر برگشت خودکار Public → Local هنوز تأیید نشده است.','warning','همگام‌سازی خروجی موفق')}else{const failed=(r.critical_failed_channels||r.failed_channels||[]).map(x=>publicChannelLabels[x]||x).join('، ');feedback('public',failed?`همگام‌سازی بخش‌های ضروری کامل نشد: ${failed}`:'همگام‌سازی کامل نشد.')}}catch(err){feedback('public',window.SoknaUI?.errorText?.(err,'همگام‌سازی انجام نشد.')||'همگام‌سازی انجام نشد.')}}));$('[data-public-probe]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_probe'}),r=j.probe||{},p=r.status||{},rt=r.roundtrip||{},fresh=p.edge_local_fresh===true,heartbeat=r.heartbeat?.success===true,auto=p.automatic_relay?.status==='ok';await refresh();if(fresh&&heartbeat&&rt.success===true&&auto){const ms=Number(rt.latency_ms||0),id=String(rt.correlation_id||'').slice(0,16);feedback('public',`آزمایش کامل رفت‌وبرگشت موفق بود${ms?` · ${L.integer(ms)} ms`:''}${id?` · کد پیگیری ${id}`:''}.`,false);toast('مسیر Local ↔ Public واقعاً تأیید شد.','success','آزمایش ارتباط کامل')}else{const hop=rt.hop||(!heartbeat?'heartbeat':!auto?'runtime_trigger':'status'),code=rt.error_code||p.automatic_relay?.error_code||p.probe_error||p.edge_runtime_status||p.status||'unknown';const cid=String(rt.correlation_id||p.automatic_relay?.correlation_id||'').slice(0,16);feedback('public',`ارتباط کامل تأیید نشد · مرحله: ${hop} · کد: ${code}${cid?` · پیگیری: ${cid}`:''}`,true);toast('حداقل یک بخش از مسیر واقعی ارتباط مشکل دارد.','warning','آزمایش ارتباط')}}catch(err){await refresh().catch(()=>{});feedback('public',err.message||'آزمایش ارتباط انجام نشد.',true)}}));
+          -$('[data-public-reenroll]').addEventListener('click',async e=>{const b=e.currentTarget,url=$('[data-public-reenroll-url]').value.trim(),code=$('[data-public-reenroll-code]').value.trim(),name=$('[data-public-reenroll-name]').value.trim();reenrollFeedback('');if(!url||!code){reenrollFeedback('آدرس وب عمومی و کد اتصال جدید هر دو لازم‌اند.');return}if(!await SoknaUI.confirm('انتقال اتصال به دستگاه جدید','بعد از تکمیل انتقال، اتصال قبلی این نصب جایگزین می‌شود.',true))return;await SoknaUI.busy(b,async()=>{try{await post({action:'public_reenroll',base_url:url,enrollment_code:code,display_name:name});$('[data-public-reenroll-code]').value='';await refresh();toast('انتقال و اتصال دوباره کامل شد.','success','وب عمومی')}catch(err){reenrollFeedback(err.message||'انتقال اتصال انجام نشد.')}})});
+          +  $('[data-public-pair-form]').addEventListener('submit',async e=>{e.preventDefault();const b=$('[data-public-pair]');if(!connectionReadValid||b.disabled||snap?.errors?.public_authority||snap?.public_authority?.phase!=='active'){feedback('public','اتصال اولیه در وضعیت بازیابی یا وضعیت نامشخص مجاز نیست.');return;}await SoknaUI.busy(b,async()=>{feedback('public');const url=$('[data-public-pair-url]').value.trim(),code=$('[data-public-pair-code]').value.trim();if(!url||!code){feedback('public','آدرس وب عمومی و کد اتصال هر دو لازم‌اند.');return}try{await post({action:'public_pair',base_url:url,pairing_code:code,display_name:$('[data-public-pair-name]').value.trim()});$('[data-public-pair-code]').value='';await refresh('اتصال وب عمومی ثبت شد.')}catch(err){feedback('public',err.message||'اتصال وب عمومی انجام نشد.')}})});$('[data-public-sync]').addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_sync'}),r=j.public_sync||{};await refresh();const auto=snap?.public_edge?.automatic_relay||{};if(r.success&&r.degraded){toast(r.guest_publication?.message||'منو و سفارش به‌روز شد؛ بخشی از تصاویر هنوز در حال همگام‌سازی است.','warning','همگام‌سازی ناقص')}else if(r.success&&auto.status==='ok'){toast('ارسال Local → Public و مسیر برگشت خودکار Public → Local هر دو تأیید شدند.','success','همگام‌سازی')}else if(r.success){toast('ارسال Local → Public موفق بود؛ مسیر برگشت خودکار Public → Local هنوز تأیید نشده است.','warning','همگام‌سازی خروجی موفق')}else{const failed=(r.critical_failed_channels||r.failed_channels||[]).map(x=>publicChannelLabels[x]||x).join('، ');feedback('public',failed?`همگام‌سازی بخش‌های ضروری کامل نشد: ${failed}`:'همگام‌سازی کامل نشد.')}}catch(err){feedback('public',window.SoknaUI?.errorText?.(err,'همگام‌سازی انجام نشد.')||'همگام‌سازی انجام نشد.')}}));$('[data-public-probe]')?.addEventListener('click',async e=>SoknaUI.busy(e.currentTarget,async()=>{feedback('public');try{const j=await post({action:'public_probe'}),r=j.probe||{},p=r.status||{},rt=r.roundtrip||{},fresh=p.edge_local_fresh===true,heartbeat=r.heartbeat?.success===true,auto=p.automatic_relay?.status==='ok';await refresh();if(fresh&&heartbeat&&rt.success===true&&auto){const ms=Number(rt.latency_ms||0),id=String(rt.correlation_id||'').slice(0,16);feedback('public',`آزمایش کامل رفت‌وبرگشت موفق بود${ms?` · ${L.integer(ms)} ms`:''}${id?` · کد پیگیری ${id}`:''}.`,false);toast('مسیر Local ↔ Public واقعاً تأیید شد.','success','آزمایش ارتباط کامل')}else{const hop=rt.hop||(!heartbeat?'heartbeat':!auto?'runtime_trigger':'status'),code=rt.error_code||p.automatic_relay?.error_code||p.probe_error||p.edge_runtime_status||p.status||'unknown';const cid=String(rt.correlation_id||p.automatic_relay?.correlation_id||'').slice(0,16);feedback('public',`ارتباط کامل تأیید نشد · مرحله: ${hop} · کد: ${code}${cid?` · پیگیری: ${cid}`:''}`,true);toast('حداقل یک بخش از مسیر واقعی ارتباط مشکل دارد.','warning','آزمایش ارتباط')}}catch(err){await refresh().catch(()=>{});feedback('public',err.message||'آزمایش ارتباط انجام نشد.',true)}}));
+          +$('[data-public-device-recovery-guide]')?.addEventListener('click',()=>{const panel=$('[data-public-recovery-advanced]');if(panel){panel.open=true;$('[data-public-replacement-preflight]')?.focus();}});
+           async function revealWindows(result,msg){++refreshGeneration;root.removeAttribute('aria-busy');hideWindowsSecret();snap.windows_services=result||snap.windows_services;renderWindows();const code=String(result?.pairing_code||''),id=String(result?.pairing_id||''),seconds=Number(result?.seconds_remaining||0);if(code&&id&&windowsTicketActive(result)){windowsSecretId=id;$('[data-windows-code]').textContent=code;$('[data-windows-secret]').hidden=false;windowsSecretTimer=setTimeout(hideWindowsSecret,Math.min(seconds,3600)*1000)}toast(msg,'success','سرویس‌های ویندوز')}
+           async function createWindowsInitial(allowAdditional=false){feedback('windows');const payload={action:'windows_services_pairing_create',display_name:$('[data-windows-name]').value.trim(),allow_additional:!!allowAdditional};const j=await post(payload);await revealWindows(j.windows_services,allowAdditional?'کد اتصال دستگاه جدید ساخته شد.':'کد اتصال اولیه ساخته شد.')}
+           async function createWindowsRotation(id,displayName){if(id<1){feedback('windows','Print Agent فعالی برای اتصال مجدد انتخاب نشده است.');return}const j=await post({action:'windows_services_print_token_rotation_create',agent_id:id,display_name:displayName});await revealWindows(j.windows_services,'کد اتصال مجدد ساخته شد؛ شناسه Agent و مقصدهای چاپ حفظ می‌شوند.')}
+          @@ -320,4 +333,9 @@
+           $('[data-windows-cancel]')?.addEventListener('click',async e=>{const b=e.currentTarget;if(!await SoknaUI.confirm('لغو کد اتصال','فقط کد کوتاه‌عمر فعال لغو شود؟ اتصال confirmed قبلی حذف نمی‌شود.'))return;await SoknaUI.busy(b,async()=>{try{const j=await post({action:'windows_services_pairing_cancel'});++refreshGeneration;root.removeAttribute('aria-busy');hideWindowsSecret();snap.windows_services=j.windows_services;renderWindows();toast('کد اتصال فعال لغو شد.','success','سرویس‌های ویندوز')}catch(err){feedback('windows',err.message||'لغو کد انجام نشد.')}})});
+           $('[data-windows-connections]')?.addEventListener('click',async e=>{const b=e.target.closest('[data-windows-retire-agent]');if(!b)return;const id=Number(b.dataset.windowsRetireAgent||0),agents=Array.isArray(snap?.print_agents)?snap.print_agents:[],agent=agents.find(a=>Number(a.id)===id);if(id<1||!agent)return;const connected=String(agent.connection_status||'')==='connected',title=connected?'قطع و بازنشسته‌کردن اتصال':'حذف اتصال قدیمی',message=connected?'Credential چاپ این Agent غیرفعال می‌شود؛ Runtime ویندوز مسیر مستقلی دارد و با این عمل متوقف یا revoke نمی‌شود. اگر مقصد چاپ فعالی به Agent وابسته باشد، مسیر پشتیبان معتبر ارتقا پیدا می‌کند و در غیر این صورت مقصد غیرفعال می‌شود.':'این Agent از فهرست فعال خارج می‌شود و سابقه Audit باقی می‌ماند. مقصدهای چاپ وابسته نیز به‌صورت امن reconcile می‌شوند.';if(!await SoknaUI.confirm(title,message,true))return;await SoknaUI.busy(b,async()=>{try{const j=await post({action:'windows_services_agent_retire',agent_id:id,reason:connected?'operator_disconnected':'operator_removed_stale'});snap.windows_services=j.windows_services||snap.windows_services;hideWindowsSecret();await refresh(connected?'اتصال بازنشسته شد.':'اتصال قدیمی از فهرست فعال خارج شد.')}catch(err){feedback('windows',err.message||'بازنشسته‌کردن اتصال انجام نشد.')}})});
+           $('[data-windows-copy]')?.addEventListener('click',async()=>{const code=$('[data-windows-code]').textContent.trim();if(!windowsSecretId||$('[data-windows-secret]').hidden||!code)return;try{await navigator.clipboard.writeText(code);toast('کد اتصال کپی شد.')}catch{feedback('windows','کپی خودکار ممکن نبود؛ کد را دستی کپی کن.')}});
+          +$('[data-device-takeover-form]')?.addEventListener('submit',async e=>{
+          + e.preventDefault();const b=$('[data-device-takeover-start]');if(!connectionReadValid||b.disabled||snap?.public_authority?.device_takeover?.available!==true)return;
+          + await SoknaUI.busy(b,async()=>{const code=$('[data-device-takeover-code]');try{await post({action:'public_device_takeover_start',base_url:$('[data-device-takeover-url]').value.trim(),enrollment_code:code.value.trim(),confirmation:$('[data-device-takeover-confirm]').value.trim()});await refresh('اعتبار دستگاه ثبت شد؛ همگام‌سازی کامل هنوز لازم است.');}catch(err){await refresh();feedback('device-takeover',err.message||'انتقال تأیید نشد.');}finally{code.value='';$('[data-device-takeover-confirm]').value='';}});
+          +});
+          +$('[data-device-takeover-resume]')?.addEventListener('click',async e=>{const b=e.currentTarget;if(!connectionReadValid||b.disabled||snap?.public_authority?.device_takeover?.pending!==true)return;await SoknaUI.busy(b,async()=>{try{await post({action:'public_device_takeover_resume'});await refresh('اعتبار دستگاه ثبت شد؛ همگام‌سازی کامل هنوز لازم است.');}catch(err){await refresh();feedback('device-takeover',err.message||'ادامه انتقال تأیید نشد.');}});});
+           const requestedTab=new URLSearchParams(location.search).get('tab');if(['accommodation','public','windows'].includes(requestedTab||''))$(`[data-tab="${requestedTab}"]`)?.click();refresh();})();
+          --- a/local/public/integrations/api.php
+          +++ b/local/public/integrations/api.php
+          @@ -11,13 +11,14 @@
+                   $errors=[];$guard=$core->snapshotGuard();
+                   $accommodation=$guard->capture('connections','accommodation',['enabled'=>false,'base_url'=>'','configured'=>false,'credential_saved'=>false],'وضعیت اتصال اقامتگاه فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->accommodationSnapshot());
+                   $public=$guard->capture('connections','public_edge',['status'=>'unavailable','base_url'=>'','last_sync_at'=>'','version'=>''],'وضعیت وب عمومی فعلاً در دسترس نیست.',fn():array=>$core->systemDiagnostics()->publicConnectionStatus());
+          +        $authority=$guard->capture('connections','public_authority',['phase'=>'unknown'],'وضعیت بازیابی اتصال پابلیک فعلاً در دسترس نیست.',function()use($core):array{$s=$core->publicAuthorityState()->status();return ['phase'=>(string)($s['phase']??'unknown'),'authority_epoch'=>(int)($s['authority_epoch']??0),'restored_source'=>$core->publicAuthorityState()->restoredSourceIdentity(),'device_takeover'=>$core->publicReenrollment()->deviceTakeoverStatus()];});
+                   $lanStaff=$guard->capture('connections','lan_staff',['enabled'=>false,'configured'=>false,'base_url'=>'','source'=>'config','staff_policy'=>'lan_preferred_public_fallback','guest_policy'=>'public_first'],'وضعیت مسیر LAN کارکنان فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->lanStaffSnapshot());
+                   $originTransition=$guard->capture('connections','public_origin_transition',['active'=>false],'وضعیت انتقال آدرس Public فعلاً در دسترس نیست.',fn():array=>$core->publicOriginRebind()->transitionStatus());
+                   $windows=$guard->capture('connections','windows_services',['state'=>'unavailable','active'=>false],'وضعیت Windows Services فعلاً در دسترس نیست.',fn():array=>$core->windowsServicesPairing()->status());
+                   $runtime=$guard->capture('connections','windows_runtime',['status'=>'unavailable','runtime_version'=>'','contract_version'=>1],'وضعیت Windows Runtime فعلاً در دسترس نیست.',function()use($core):array{$health=$core->systemDiagnostics()->healthComponent('runtime');return (array)(($health['components']??[])['runtime']??[]);});
+                   $agents=$guard->capture('connections','print_agents',[],'فهرست Print Agentها فعلاً در دسترس نیست.',function()use($core):array{$snap=$core->printManagement()->snapshot();return array_values((array)($snap['agents']??[]));});
+          -        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+          -        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+          +        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'public_authority'=>$authority,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+          +        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'public_authority'=>$authority['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+               }
+               $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+               if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel','public_move_status','public_move_finish','public_move_existing_owner_offer_execute'],true)){
+          @@ -199,6 +200,8 @@
+                   if(($result['success']??false)!==true)throw new IntegrationException((string)($result['code']??'accommodation_test_failed'),(string)($result['message']??'آزمایش اتصال اقامتگاه انجام نشد.'),502);
+                   WebAction::json(['success'=>true,'result'=>$result]);
+               }
+          +    if($action==='public_device_takeover_start')WebAction::json(['success'=>true,'takeover'=>$core->publicReenrollment()->startDeviceTakeover((string)($data['base_url']??''),(string)($data['enrollment_code']??''),(string)($data['confirmation']??''),$actorId)]);
+          +    if($action==='public_device_takeover_resume')WebAction::json(['success'=>true,'takeover'=>$core->publicReenrollment()->resumeDeviceTakeover($actorId)]);
+               if($action==='public_replacement_preflight')WebAction::json(['success'=>true,'replacement'=>$core->publicReenrollment()->replacementPreflight()]);
+               if($action==='public_replacement_resume')WebAction::json(['success'=>true,'replacement'=>$core->publicReenrollment()->resumePendingRecovery($actorId)]);
+               if($action==='public_replacement_execute')WebAction::json(['success'=>true,'replacement'=>$core->publicReenrollment()->recoverReplacement((string)($data['base_url']??''),(string)($data['enrollment_code']??''),(string)($data['display_name']??''),$actorId,(string)($data['confirmation']??''),(int)($data['expected_epoch']??0))]);
+          --- a/local/public/integrations/index.php
+          +++ b/local/public/integrations/index.php
+          @@ -31,7 +31,7 @@
+               </form></article>
+               <article class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>وضعیت همگام‌سازی</h3><p>منو و سفارش، دسترسی کارکنان و تصاویر جداگانه بررسی می‌شوند؛ خرابی تصویر منو را از کار نمی‌اندازد.</p></div></div><div class="sc-table-wrap"><table class="sc-table sc-table--responsive"><thead><tr><th>بخش</th><th>وضعیت</th><th>آخرین موفقیت</th><th>جزئیات</th></tr></thead><tbody data-public-channels><tr><td colspan="4">در حال دریافت وضعیت…</td></tr></tbody></table></div></div></article>
+               <article class="sc-card"><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>وضعیت ارتباط</h3><p>ارسال به وب، اتصال خودکار، آخرین ارتباط و صف پاسخ هرکدام وضعیت مستقل دارند؛ موفقیت یکی به معنی سلامت همه نیست.</p></div></div><div class="sc-summary-grid"><article class="sc-card sc-metric"><span>ارسال به وب عمومی</span><strong data-public-signal="outbound">—</strong><small class="sc-help" data-public-signal-help="outbound">—</small></article><article class="sc-card sc-metric"><span>اتصال خودکار سرویس</span><strong data-public-signal="relay">—</strong><small class="sc-help" data-public-signal-help="relay">—</small></article><article class="sc-card sc-metric"><span>آخرین ارتباط با وب</span><strong data-public-signal="heartbeat">—</strong><small class="sc-help" data-public-signal-help="heartbeat">—</small></article><article class="sc-card sc-metric"><span>صف درخواست‌های ورودی</span><strong data-public-signal="queue">—</strong><small class="sc-help" data-public-signal-help="queue">—</small></article></div></div></article>
+          -    <article class="sc-card" data-public-initial-pair-card><form class="sc-card__body sc-form" data-public-pair-form novalidate><div class="sc-section-head"><div><h3>اتصال اولیه پابلیک</h3><p>فقط برای لوکالی که تا امروز هیچ اتصال پابلیکی نداشته است. نصب تازه پابلیکِ متصل به لوکال قدیمی را از «بازیابی اتصال» انجام بده.</p></div></div><div class="sc-form-grid sc-form-grid--2"><label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-pair-url placeholder="https://example.com" dir="ltr" required></label><label class="sc-field"><span class="sc-field__label">کد اتصال</span><input class="sc-control" data-public-pair-code autocomplete="off" dir="ltr" required></label></div><label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-pair-name value="کافه سکنا"></label><div class="sc-actions"><button class="sc-button" type="submit" data-public-pair>ثبت اتصال</button></div></form></article>
+          +    <article class="sc-card" data-public-initial-pair-card hidden><form class="sc-card__body sc-form" data-public-pair-form novalidate><div class="sc-section-head"><div><h3>اتصال اولیه پابلیک</h3><p>فقط برای لوکالی که تا امروز هیچ اتصال پابلیکی نداشته است. نصب تازه پابلیکِ متصل به لوکال قدیمی را از «بازیابی اتصال» انجام بده.</p></div></div><div class="sc-form-grid sc-form-grid--2"><label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-pair-url placeholder="https://example.com" dir="ltr" required></label><label class="sc-field"><span class="sc-field__label">کد اتصال</span><input class="sc-control" data-public-pair-code autocomplete="off" dir="ltr" required></label></div><label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-pair-name value="کافه سکنا"></label><div class="sc-actions"><button class="sc-button" type="submit" data-public-pair disabled>ثبت اتصال</button></div></form></article>
+               <article class="sc-card" data-public-operation-card><div class="sc-card__body sc-stack"><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-sync>همگام‌سازی اکنون</button><button class="sc-button sc-button--secondary" type="button" data-public-probe>آزمایش ارتباط</button></div><div class="sc-event-feedback sc-alert sc-alert--danger" data-public-feedback hidden></div><small class="sc-help" data-public-relay-detail hidden></small></div></article>
+               <details class="sc-connection-advanced" data-public-recovery-advanced><summary class="sc-disclosure__summary"><strong>ابزارهای بازیابی پیشرفته</strong></summary>
+               <article class="sc-card" data-public-replacement-panel><div class="sc-card__body sc-stack">
+          @@ -66,7 +66,20 @@
+                 <small class="sc-help" data-lan-staff-detail></small>
+                 <details class="sc-connection-advanced"><summary class="sc-disclosure__summary"><strong>راهنمای اتصال گوشی به شبکه کافه</strong></summary><div class="sc-stack"><p>آدرس 127.0.0.1 فقط روی رایانه اصلی کار می‌کند. اپ همکاران از آدرس پابلیک نصب می‌شود و هنگام دسترسی به شبکه داخلی، مسیر امن LAN را ترجیح می‌دهد.</p><p>برای راه‌اندازی، نام میزبان داخلی با DNS خصوصی، گواهی HTTPS معتبر و دسترسی محدود فایروال لازم است. پس از آزمایش و ذخیره، اتصال را در همان گوشی روی وای‌فای کافه بررسی کنید. موفقیت پیش‌بررسی رایانه به معنی تأیید اتصال گوشی نیست.</p></div></details>
+               </form></article>
+          -    <details class="sc-card sc-connection-advanced" data-public-reenroll-disclosure><summary class="sc-disclosure__summary"><span><strong>انتقال اتصال به دستگاه جدید</strong><small>فقط بعد از بازیابی نسخه پشتیبان یا تعویض دستگاه</small></span></summary><div class="sc-card__body sc-stack"><p class="sc-muted">برای دستگاه جایگزین، کد اتصال جدید بگیر. اتصال فعلی تنها پس از تأیید شما تغییر می‌کند.</p><div class="sc-form-grid sc-form-grid--2"><label class="sc-field"><span class="sc-field__label">آدرس وب عمومی</span><input class="sc-control" type="url" data-public-reenroll-url placeholder="https://example.com" dir="ltr"></label><label class="sc-field"><span class="sc-field__label">کد اتصال جدید</span><input class="sc-control" data-public-reenroll-code autocomplete="off" dir="ltr"></label></div><label class="sc-field"><span class="sc-field__label">نام این نصب</span><input class="sc-control" data-public-reenroll-name value="کافه سکنا"></label><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-reenroll>انتقال و اتصال دوباره</button></div><div class="sc-event-feedback sc-alert sc-alert--danger" data-public-reenroll-feedback hidden></div></div></details>
+          +    <article class="sc-card" data-device-takeover-card hidden><div class="sc-card__body sc-stack">
+          +      <div class="sc-section-head"><div><h3>اتصال دستگاه بازیابی‌شده</h3><p>دستگاه قبلی را از چرخه عملیات خارج کنید. مالک Public باید در کنسول اضطراری، کد انتقال را برای شناسه‌های زیر صادر کند.</p></div></div>
+          +      <p data-device-takeover-identities dir="ltr"></p>
+          +      <form class="sc-form" data-device-takeover-form>
+          +        <label class="sc-field"><span class="sc-field__label">نشانی Public فعلی</span><input class="sc-control" type="url" data-device-takeover-url dir="ltr" required></label>
+          +        <label class="sc-field"><span class="sc-field__label">کد یک‌بارمصرف مالک</span><input class="sc-control" type="password" data-device-takeover-code dir="ltr" autocomplete="off" required></label>
+          +        <label class="sc-field"><span class="sc-field__label">برای تأیید انتقال، TRANSFER_DEVICE را وارد کنید</span><input class="sc-control" data-device-takeover-confirm dir="ltr" autocomplete="off" required></label>
+          +        <button class="sc-button" type="submit" data-device-takeover-start disabled>ثبت انتقال کنترل‌شده</button>
+          +      </form>
+          +      <p data-device-takeover-pending hidden>عملیات قبلی هنوز تعیین تکلیف نشده است. کد تازه صادر نکنید؛ ابتدا همان عملیات را ادامه دهید.</p>
+          +      <button class="sc-button sc-button--secondary" type="button" data-device-takeover-resume hidden disabled>ادامه انتقال ثبت‌شده</button>
+          +      <div class="sc-event-feedback sc-alert sc-alert--danger" data-device-takeover-feedback hidden role="status"></div>
+          +    </div></article>
+          +    <article class="sc-card" data-public-device-recovery hidden><div class="sc-card__body sc-stack"><div class="sc-section-head"><div><h3>وضعیت انتقال به دستگاه جدید</h3><p data-public-device-recovery-message role="status" aria-live="polite"></p></div><span class="sc-badge sc-badge--warning">نیازمند بررسی بازیابی</span></div><p class="sc-muted">پشتیبان تجاری جایگزین اعتبارنامهٔ اتصال و هویت دستگاه نمی‌شود. ابتدا دستگاه قبلی را از چرخه عملیاتی خارج کنید؛ اتصال اولیه یا کد قدیمی انتقال را برای جایگزینی هویت استفاده نکنید.</p><div class="sc-actions"><button class="sc-button sc-button--secondary" type="button" data-public-device-recovery-guide hidden>ابزارهای بازیابی اتصال</button></div></div></article>
+             </section>
+           
+             <section class="sc-work-panel" data-panel="windows" hidden>
+          --- a/local/public/system/recovery-upload.php
+          +++ b/local/public/system/recovery-upload.php
+          @@ -7,7 +7,7 @@
+            $scratch=null;
+           try{
+               if(($_SERVER['REQUEST_METHOD']??'')!=='POST')throw new RecoveryException('method_not_allowed','روش درخواست معتبر نیست.',405);
+          -    $expected=(string)($_SESSION['sokna_csrf_token']??'');$candidate=trim((string)($_SERVER['HTTP_X_CSRF_TOKEN']??$_POST['csrf_token']??''));if($expected===''||$candidate===''||!hash_equals($expected,$candidate))throw new RecoveryException('csrf_expired','نشست صفحه منقضی شده؛ صفحه را تازه کنید.',419);
+          +    $expected=(string)($_SESSION['sokna_csrf_token']??'');$candidate=trim((string)($_SERVER['HTTP_X_CSRF_TOKEN']??$_POST['csrf_token']??''));if($expected===''||$candidate===''||!hash_equals($expected,$candidate))throw new RecoveryException('csrf_expired','نشست صفحه منقضی شده؛ صفحه را تازه کنید.',403);
+               $postLimit=ini_parse_quantity((string)ini_get('post_max_size'));
+               if($postLimit>0&&(int)($_SERVER['CONTENT_LENGTH']??0)>$postLimit){$problem=WebAction::uploadProblem(UPLOAD_ERR_INI_SIZE,'فایل بازیابی');throw new RecoveryException($problem['code'],$problem['message'],$problem['status']);}
+               $file=$_FILES['backup']??null;$uploadError=is_array($file)?(int)($file['error']??UPLOAD_ERR_NO_FILE):UPLOAD_ERR_NO_FILE;if($uploadError!==UPLOAD_ERR_OK){$problem=WebAction::uploadProblem($uploadError,'فایل بازیابی');throw new RecoveryException($problem['code'],$problem['message'],$problem['status']);}$size=(int)($file['size']??0);if($size<32||$size>536870912)throw new RecoveryException('backup_size','حجم فایل بازیابی معتبر نیست.',413);
+          --- a/local/src/Domain/PublicEdge/PublicAuthorityStateService.php
+          +++ b/local/src/Domain/PublicEdge/PublicAuthorityStateService.php
+          @@ -7,6 +7,9 @@
+           
+           final class PublicAuthorityStateService
+           {
+          +    public const RESTORE_SOURCE_KEY='public.recovery.source_identity_v1';
+          +    private const RESTORE_SOURCE_REASON='business_restore_identity:';
+          +
+               public function __construct(private readonly PDO $pdo, private readonly string $installationId) {}
+           
+               public function status(): array
+          @@ -29,6 +32,38 @@
+                   $this->ensure();
+                   $q=$this->pdo->prepare("UPDATE public_authority_state SET phase='reenroll_required',reason=?,blocked_at=UTC_TIMESTAMP(6),reenrolled_at=NULL,activated_at=NULL WHERE installation_id=?");
+                   $q->execute([substr($reason,0,96),$this->installationId]);
+          +    }
+          +
+          +    /** Record only authenticated manifest identity inside the business restore transaction.
+          +     * This is a recovery hint, NOT owner approval or proof of a previous Public pairing. */
+          +    public function markBusinessRestoreRequired(string $sourceId,string $operation): void
+          +    {
+          +        if(!$this->pdo->inTransaction())throw new PublicEdgeSyncException('restore_identity_transaction_required','ثبت هویت بازیابی باید در تراکنش بازیابی انجام شود.',409);
+          +        if(!$this->validRecoveryIdentity($sourceId)||!$this->validRecoveryIdentity($this->installationId)||!preg_match('/^[a-f0-9]{16}$/D',$operation)){
+          +            $this->pdo->prepare('DELETE FROM settings WHERE setting_key=?')->execute([self::RESTORE_SOURCE_KEY]);
+          +            $this->markRestoreRequired('business_restore');
+          +            return;
+          +        }
+          +        $record=json_encode(['format'=>'sokna-restore-source-v1','source_installation_id'=>$sourceId,'target_installation_id'=>$this->installationId,'restore_operation'=>$operation],JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);
+          +        $this->pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)')->execute([self::RESTORE_SOURCE_KEY,$record]);
+          +        $this->markRestoreRequired(self::RESTORE_SOURCE_REASON.hash('sha256',$record));
+          +    }
+          +
+          +    /** Return a scoped, non-secret hint only while this restoration requires re-enrollment. */
+          +    public function restoredSourceIdentity(): ?array
+          +    {
+          +        $state=$this->status();$reason=(string)($state['reason']??'');
+          +        if(($state['phase']??'')!=='reenroll_required'||!str_starts_with($reason,self::RESTORE_SOURCE_REASON))return null;
+          +        $q=$this->pdo->prepare('SELECT setting_value FROM settings WHERE setting_key=?');$q->execute([self::RESTORE_SOURCE_KEY]);$raw=$q->fetchColumn();
+          +        if(!is_string($raw)||strlen($raw)>1024||!hash_equals($reason,self::RESTORE_SOURCE_REASON.hash('sha256',$raw)))return null;
+          +        $r=json_decode($raw,true);
+          +        if(!is_array($r)||($r['format']??'')!=='sokna-restore-source-v1'||($r['target_installation_id']??'')!==$this->installationId||!is_string($r['source_installation_id']??null)||!$this->validRecoveryIdentity($r['source_installation_id'])||!is_string($r['restore_operation']??null)||!preg_match('/^[a-f0-9]{16}$/D',$r['restore_operation']))return null;
+          +        return ['source_installation_id'=>$r['source_installation_id'],'target_installation_id'=>$this->installationId,'restore_operation'=>$r['restore_operation'],'owner_approval_required'=>true,'previous_public_pairing_verified'=>false];
+          +    }
+          +
+          +    private function validRecoveryIdentity(string $id): bool
+          +    {
+          +        return $id!=='unknown-installation'&&preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$id)===1;
+               }
+           
+               public function markReenrolled(int $epoch): void
+          --- a/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          +++ b/local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          @@ -561,6 +561,23 @@
+                   return $this->unsignedPost($base . '/emergency.php?action=reenroll', $payload, 'ارتباط با Public Edge برقرار نشد.');
+               }
+           
+          +    public function deviceTakeoverOffer(string $baseUrl,string $source,string $code,?int $epoch=null,?string $secret=null): array
+          +    {
+          +        $base=$this->requireBase($baseUrl,'نشانی Public معتبر نیست.');
+          +        $action=$epoch===null?'device_takeover_preview':'device_takeover_complete';
+          +        $payload=['expected_source'=>$source,'new_installation_id'=>$this->installationId(),'enrollment_code'=>$code];
+          +        if($epoch!==null){$payload['expected_epoch']=$epoch;$payload['new_shared_secret']=$secret;}
+          +        return $this->unsignedPost($base.'/authority-recovery.php?action='.$action,$payload,'ارتباط با Public Edge برقرار نشد.',false);
+          +    }
+          +
+          +    public function probeDeviceTakeover(string $baseUrl,string $secret,int $epoch,string $source): array
+          +    {
+          +        $body=$this->probeProposedAuthority($baseUrl,$secret,$epoch);
+          +        if(($body['takeover_proof']['source_installation_id']??null)!==$source||($body['takeover_proof']['binding_epoch']??null)!==$epoch||($body['takeover_pending_binding_matches']??null)!==true||($body['default_binding_matches']??null)!==false)
+          +            throw new PublicEdgeSyncException('public_device_takeover_proof_invalid','شاهد انتقال دستگاه با هویت بازیابی‌شده مطابق نیست.',409);
+          +        return $body;
+          +    }
+          +
+               /** Test proposed secret/epoch against the signed Public status endpoint before Local activation. */
+               public function probeProposedAuthority(string $baseUrl,string $newSecret,int $epoch): array
+               {
+          @@ -576,6 +593,24 @@
+                       || (string)($body['authority_state']??'')!=='resync_required'
+                       || !empty($body['remote_enabled']) || !empty($body['order_intake_enabled'])) {
+                       throw new PublicEdgeSyncException('public_recovery_proof_invalid','وضعیت امضاشده پابلیک با بازیابی مورد انتظار همخوانی ندارد.',409);
+          +        }
+          +        return $body;
+          +    }
+          +
+          +    /** Prove fresh replacement pairing after an uncertain one-time-code response. Never activates intake. */
+          +    public function probeFreshReplacementPairing(string $baseUrl,string $newSecret): array
+          +    {
+          +        $values=$this->config->all();
+          +        $values['public']=is_array($values['public']??null)?$values['public']:[];
+          +        $values['public']['base_url']=$this->requireBase($baseUrl,'نشانی پابلیک نامعتبر است.');
+          +        $values['public']['shared_secret']=$newSecret;
+          +        $probe=new self(Config::fromArray($values),$this->transport,null,null);
+          +        $resp=$probe->post('/api/v1/local/authority/status',['authority_epoch'=>1],5);
+          +        $body=(array)($resp['body']??[]);
+          +        if(($body['installation_id']??null)!==$this->installationId() || ($body['authority_epoch']??null)!==1 ||
+          +            ($body['authority_state']??null)!=='active' || ($body['remote_enabled']??null)!==true ||
+          +            ($body['order_intake_enabled']??null)!==false || ($body['public_move_intake_paused']??null)!==true || ($body['default_binding_matches']??null)!==true){
+          +            throw new PublicEdgeSyncException('public_fresh_replacement_proof_invalid','وضعیت امضاشده مقصد تازه با اتصال متوقف‌شده مورد انتظار مطابقت ندارد.',409);
+                   }
+                   return $body;
+               }
+          @@ -721,7 +756,7 @@
+                   return ['token'=>'v1.'.$encoded.'.'.$sig,'expires_at'=>gmdate('c',$exp)];
+               }
+           
+          -    private function unsignedPost(string $url, array $payload, string $unreachableMessage): array
+          +    private function unsignedPost(string $url, array $payload, string $unreachableMessage,bool $followRedirect=true): array
+               {
+                   $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+                   if (is_callable($this->transport)) {
+          @@ -734,6 +769,7 @@
+                           'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
+                           'content' => $body,
+                           'timeout' => 10,
+          +                'follow_location' => $followRedirect ? 1 : 0,
+                           'ignore_errors' => true,
+                       ],
+                       'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+          --- a/local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+          +++ b/local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+          @@ -77,16 +77,15 @@
+                       'nonce'=>$challenge['nonce'],
+                       'source_public_hash'=>hash('sha256',self::json($old)),
+                       'kind'=>$kind,
+          -            'expected_epoch'=>$ownerNextEpoch,
+          +            'expected_epoch'=>$kind==='fresh_unpaired'?1:$ownerNextEpoch,
+                       'stage'=>'pairing',
+                   ];
+                   $this->writeState($path,$state,true);
+                   try {
+          +            // Claim before either irreversible one-time-code operation. The durable
+          +            // staged secret can prove a committed pairing after a lost response.
+          +            $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                       if($kind==='existing_paired'){
+          -                // Claim before the remote one-time offer can be consumed. The
+          -                // state file is durable and a lost reply will be probed, never
+          -                // resent with the same or a different code.
+          -                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                           $pair=$this->local->publicEdgeSyncClient()->reenrollAuthority(
+                               $target,$pairingCode,$secret,''
+                           );
+          @@ -110,7 +109,6 @@
+                               ($body['installation_id']??null)!==$this->installationId) {
+                               throw new RuntimeException('public_replacement_pairing_contract_missing');
+                           }
+          -                $this->ledger->claimOnce($this->installationId,$operationId,$challenge['nonce'],time());
+                       }
+                       $state['stage']='paired';
+                       $this->writeState($path,$state);
+          @@ -127,6 +125,19 @@
+               public function finish(string $operationId): array
+               {
+                   $state=$this->readState($this->statePath());
+          +        if(in_array((string)($state['stage']??''),['pairing','pairing_uncertain'],true) &&
+          +           ($state['kind']??'')==='fresh_unpaired'){
+          +            if(!hash_equals((string)($state['operation_id']??''),$operationId))
+          +                throw new RuntimeException('fresh_move_operation_changed');
+          +            // Only the already-claimed, owner-approved operation may resume.
+          +            // No second code submission, no config commit and no intake mutation here.
+          +            if(($this->ledger->status($this->installationId,$operationId)['status']??null)!=='claimed')
+          +                throw new RuntimeException('replacement_approval_not_consumed');
+          +            $this->local->publicEdgeSyncClient()->probeFreshReplacementPairing(
+          +                (string)$state['target_base_url'],(string)$state['new_secret']);
+          +            $state['stage']='paired';
+          +            $this->writeState($this->statePath(),$state);
+          +        }
+                   if(($state['stage']??'')==='pairing_uncertain' &&
+                      ($state['kind']??'')==='existing_paired'){
+                       if(!hash_equals((string)($state['operation_id']??''),$operationId))
+          @@ -207,10 +218,11 @@
+                       // code is recoverable by an authenticated, read-only signed probe
+                       // in finish(). Never issue a second enrollment code here.
+                       'status'=>(in_array($state['stage'],['paired','sync_ready','config_committed'],true) ||
+          -                (($state['stage']??'')==='pairing_uncertain' && ($state['kind']??'')==='existing_paired'))
+          +                (($state['stage']??'')==='pairing_uncertain' && ($state['kind']??'')==='existing_paired') ||
+          +                (in_array((string)($state['stage']??''),['pairing','pairing_uncertain'],true) && ($state['kind']??'')==='fresh_unpaired' && ($this->ledger->status($this->installationId,(string)$state['operation_id'])['status']??null)==='claimed'))
+                           ?'sync_pending':'support_required',
+          -            'resume_kind'=>(($state['stage']??'')==='pairing_uncertain')
+          -                ?'probe_existing_authority':'continue_synced_transfer',
+          +            'resume_kind'=>in_array((string)($state['stage']??''),['pairing','pairing_uncertain'],true)
+          +                ?(($state['kind']??'')==='fresh_unpaired'?'probe_fresh_pairing':'probe_existing_authority'):'continue_synced_transfer',
+                       'active'=>true,
+                       'operation_id'=>$state['operation_id'],
+                       'target_base_url'=>$state['target_base_url'],
+          --- a/local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          +++ b/local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          @@ -33,6 +33,9 @@
+                   // A one-time setup code must never silently overwrite an existing Local pairing.
+                   if ($this->client->configured()) {
+                       throw new PublicEdgeSyncException('public_already_paired', 'این لوکال قبلاً به پابلیک وصل شده است. برای نصب تازه پابلیک از «بازیابی اتصال پابلیک» استفاده کنید؛ ثبت کد اولیه مجاز نیست.', 409);
+          +        }
+          +        if ($this->authorityState !== null && $this->authorityState->phase() !== 'active') {
+          +            throw new PublicEdgeSyncException('public_initial_pair_recovery_required', 'این دستگاه در وضعیت بازیابی است؛ اتصال اولیه مجاز نیست. ابتدا بازیابی کنترل‌شده اتصال را تکمیل کنید.', 409);
+                   }
+                   $code = trim($code);
+                   if ($code === '') throw new PublicEdgeSyncException('pairing_code_required', 'کد اتصال لازم است.', 422);
+          @@ -162,6 +165,53 @@
+                   });
+               }
+           
+          +    /** New-device recovery: the restored identity is a hint, never a grant. */
+          +    public function deviceTakeoverStatus(): array
+          +    {
+          +        $hint=$this->authorityState?->restoredSourceIdentity();
+          +        $pending=is_file($this->pendingJournalPath());
+          +        $kind=null;if($pending)$kind=$this->loadPendingJournal()['kind']??'same_identity';
+          +        return ['available'=>!$pending&&!$this->client->configured()&&is_array($hint)&&$hint['source_installation_id']!==$hint['target_installation_id'],
+          +            'pending'=>$kind==='device_takeover','other_recovery_pending'=>$pending&&$kind!=='device_takeover','restored_source'=>$hint];
+          +    }
+          +
+          +    public function startDeviceTakeover(string $baseUrl,string $code,string $confirmation,int $actorId): array
+          +    {
+          +        return $this->withRecoveryLock(function()use($baseUrl,$code,$confirmation,$actorId):array{
+          +            $status=$this->deviceTakeoverStatus();$hint=$status['restored_source'];
+          +            if(!$status['available']||$confirmation!=='TRANSFER_DEVICE'||$actorId<1||trim($code)===''||strlen($code)>128)throw new PublicEdgeSyncException('public_device_takeover_blocked','انتقال دستگاه بدون هویت بازیابی، کد مالک و تأیید صریح مجاز نیست.',409);
+          +            $url=$this->requiredCanonicalBase($baseUrl);$source=$hint['source_installation_id'];$old=$this->authorityState->epoch();
+          +            $preview=$this->client->deviceTakeoverOffer($url,$source,trim($code));$body=$preview['body']??[];$epoch=$body['authority_epoch']??null;
+          +            if(($preview['status']??0)!==200||($body['ok']??false)!==true||($body['old_installation_id']??null)!==$source||($body['new_installation_id']??null)!==$this->client->installationId()||!is_int($epoch)||$epoch<=$old||$epoch>2147483600)throw new PublicEdgeSyncException('public_device_takeover_offer_invalid','کد انتقال با هویت بازیابی‌شده سازگار نیست.',409);
+          +            $secret=bin2hex(random_bytes(32));$stage=$this->stagePublicConfig($url,$secret);
+          +            try{$this->createPendingJournal($stage,$url,$old,['kind'=>'device_takeover','source_installation_id'=>$source,'restore_operation'=>$hint['restore_operation'],'target_epoch'=>$epoch]);}catch(Throwable $e){@unlink($stage);throw $e;}
+          +            // The code is never persisted or automatically resubmitted. A lost reply retains the intent.
+          +            $this->client->deviceTakeoverOffer($url,$source,trim($code),$epoch,$secret);
+          +            return $this->finishDeviceTakeover($actorId);
+          +        });
+          +    }
+          +
+          +    public function resumeDeviceTakeover(int $actorId): array
+          +    {
+          +        if($actorId<1)throw new PublicEdgeSyncException('public_device_takeover_blocked','مدیر معتبر لازم است.',403);
+          +        return $this->withRecoveryLock(fn():array=>$this->finishDeviceTakeover($actorId));
+          +    }
+          +
+          +    private function finishDeviceTakeover(int $actorId): array
+          +    {
+          +        $p=$this->loadPendingJournal();$epoch=$p['target_epoch']??null;$old=$p['expected_epoch']??null;$source=$p['source_installation_id']??null;
+          +        if(($p['kind']??null)!=='device_takeover'||!is_int($epoch)||!is_int($old)||$epoch<=$old||!is_string($source)||($p['installation_id']??null)!==$this->client->installationId()||$this->authorityState===null)throw new PublicEdgeSyncException('public_device_takeover_journal_invalid','دفتر انتقال معتبر نیست.',409);
+          +        $phase=$this->authorityState->phase();$current=$this->authorityState->epoch();$hint=$this->authorityState->restoredSourceIdentity();
+          +        if(!($phase==='reenroll_required'&&$current===$old&&($hint['source_installation_id']??null)===$source&&($hint['restore_operation']??null)===($p['restore_operation']??null))&&!($phase==='resync_required'&&$current===$epoch))throw new PublicEdgeSyncException('public_device_takeover_state_changed','وضعیت بازیابی تغییر کرده است؛ انتقال متوقف ماند.',409);
+          +        $stage=dirname($this->configPath).'/'.$p['stage_file'];$candidate=is_file($stage)?$stage:$this->configPath;
+          +        if(!is_file($candidate)||is_link($candidate)||!hash_equals($p['stage_sha256'],(string)hash_file('sha256',$candidate)))throw new PublicEdgeSyncException('public_recovery_staged_config_missing','تنظیمات ثبت‌شده انتقال در دسترس نیست.',409);
+          +        $raw=require $candidate;$url=$this->requiredCanonicalBase((string)($raw['public']['base_url']??''));$secret=(string)($raw['public']['shared_secret']??'');
+          +        if(($raw['installation']['id']??null)!==$this->client->installationId()||$url!==($p['base_url']??null)||!preg_match('/^[a-f0-9]{64}$/D',$secret))throw new PublicEdgeSyncException('public_device_takeover_config_invalid','تنظیمات مقصد با دفتر انتقال سازگار نیست.',409);
+          +        $this->client->probeDeviceTakeover($url,$secret,$epoch,$source);
+          +        $this->finalizePendingConfig($stage,$old,$epoch);
+          +        return ['ok'=>true,'authority_epoch'=>$epoch,'reload_required'=>true,'actor_user_id'=>$actorId,'next_action'=>'full_sync_required'];
+          +    }
+          +
+               /** Retry only a journaled operation; cannot create a new pairing or rotate again. */
+               public function resumePendingRecovery(int $actorId = 0): array
+               {
+          @@ -170,6 +220,7 @@
+                       throw new PublicEdgeSyncException('public_recovery_unavailable','بازیابی قبلی قابل بررسی نیست.',409);
+                   }
+                   $pending = $this->loadPendingJournal();
+          +        if(($pending['kind']??null)==='device_takeover')throw new PublicEdgeSyncException('public_device_takeover_resume_required','از ادامه انتقال دستگاه استفاده کنید.',409);
+                   $expected = (int)$pending['expected_epoch'];
+                   $current = $this->authorityState->epoch();
+                   if ($current < $expected || $current > $expected+16) {
+          @@ -227,7 +278,7 @@
+           
+               private function pendingJournalPath(): string { return $this->configPath.'.public-recovery-pending.json'; }
+           
+          -    private function createPendingJournal(string $staged,string $baseUrl,int $oldEpoch): void
+          +    private function createPendingJournal(string $staged,string $baseUrl,int $oldEpoch,array $extra=[]): void
+               {
+                   $journal = $this->pendingJournalPath();
+                   if (is_file($journal))throw new PublicEdgeSyncException('public_recovery_pending_resume_required','بازیابی قبلی هنوز تعیین تکلیف نشده است.',409);
+          @@ -236,7 +287,7 @@
+                       'stage_file'=>basename($staged),'stage_sha256'=>hash_file('sha256',$staged),
+                       'base_url'=>$baseUrl,'installation_id'=>$this->client->installationId(),
+                       'expected_epoch'=>$oldEpoch,'started_at'=>gmdate('c'),
+          -        ];
+          +        ]+$extra;
+                   $tmp=$journal.'.tmp-'.bin2hex(random_bytes(6));
+                   $encoded=json_encode($data,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR);
+                   if(file_put_contents($tmp,$encoded,LOCK_EX)===false){@unlink($tmp);throw new PublicEdgeSyncException('public_recovery_journal_failed','ثبت وضعیت بازیابی ممکن نیست.',503);}
+          --- a/local/src/Domain/Recovery/BusinessBackupService.php
+          +++ b/local/src/Domain/Recovery/BusinessBackupService.php
+          @@ -44,8 +44,9 @@
+                   self::requireSodium();
+                   self::validatePassphrase($passphrase);
+                   $destination=$this->safeDestination($destination);
+          -        $tmp=$this->tempPath('business-backup','.ndjson.gz');
+          -        try{
+          +        $scratch=$this->acquireReadScratch($destination);$tmp=null;
+          +        try{
+          +            $tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-backup-'.bin2hex(random_bytes(16)).'.ndjson.gz';
+                       $mediaLock=$this->acquireMediaWriteLock();
+                       try{$manifest=$this->writeSnapshot($tmp,$actorUserId);}finally{fclose($mediaLock);}
+                       $this->encryptFile($tmp,$destination,$passphrase);
+          @@ -57,7 +58,7 @@
+                           'excluded_machine_identity'=>$manifest['excluded_machine_identity'],
+                           'schema_versions'=>$manifest['schema_versions'],'created_at'=>$manifest['created_at'],
+                       ];
+          -        }finally{ @unlink($tmp); }
+          +        }finally{ if($tmp!==null)@unlink($tmp);fclose($scratch['lock']); }
+               }
+           
+               public function restoreEncryptedToEmptyTarget(string $source,string $passphrase,int $actorUserId=0): array
+          @@ -77,8 +78,8 @@
+               public function inspectEncrypted(string $source,string $passphrase): array
+               {
+                   self::requireSodium();self::validatePassphrase($passphrase);
+          -        $tmp=$this->tempPath('business-inspect','.ndjson.gz');
+          -        try{$this->decryptFile($source,$tmp,$passphrase);
+          +        $scratch=$this->acquireReadScratch($source);$tmp=null;
+          +        try{$tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-inspect-'.bin2hex(random_bytes(16)).'.ndjson.gz';$this->decryptFile($source,$tmp,$passphrase);
+                       $manifest=$this->readManifest($tmp);
+                       $schema=$manifest['schema_version']??0;
+                       if(!in_array($schema,[1,2],true))throw new RecoveryException('backup_contract','فرمت پشتیبان پشتیبانی نمی‌شود.',422);
+          @@ -101,7 +102,7 @@
+                           $manifest['target_kind']=$proof===null?'empty':'verified_fresh_seed';
+                           $manifest['target_ready']=true;
+                       }catch(RecoveryException $e){$manifest['target_issue']=['code'=>$e->errorCode,'message'=>$e->getMessage()];}
+          -            return $manifest;}finally{@unlink($tmp);}
+          +            return $manifest;}finally{if($tmp!==null)@unlink($tmp);fclose($scratch['lock']);}
+               }
+           
+               /**
+          @@ -140,6 +141,7 @@
+                           $this->gzLine($gz,['kind'=>'table','name'=>$table,'columns'=>$columns]);
+                           $stmt=$this->pdo->query('SELECT * FROM `'.str_replace('`','``',$table).'` ORDER BY '.$this->stableOrder($table,$columns));
+                           while($row=$stmt->fetch(PDO::FETCH_ASSOC)){
+          +                    if($table==='settings'&&($row['setting_key']??'')===PublicAuthorityStateService::RESTORE_SOURCE_KEY)continue;
+                               if($table==='settlement_records'&&array_key_exists('final_print_job_id',$row))$row['final_print_job_id']=null;
+                               $payload=['kind'=>'row','table'=>$table,'value'=>$row];$json=self::json($payload);
+                               hash_update($ctx,$json."\n");$this->gzRawLine($gz,$json);$counts[$table]++;
+          @@ -264,7 +266,7 @@
+                               $table=(string)($entry['table']??'');$row=$entry['value']??null;
+                               if($table===''||$table!==$current||!is_array($row))throw new RecoveryException('backup_contract','ترتیب رکوردهای پشتیبان معتبر نیست.',422);
+                               hash_update($hashCtx[$table],$trim."\n");
+          -                    if(!in_array($table,self::LEGACY_TRANSPORT_TABLES,true))$this->insertRow($table,$row);
+          +                    if(!in_array($table,self::LEGACY_TRANSPORT_TABLES,true)&&!($table==='settings'&&($row['setting_key']??'')===PublicAuthorityStateService::RESTORE_SOURCE_KEY))$this->insertRow($table,$row);
+                               $counts[$table]++;continue;
+                           }
+                           if($kind==='footer'){$footer=$entry;break;}
+          @@ -291,7 +293,10 @@
+                       foreach(['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $transportTable){
+                           try{$this->pdo->exec('DELETE FROM `'.$transportTable.'`');}catch(Throwable){}
+                       }
+          -            if($this->authorityState!==null)$this->authorityState->markRestoreRequired('business_restore');
+          +            if($this->authorityState!==null){
+          +                if(in_array('settings',$restoreTables,true))$this->authorityState->markBusinessRestoreRequired((string)($manifest['source_installation_id']??''),$operation);
+          +                else $this->authorityState->markRestoreRequired('business_restore');
+          +            }
+                       $this->pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+                       // The target must be empty; never overwrite pre-existing media on a different machine.
+                       if($mediaStage!==null){
+          @@ -746,6 +751,49 @@
+                   return $path;
+               }
+           
+          +    /** Dedicated, versioned scratch namespace for pre-mutation operations only.
+          +     * Never sweep recovery-tmp, restore journals, or user backup destinations.
+          +     * After a killed process, the next holder of the stable lock removes only
+          +     * abandoned scratch files in this namespace. This is not secure erase.
+          +     */
+          +    private function acquireReadScratch(string $externalPath): array
+          +    {
+          +        $root=realpath($this->observability->dataRoot());
+          +        if($root===false||!is_dir($root))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
+          +        $dir=$root.DIRECTORY_SEPARATOR.'recovery-read-scratch-v1';
+          +        if(is_link($dir)||(!is_dir($dir)&&!@mkdir($dir,0700)&&!is_dir($dir)))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
+          +        $canonical=static function(string $p):string{$p=rtrim(str_replace('\\','/',$p),'/');return PHP_OS_FAMILY==='Windows'?strtolower($p):$p;};
+          +        $actual=realpath($dir);
+          +        if($actual===false||$canonical($actual)!==$canonical($dir)||is_link($dir))throw new RecoveryException('temp_unavailable','مسیر موقت پشتیبان معتبر نیست.',500);
+          +        if(PHP_OS_FAMILY!=='Windows'&&((fileperms($dir)&0077)!==0))throw new RecoveryException('temp_unavailable','مجوز فضای موقت پشتیبان معتبر نیست.',500);
+          +        $external=realpath($externalPath);
+          +        if($external===false){$parent=realpath(dirname($externalPath));if($parent!==false)$external=$parent.DIRECTORY_SEPARATOR.basename($externalPath);}
+          +        if($external!==false&&($canonical($external)===$canonical($dir)||str_starts_with($canonical($external),$canonical($dir).'/')))throw new RecoveryException('invalid_path','مسیر موقت داخلی برای فایل پشتیبان مجاز نیست.',422);
+          +        $lockPath=$dir.DIRECTORY_SEPARATOR.'.scratch.lock';
+          +        if(is_link($lockPath)||(file_exists($lockPath)&&!is_file($lockPath)))throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
+          +        $lock=@fopen($lockPath,'c+b');
+          +        if(!$lock)throw new RecoveryException('temp_unavailable','قفل فضای موقت در دسترس نیست.',500);
+          +        try{
+          +            if(!flock($lock,LOCK_EX|LOCK_NB))throw new RecoveryException('backup_scratch_busy','عملیات دیگری روی پشتیبان در جریان است.',409);
+          +            clearstatcache(true,$lockPath);
+          +            $ls=@lstat($lockPath);$fs=fstat($lock);
+          +            if(is_link($lockPath)||!is_array($ls)||!is_array($fs)||$ls['ino']!==$fs['ino']||$ls['dev']!==$fs['dev']||$ls['nlink']!==1)throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
+          +            @chmod($lockPath,0600);
+          +            $entries=@scandir($dir);
+          +            if($entries===false)throw new RecoveryException('temp_unavailable','فضای موقت قابل بررسی نیست.',500);
+          +            // Validate every candidate before removing anything. Never follow links.
+          +            $orphans=[];
+          +            foreach($entries as $entry){
+          +                if(!preg_match('/^business-(?:backup|inspect)-[a-f0-9]{32}\.ndjson\.gz$/D',$entry))continue;
+          +                $file=$dir.DIRECTORY_SEPARATOR.$entry;$st=@lstat($file);
+          +                if(!is_array($st)||is_link($file)||!is_file($file)||$st['nlink']!==1||$canonical((string)realpath($file))!==$canonical($file))throw new RecoveryException('backup_scratch_cleanup_pending','فایل موقت نامعتبر است؛ نیازمند بررسی.',409);
+          +                $orphans[]=$file;
+          +            }
+          +            foreach($orphans as $file)if(!@unlink($file))throw new RecoveryException('backup_scratch_cleanup_pending','پاک‌سازی فایل موقت کامل نشد.',500);
+          +            return ['dir'=>$dir,'lock'=>$lock];
+          +        }catch(Throwable $e){fclose($lock);throw $e;}
+          +    }
+          +
+               private function tempPath(string $prefix,string $suffix): string
+               {
+                   $dir=$this->observability->dataRoot().DIRECTORY_SEPARATOR.'recovery-tmp';if(!is_dir($dir)&&!@mkdir($dir,0700,true)&&!is_dir($dir))throw new RecoveryException('temp_unavailable','فضای موقت بازیابی آماده نیست.',500);
+          --- /dev/null
+          +++ b/local/tools/restore-business-backup.php
+          @@ -0,0 +1,35 @@
+          +<?php
+          +declare(strict_types=1);
+          +// Explicit local operator recovery. Existing Browser Setup and BusinessBackupService remain authoritative.
+          +if(PHP_SAPI!=='cli'){http_response_code(404);exit(2);}
+          +if(($argv[1]??'')!=='restore'||!in_array('--confirm-services-stopped',$argv,true)){
+          +    fwrite(STDERR,"Offline recovery only. Stop all application writers and pass --confirm-services-stopped.\n");exit(2);
+          +}
+          +function offline_arg(array $args,string $name):string{
+          +    $matches=array_values(array_filter($args,static fn($a)=>str_starts_with($a,$name.'=')));
+          +    if(count($matches)!==1)return '';
+          +    return substr($matches[0],strlen($name)+1);
+          +}
+          +function offline_fail(string $code,int $exit=2):never{
+          +    fwrite(STDERR,json_encode(['success'=>false,'code'=>$code],JSON_THROW_ON_ERROR).PHP_EOL);exit($exit);
+          +}
+          +$target=offline_arg($argv,'--target-installation');$source=offline_arg($argv,'--input');$sha=strtolower(offline_arg($argv,'--sha256'));$passFile=offline_arg($argv,'--passphrase-file');
+          +if($target===''||!preg_match('/^[a-f0-9]{64}$/D',$sha)||$source===''||$passFile==='')offline_fail('recovery_arguments_invalid');
+          +if(is_link($source)||!is_file($source)||!is_readable($source)||is_link($passFile)||!is_file($passFile)||!is_readable($passFile)||realpath($source)===realpath($passFile))offline_fail('recovery_file_invalid');
+          +$passRaw=file_get_contents($passFile,false,null,0,1027);if(!is_string($passRaw)||strlen($passRaw)>1026)offline_fail('recovery_passphrase_invalid');$pass=rtrim($passRaw,"\r\n");unset($passRaw);if(strlen($pass)<12||strlen($pass)>1024)offline_fail('recovery_passphrase_invalid');
+          +$web=dirname(__DIR__);$root=dirname($web);$configPath=$root.'/config.php';$lockPath=$root.'/install.lock';$bindingPath=$web.'/.sokna-installation.json';
+          +try{
+          +    foreach([$configPath,$lockPath,$bindingPath] as $path)if(!is_file($path)||is_link($path))offline_fail('recovery_target_not_bound');
+          +    $config=require $configPath;$lock=json_decode((string)file_get_contents($lockPath),true,32,JSON_THROW_ON_ERROR);$binding=json_decode((string)file_get_contents($bindingPath),true,32,JSON_THROW_ON_ERROR);$version=trim((string)file_get_contents($web.'/VERSION.txt'));
+          +    if(!is_array($config)||!is_array($lock)||!is_array($binding)||$version===''||($config['installation']['id']??'')!==$target||($lock['format']??'')!=='sokna-install-lock-v3'||($lock['installation_id']??'')!==$target||($binding['format']??'')!=='sokna-local-installation-binding-v1'||($binding['installation_id']??'')!==$target||($binding['web_version']??'')!==$version)offline_fail('recovery_target_not_bound');
+          +    if(!hash_equals($sha,(string)hash_file('sha256',$source)))offline_fail('recovery_source_hash_mismatch');
+          +    require_once $web.'/bootstrap.php';$core=sokna_local_bootstrap($config);$data=(string)($config['app']['data_dir']??'');
+          +    if($data===''||realpath($data)===false||realpath($core->observability()->dataRoot())!==realpath($data))offline_fail('recovery_data_root_mismatch');
+          +    $db=$core->database();$q=$db->prepare("SELECT setting_value FROM settings WHERE setting_key='installation.id'");$q->execute();if($q->fetchColumn()!==$target)offline_fail('recovery_database_identity_mismatch');$q->closeCursor();
+          +    // No migration, reset, delete or bypass here. The existing engine proves pristine target,
+          +    // validates the authenticated stream, and owns transaction, media and authority fencing.
+          +    $result=$core->businessBackup()->restoreEncryptedToEmptyTarget($source,$pass,0);
+          +    unset($pass);
+          +    if(($result['restored']??false)!==true)offline_fail('recovery_outcome_unverified',1);
+          +    echo json_encode(['success'=>true,'restored'=>true,'target_installation_id'=>$target,'source_sha256'=>$sha,'operational_ready'=>false,'next_action'=>'verify_recovery_receipt_and_reenroll_public_before_intake','recovery'=>$result],JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR).PHP_EOL;
+          +}catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){fwrite(STDERR,json_encode(['success'=>false,'code'=>$e->errorCode,'message'=>$e->getMessage()],JSON_UNESCAPED_UNICODE).PHP_EOL);exit(1);}catch(Throwable){offline_fail('recovery_outcome_unverified_preserve_files',1);}
+          --- a/public/authority-recovery.php
+          +++ b/public/authority-recovery.php
+          @@ -77,6 +77,20 @@
+               catch(Throwable){ar_json(['ok'=>false,'error'=>'authority_recovery_failed'],500);}
+           }
+           
+          +// Device takeover uses a separately scoped owner-issued code. No change to the stable Emergency page.
+          +if($method==='POST'&&in_array($action,['device_takeover_preview','device_takeover_complete'],true)){
+          +    $body=json_decode((string)file_get_contents('php://input'),true);
+          +    if(!is_array($body)||!is_string($body['expected_source']??null)||!is_string($body['new_installation_id']??null)||!is_string($body['enrollment_code']??null))ar_json(['ok'=>false,'error'=>'invalid_json'],400);
+          +    try{
+          +        $source=$body['expected_source'];$target=$body['new_installation_id'];$code=$body['enrollment_code'];
+          +        if($source===$target||strlen($code)>128||$service->effectiveDefaultInstallationId(trim($core->config()->string('app.default_installation_id','')))!==$source)throw new PublicUpdateException('takeover_source_not_default','Restored source is not the current Public binding.',409);
+          +        if($action==='device_takeover_preview')ar_json($core->takeover()->previewBound($target,$code,$source));
+          +        if(!is_int($body['expected_epoch']??null)||!is_string($body['new_shared_secret']??null)||!preg_match('/^[a-f0-9]{64}$/D',$body['new_shared_secret']))ar_json(['ok'=>false,'error'=>'invalid_json'],400);
+          +        ar_json($core->takeover()->complete($target,$code,$body['new_shared_secret'], '',$source,$body['expected_epoch']));
+          +    }catch(PublicUpdateException $e){ar_json(['ok'=>false,'error'=>$e->errorCode],$e->httpStatus);}
+          +    catch(Throwable){ar_json(['ok'=>false,'error'=>'authority_recovery_failed'],500);}
+          +}
+          +
+           session_name('sokna_public_authority_recovery');
+           session_set_cookie_params(['httponly'=>true,'secure'=>ar_https(),'samesite'=>'Strict','path'=>'/']);
+           session_start();
+          --- /dev/null
+          +++ b/public/database/migrations/0013_verified_takeover_binding.sql
+          @@ -0,0 +1,2 @@
+          +-- Only newly guarded transfers may change the implicit Public installation binding.
+          +ALTER TABLE installation_takeovers ADD COLUMN binding_epoch BIGINT UNSIGNED NULL DEFAULT NULL AFTER completed_at;
+          --- a/public/src/Authority/AuthorityEpochService.php
+          +++ b/public/src/Authority/AuthorityEpochService.php
+          @@ -8,10 +8,11 @@
+           use Sokna\PublicEdge\Emergency\EmergencyAccessService;
+           use Sokna\PublicEdge\Emergency\PairingSecretStore;
+           use Sokna\PublicEdge\Emergency\PublicUpdateException;
+          +use Sokna\PublicEdge\Guest\GuestMediaStore;
+           
+           final class AuthorityEpochService
+           {
+          -    public function __construct(private readonly PDO $pdo, private readonly PairingSecretStore $secrets, private readonly EmergencyAccessService $access) {}
+          +    public function __construct(private readonly PDO $pdo, private readonly PairingSecretStore $secrets, private readonly EmergencyAccessService $access, private readonly ?GuestMediaStore $media=null) {}
+           
+               public function fenceRestore(string $installationId,int $epoch): array
+               {
+          @@ -107,8 +108,8 @@
+               {
+                   $this->validId($installationId);$this->pdo->beginTransaction();
+                   try{
+          -            $q=$this->pdo->prepare('SELECT authority_epoch,authority_state FROM installations WHERE installation_id=? FOR UPDATE');$q->execute([$installationId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          -            if(!is_array($row))throw new PublicUpdateException('installation_not_found','Installation is not active.',404);
+          +            $q=$this->pdo->prepare('SELECT authority_epoch,authority_state,active,revoked_at FROM installations WHERE installation_id=? FOR UPDATE');$q->execute([$installationId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +            if(!is_array($row)||!(bool)$row['active']||!empty($row['revoked_at']))throw new PublicUpdateException('installation_not_found','Installation is not active.',404);
+                       if((int)$row['authority_epoch']!==$epoch)throw new PublicUpdateException('authority_epoch_mismatch','Authority epoch does not match.',409);
+                       if((string)$row['authority_state']==='active'){
+                           // A lost HTTP acknowledgement of successful activation must
+          @@ -121,25 +122,75 @@
+                       $hb=$this->pdo->prepare('SELECT COUNT(*) FROM installation_heartbeats WHERE installation_id=? AND last_seen_at>=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 90 SECOND)');$hb->execute([$installationId]);
+                       $models=$this->pdo->prepare('SELECT COUNT(*) FROM remote_read_models WHERE installation_id=?');$models->execute([$installationId]);
+                       if((int)$hb->fetchColumn()<1||(int)$models->fetchColumn()<1)throw new PublicUpdateException('authority_resync_incomplete','Fresh heartbeat and read-model snapshot are required before activation.',409);
+          +            $this->requireCompletedTakeoverSync($installationId,$epoch);
+                       $this->pdo->prepare("UPDATE installations SET authority_state='active',remote_enabled=1,order_intake_enabled=1,authority_changed_at=UTC_TIMESTAMP(6) WHERE installation_id=?")->execute([$installationId]);
+                       $this->pdo->commit();$this->access->audit('authority_activated',$installationId,'signed-local',['authority_epoch'=>$epoch]);
+                       return ['status'=>200,'body'=>['ok'=>true,'installation_id'=>$installationId,'authority_epoch'=>$epoch,'authority_state'=>'active']];
+                   }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+               }
+           
+          +    /** Additional first-activation guard for a newly identified takeover only.
+          +     * Ordinary same-identity recovery/owner move keeps its existing policy. */
+          +    private function requireCompletedTakeoverSync(string $id,int $epoch): void
+          +    {
+          +        $q=$this->pdo->prepare("SELECT id FROM installation_takeovers WHERE new_installation_id=? AND status='completed' LIMIT 1");
+          +        $q->execute([$id]);if($q->fetchColumn()===false)return;
+          +        $incomplete=static function(): never {throw new PublicUpdateException('takeover_resync_incomplete','Full destination synchronization is required before takeover activation.',409);};
+          +        $q=$this->pdo->prepare('SELECT sequence_no FROM auth_snapshot_watermarks WHERE installation_id=? AND authority_epoch=?');$q->execute([$id,$epoch]);
+          +        if((int)$q->fetchColumn()<1)$incomplete();
+          +        $q=$this->pdo->prepare('SELECT 1 FROM guest_availability_state WHERE installation_id=?');$q->execute([$id]);if($q->fetchColumn()===false)$incomplete();
+          +        $q=$this->pdo->prepare('SELECT r.media_manifest_json FROM guest_active_revisions a JOIN guest_publish_revisions r ON r.installation_id=a.installation_id AND r.revision_id=a.revision_id WHERE a.installation_id=?');$q->execute([$id]);$raw=$q->fetchColumn();
+          +        if(!is_string($raw)||$this->media===null)$incomplete();
+          +        $manifest=json_decode($raw,true);if(!is_array($manifest))$incomplete();
+          +        $expected=['operations','preparation','inventory','inventory_cost','operations_workspace','subscribers','reports','notifications','deferred_context','table_draft_context','guest_operational'];
+          +        $q=$this->pdo->prepare('SELECT m.model_key FROM remote_read_models m JOIN remote_projection_model_cursors c ON c.installation_id=m.installation_id AND c.model_key=m.model_key AND c.source_version=m.source_version WHERE m.installation_id=? AND c.authority_epoch=? AND c.last_sequence>0');$q->execute([$id,$epoch]);
+          +        if(array_diff($expected,$q->fetchAll(PDO::FETCH_COLUMN))!==[])$incomplete();
+          +        $status=$this->media->manifestStatus($id,$manifest);if(($status['ok']??false)!==true||($status['complete']??false)!==true)$incomplete();
+          +    }
+          +
+               /** Authenticated, read-only pairing proof for durable Local recovery. */
+               public function status(string $installationId): array
+               {
+                   $this->validId($installationId);
+          -        $q=$this->pdo->prepare('SELECT installation_id,authority_epoch,authority_state,remote_enabled,order_intake_enabled FROM installations WHERE installation_id=? LIMIT 1');
+          +        $q=$this->pdo->prepare('SELECT installation_id,authority_epoch,authority_state,remote_enabled,order_intake_enabled,public_move_intake_paused FROM installations WHERE installation_id=? LIMIT 1');
+                   $q->execute([$installationId]);
+                   $row=$q->fetch(PDO::FETCH_ASSOC);
+                   if(!is_array($row))throw new PublicUpdateException('installation_not_found','Installation not found.',404);
+          -        return ['ok'=>true,'installation_id'=>(string)$row['installation_id'],
+          +        $proof=null;
+          +        $q=$this->pdo->prepare("SELECT t.old_installation_id,t.binding_epoch FROM installation_takeovers t JOIN installations i ON i.installation_id=t.old_installation_id WHERE t.new_installation_id=? AND t.status='completed' AND t.binding_epoch=? AND i.active=0 AND i.revoked_at IS NOT NULL AND i.authority_epoch+1=t.binding_epoch LIMIT 2");
+          +        $q->execute([$installationId,(int)$row['authority_epoch']]);$edges=$q->fetchAll(PDO::FETCH_ASSOC);
+          +        if(count($edges)===1)$proof=['source_installation_id'=>(string)$edges[0]['old_installation_id'],'binding_epoch'=>(int)$edges[0]['binding_epoch']];
+          +        return ['ok'=>true,'installation_id'=>(string)$row['installation_id'],'takeover_proof'=>$proof,
+                       'authority_epoch'=>(int)$row['authority_epoch'],
+                       'authority_state'=>(string)$row['authority_state'],
+                       'remote_enabled'=>(bool)$row['remote_enabled'],
+          -            'order_intake_enabled'=>(bool)$row['order_intake_enabled']];
+          +            'order_intake_enabled'=>(bool)$row['order_intake_enabled'],'public_move_intake_paused'=>(bool)$row['public_move_intake_paused']];
+          +    }
+          +
+          +    /** Resolve only the implicit configured binding, never an explicit request identity.
+          +     * Historical completed offers have no binding_epoch and cannot authorize rerouting.
+          +     * A destination awaiting synchronization is deliberately not routable by default. */
+          +    public function effectiveDefaultInstallationId(string $configured,bool $includePendingProof=false): string
+          +    {
+          +        if(preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$configured)!==1)return '';
+          +        $id=$configured;$seen=[];$transferred=false;$minimumEpoch=1;
+          +        $get=$this->pdo->prepare('SELECT installation_id,active,revoked_at,authority_epoch,authority_state FROM installations WHERE installation_id=?');
+          +        for($i=0;$i<32;$i++){
+          +            if(isset($seen[$id]))return '';$seen[$id]=true;
+          +            $get->execute([$id]);$row=$get->fetch(PDO::FETCH_ASSOC);$get->closeCursor();
+          +            if(!is_array($row)||!hash_equals($id,(string)$row['installation_id'])||(int)$row['authority_epoch']<$minimumEpoch)return '';
+          +            if((bool)$row['active']&&$row['revoked_at']===null){
+          +                // Same-installation recovery retains its established read-only routing.
+          +                return !$transferred||$row['authority_state']==='active'||($includePendingProof&&$row['authority_state']==='resync_required')?$id:'';
+          +            }
+          +            if((bool)$row['active']||$row['revoked_at']===null)return '';
+          +            $q=$this->pdo->prepare("SELECT old_installation_id,new_installation_id,binding_epoch FROM installation_takeovers WHERE old_installation_id=? AND status='completed' AND binding_epoch IS NOT NULL LIMIT 2");
+          +            $q->execute([$id]);$edges=$q->fetchAll(PDO::FETCH_ASSOC);
+          +            if(count($edges)!==1||!hash_equals($id,(string)$edges[0]['old_installation_id'])||(int)$edges[0]['binding_epoch']!==(int)$row['authority_epoch']+1)return '';
+          +            $id=(string)$edges[0]['new_installation_id'];$minimumEpoch=(int)$edges[0]['binding_epoch'];$transferred=true;
+          +            if(preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$id)!==1)return '';
+          +        }
+          +        return '';
+               }
+           
+               public function currentEpoch(string $installationId): int
+          --- a/public/src/Core/Bootstrap.php
+          +++ b/public/src/Core/Bootstrap.php
+          @@ -289,7 +289,7 @@
+           
+               public function authorityEpoch(): AuthorityEpochService
+               {
+          -        return $this->authorityEpochService ??= new AuthorityEpochService($this->database(),$this->pairingSecrets(),$this->emergencyAccess());
+          +        return $this->authorityEpochService ??= new AuthorityEpochService($this->database(),$this->pairingSecrets(),$this->emergencyAccess(),$this->guestMedia());
+               }
+           
+               private function storageRoot(): string
+          --- a/public/src/Core/Migrations.php
+          +++ b/public/src/Core/Migrations.php
+          @@ -103,6 +103,9 @@
+                       $raw=file_get_contents($catalog['0012_auth_snapshot_watermark']);
+                       ResumablePublicSchema::verifyWatermark($this->pdo,$raw);
+                   }
+          +        if (in_array('0013_verified_takeover_binding',$applied,true)) {
+          +            ResumablePublicSchema::verifyTakeoverBinding($this->pdo,file_get_contents($catalog['0013_verified_takeover_binding']));
+          +        }
+                   return $applied;
+               }
+           
+          --- a/public/src/Core/ResumablePublicSchema.php
+          +++ b/public/src/Core/ResumablePublicSchema.php
+          @@ -23,6 +23,7 @@
+                   '0010_public_move_owner_receipts' => 'aed35511863d1e27e3ac1b02ae76c32baf6545061f792c38222497633be960ad',
+                   '0011_public_move_intake_pause' => '1d7482a33f81a228bfce7becfe74c80d659d5e2a43ac225560a8df0da7c0e26d',
+                   '0012_auth_snapshot_watermark' => '9fb7bd07ffbe6c17683efb4bf290d88b45d62ffd250cd96507c7ca494db0d728',
+          +        '0013_verified_takeover_binding' => '7e45d02136b770159e67e57ea031fbb0d4f6b02876ca0f71f8d872f2f3e5bc02',
+               ];
+           
+               public static function supports(string $version): bool
+          @@ -115,9 +116,20 @@
+                       if (count($statements)!==1) throw new RuntimeException('Watermark migration statement contract changed.');
+                       $pdo->exec($statements[0]);
+                       self::verifyWatermark($pdo,$rawSql);
+          +        } elseif ($version === '0013_verified_takeover_binding') {
+          +            if (count($statements)!==1) throw new RuntimeException('Takeover binding migration statement contract changed.');
+          +            self::column($pdo,'installation_takeovers','binding_epoch','BIGINT UNSIGNED NULL DEFAULT NULL','completed_at','bigint unsigned','YES',null);
+          +            self::verifyTakeoverBinding($pdo,$rawSql);
+                   } else {
+                       throw new RuntimeException('Unsupported resumable schema migration version.');
+                   }
+          +    }
+          +
+          +    public static function verifyTakeoverBinding(PDO $pdo,string $rawSql): void
+          +    {
+          +        if (!hash_equals(self::PINNED['0013_verified_takeover_binding'],hash('sha256',$rawSql)))
+          +            throw new RuntimeException('Takeover binding migration identity mismatch.');
+          +        self::assertColumn('installation_takeovers','binding_epoch',self::columnInfo($pdo,'installation_takeovers','binding_epoch'),'bigint unsigned','YES',null);
+               }
+           
+               /** Read-only verification for the immutable watermark schema. */
+          --- a/public/src/Emergency/PublicTakeoverService.php
+          +++ b/public/src/Emergency/PublicTakeoverService.php
+          @@ -1,22 +1,110 @@
+           <?php
+           declare(strict_types=1);
+           namespace Sokna\PublicEdge\Emergency;
+          +
+           use PDO;
+          +use PDOException;
+           use Throwable;
+          +
+           final class PublicTakeoverService
+           {
+               public function __construct(private readonly PDO $pdo,private readonly PairingSecretStore $secrets,private readonly EmergencyAccessService $access){}
+          +
+               public function killSwitch(string $installationId,string $actor='emergency'): array
+               {
+                   $this->validId($installationId);$q=$this->pdo->prepare('UPDATE installations SET remote_enabled=0,order_intake_enabled=0 WHERE installation_id=? AND revoked_at IS NULL');$q->execute([$installationId]);if($q->rowCount()<1)throw new PublicUpdateException('installation_not_found','Installation is not active.',404);$this->access->audit('kill_switch',$installationId,$actor,[]);return ['ok'=>true,'installation_id'=>$installationId,'remote_enabled'=>false,'order_intake_enabled'=>false];
+               }
+          +
+               public function createOffer(string $oldId,string $newId,int $ttlSeconds=1800,string $actor='emergency'): array
+               {
+          -        $this->validId($oldId);$this->validId($newId);if($oldId===$newId)throw new PublicUpdateException('takeover_same_identity','A takeover requires a fresh installation identity.');$ttl=max(300,min(86400,$ttlSeconds));$exists=$this->pdo->prepare('SELECT COUNT(*) FROM installations WHERE installation_id=? AND active=1 AND revoked_at IS NULL');$exists->execute([$oldId]);if((int)$exists->fetchColumn()<1)throw new PublicUpdateException('installation_not_found','Source installation is not active.',404);$code=strtoupper(implode('-',str_split(bin2hex(random_bytes(12)),8)));$this->pdo->prepare("UPDATE installation_takeovers SET status='cancelled' WHERE new_installation_id=? AND status='pending'")->execute([$newId]);$q=$this->pdo->prepare("INSERT INTO installation_takeovers(old_installation_id,new_installation_id,code_hash,status,expires_at) VALUES(?,?,?,'pending',DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))");$q->execute([$oldId,$newId,password_hash($code,PASSWORD_DEFAULT),$ttl]);$this->access->audit('takeover_offer',$oldId,$actor,['new_installation_id'=>$newId,'ttl_seconds'=>$ttl]);return ['ok'=>true,'old_installation_id'=>$oldId,'new_installation_id'=>$newId,'enrollment_code'=>$code,'expires_in_seconds'=>$ttl];
+          +        $this->validId($oldId);$this->validId($newId);
+          +        if($oldId===$newId)throw new PublicUpdateException('takeover_same_identity','A takeover requires a fresh installation identity.');
+          +        $ttl=max(300,min(86400,$ttlSeconds));
+          +        $this->pdo->beginTransaction();
+          +        try {
+          +            $this->lockActiveSource($oldId);
+          +            $this->requireFreshDestination($newId);
+          +            $this->requireNoUnresolvedWork($oldId);
+          +            // Never supersede an outstanding offer for a different source or destination.
+          +            $q=$this->pdo->prepare("SELECT id FROM installation_takeovers WHERE (old_installation_id=? OR new_installation_id=?) AND status='pending' AND expires_at>=UTC_TIMESTAMP() LIMIT 1 FOR UPDATE");
+          +            $q->execute([$oldId,$newId]);
+          +            if($q->fetchColumn()!==false)throw new PublicUpdateException('takeover_offer_pending','An outstanding takeover offer must be resolved or expire first.',409);
+          +            $code=strtoupper(implode('-',str_split(bin2hex(random_bytes(12)),8)));
+          +            $q=$this->pdo->prepare("INSERT INTO installation_takeovers(old_installation_id,new_installation_id,code_hash,status,expires_at) VALUES(?,?,?,'pending',DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND))");
+          +            $q->execute([$oldId,$newId,password_hash($code,PASSWORD_DEFAULT),$ttl]);
+          +            $this->pdo->commit();
+          +        }catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+          +        $this->access->audit('takeover_offer',$oldId,$actor,['new_installation_id'=>$newId,'ttl_seconds'=>$ttl]);
+          +        return ['ok'=>true,'old_installation_id'=>$oldId,'new_installation_id'=>$newId,'enrollment_code'=>$code,'expires_in_seconds'=>$ttl];
+               }
+          -    public function complete(string $newId,string $code,string $newSecret,string $displayName=''): array
+          +
+          +    /** Read-only verification of the owner-issued offer before persisting a Local intent. */
+          +    public function previewBound(string $newId,string $code,string $sourceId): array
+               {
+          -        $this->validId($newId);if($code===''||strlen($newSecret)<32)throw new PublicUpdateException('reenroll_invalid','Enrollment credentials are invalid.',401);$this->pdo->beginTransaction();try{$q=$this->pdo->prepare("SELECT * FROM installation_takeovers WHERE new_installation_id=? AND status='pending' AND expires_at>=UTC_TIMESTAMP() ORDER BY id DESC LIMIT 1 FOR UPDATE");$q->execute([$newId]);$row=$q->fetch(PDO::FETCH_ASSOC);if(!$row||!password_verify($code,(string)$row['code_hash']))throw new PublicUpdateException('reenroll_denied','Enrollment code is invalid or expired.',401);$old=(string)$row['old_installation_id'];$src=$this->pdo->prepare('SELECT display_name FROM installations WHERE installation_id=? AND active=1 AND revoked_at IS NULL FOR UPDATE');$src->execute([$old]);$oldRow=$src->fetch(PDO::FETCH_ASSOC);if(!$oldRow)throw new PublicUpdateException('source_revoked','Source installation is no longer active.',409);$name=trim($displayName)!==''?trim($displayName):(string)($oldRow['display_name']??'');$this->pdo->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,revoked_at) VALUES(?,?,1,1,1,NULL) ON DUPLICATE KEY UPDATE display_name=VALUES(display_name),active=1,remote_enabled=1,order_intake_enabled=1,revoked_at=NULL")->execute([$newId,$name]);$this->secrets->put($newId,$newSecret);$this->pdo->prepare('UPDATE installations SET active=0,remote_enabled=0,order_intake_enabled=0,revoked_at=UTC_TIMESTAMP() WHERE installation_id=?')->execute([$old]);$this->pdo->prepare("UPDATE installation_takeovers SET status='completed',completed_at=UTC_TIMESTAMP() WHERE id=?")->execute([(int)$row['id']]);$this->pdo->commit();$this->access->audit('takeover_completed',$newId,'reenroll',['old_installation_id'=>$old]);return ['ok'=>true,'old_installation_id'=>$old,'new_installation_id'=>$newId,'old_revoked'=>true];}catch(Throwable $e){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $e;}
+          +        $this->validId($newId);$this->validId($sourceId);
+          +        $q=$this->pdo->prepare("SELECT t.old_installation_id,t.code_hash,i.authority_epoch FROM installation_takeovers t JOIN installations i ON i.installation_id=t.old_installation_id WHERE t.new_installation_id=? AND t.status='pending' AND t.expires_at>=UTC_TIMESTAMP() AND i.active=1 AND i.revoked_at IS NULL AND i.authority_state='active' ORDER BY t.id DESC LIMIT 1");
+          +        $q->execute([$newId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +        if(!$row||!hash_equals($sourceId,(string)$row['old_installation_id'])||!password_verify($code,(string)$row['code_hash']))throw new PublicUpdateException('takeover_offer_mismatch','Owner offer does not match the restored source and destination.',409);
+          +        $epoch=(int)$row['authority_epoch'];if($epoch<1||$epoch>=2147483600)throw new PublicUpdateException('authority_epoch_limit','Invalid authority generation.',409);
+          +        return ['ok'=>true,'old_installation_id'=>$sourceId,'new_installation_id'=>$newId,'authority_epoch'=>$epoch+1];
+               }
+          +
+          +    public function complete(string $newId,string $code,string $newSecret,string $displayName='',?string $expectedSource=null,?int $expectedEpoch=null): array
+          +    {
+          +        $this->validId($newId);
+          +        if(trim($code)===''||strlen($newSecret)<32)throw new PublicUpdateException('reenroll_invalid','Enrollment credentials are invalid.',401);
+          +        $this->pdo->beginTransaction();
+          +        try {
+          +            $q=$this->pdo->prepare("SELECT * FROM installation_takeovers WHERE new_installation_id=? AND status='pending' AND expires_at>=UTC_TIMESTAMP() ORDER BY id DESC LIMIT 1 FOR UPDATE");
+          +            $q->execute([$newId]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +            if(!$row||!password_verify($code,(string)$row['code_hash']))throw new PublicUpdateException('reenroll_denied','Enrollment code is invalid or expired.',401);
+          +            $old=(string)$row['old_installation_id'];$src=$this->lockActiveSource($old);
+          +            $this->requireFreshDestination($newId);
+          +            // The enqueue/claim services lock this same installation row. Do not lose or replay outstanding work.
+          +            $this->requireNoUnresolvedWork($old);
+          +            $epoch=max(1,(int)$src['authority_epoch']);
+          +            if($epoch>=2147483600)throw new PublicUpdateException('authority_epoch_limit','Authority generation is outside the safe recovery window.',409);
+          +            ++$epoch;
+          +            if($expectedSource!==null||$expectedEpoch!==null){if($expectedSource!==$old||$expectedEpoch!==$epoch)throw new PublicUpdateException('takeover_offer_mismatch','Owner offer no longer matches the restored source or generation.',409);}
+          +            $name=trim($displayName)!==''?trim($displayName):(string)($src['display_name']??'');
+          +            // A plain INSERT is the final uniqueness fence, even if a concurrent pairing wins the race.
+          +            $this->pdo->prepare("INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,revoked_at,authority_epoch,authority_state,authority_epoch_required,authority_changed_at) VALUES(?,?,1,0,0,NULL,?,'resync_required',1,UTC_TIMESTAMP(6))")->execute([$newId,$name,$epoch]);
+          +            $this->secrets->put($newId,$newSecret);
+          +            $this->pdo->prepare('UPDATE installations SET active=0,remote_enabled=0,order_intake_enabled=0,revoked_at=UTC_TIMESTAMP() WHERE installation_id=?')->execute([$old]);
+          +            $this->pdo->prepare("UPDATE installation_takeovers SET status='completed',completed_at=UTC_TIMESTAMP(),binding_epoch=? WHERE id=?")->execute([$epoch,(int)$row['id']]);
+          +            $this->pdo->commit();
+          +        }catch(Throwable $e){
+          +            if($this->pdo->inTransaction())$this->pdo->rollBack();
+          +            if($e instanceof PDOException&&(int)($e->errorInfo[1]??0)===1062)throw new PublicUpdateException('takeover_destination_exists','Destination installation already exists.',409);
+          +            throw $e;
+          +        }
+          +        $this->access->audit('takeover_completed',$newId,'reenroll',['old_installation_id'=>$old,'authority_epoch'=>$epoch]);
+          +        return ['ok'=>true,'old_installation_id'=>$old,'new_installation_id'=>$newId,'old_revoked'=>true,'authority_epoch'=>$epoch,'authority_state'=>'resync_required','remote_enabled'=>false,'order_intake_enabled'=>false];
+          +    }
+          +
+          +    private function lockActiveSource(string $id): array
+          +    {
+          +        $q=$this->pdo->prepare('SELECT installation_id,display_name,authority_epoch,authority_state FROM installations WHERE installation_id=? AND active=1 AND revoked_at IS NULL FOR UPDATE');
+          +        $q->execute([$id]);$row=$q->fetch(PDO::FETCH_ASSOC);
+          +        if(!is_array($row)||!hash_equals($id,(string)$row['installation_id']))throw new PublicUpdateException('installation_not_found','Source installation is not active.',404);
+          +        if($row['authority_state']!=='active')throw new PublicUpdateException('authority_state_conflict','Source authority recovery is already in progress.',409);
+          +        return $row;
+          +    }
+          +
+          +    private function requireFreshDestination(string $id): void
+          +    {
+          +        $q=$this->pdo->prepare('SELECT installation_id FROM installations WHERE installation_id=? FOR UPDATE');
+          +        $q->execute([$id]);
+          +        if($q->fetchColumn()!==false)throw new PublicUpdateException('takeover_destination_exists','Destination installation already exists.',409);
+          +    }
+          +
+          +    private function requireNoUnresolvedWork(string $id): void
+          +    {
+          +        foreach(["SELECT id FROM realtime_requests WHERE installation_id=? AND state IN ('queued','claimed','unknown_review') LIMIT 1 FOR UPDATE", "SELECT request_id FROM deferred_work WHERE installation_id=? AND state IN ('pending_sync','needs_review') LIMIT 1 FOR UPDATE"] as $sql){
+          +            $q=$this->pdo->prepare($sql);$q->execute([$id]);
+          +            if($q->fetchColumn()!==false)throw new PublicUpdateException('takeover_unresolved_work','Resolve outstanding Public work before takeover.',409);
+          +        }
+          +    }
+          +
+               private function validId(string $id): void{if(preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$id)!==1)throw new PublicUpdateException('invalid_installation','Installation identity is invalid.');}
+           }
+          --- a/public/src/Http/AuthorityEpochHttpAdapter.php
+          +++ b/public/src/Http/AuthorityEpochHttpAdapter.php
+          @@ -20,7 +20,7 @@
+               {
+                   $v=$this->core->signedLocalRequests()->verify($installationId,$method,$path,$timestamp,$nonce,$rawBody,$signature);
+                   if(($v['ok']??false)!==true)return ['status'=>(int)$v['status'],'body'=>['ok'=>false,'error'=>(string)$v['error']]];
+          -        try{return ['status'=>200,'body'=>$this->core->authorityEpoch()->status((string)$v['installation_id'])];}
+          +        try{$body=$this->core->authorityEpoch()->status((string)$v['installation_id']);$body['default_binding_matches']=hash_equals((string)$v['installation_id'],$this->core->authorityEpoch()->effectiveDefaultInstallationId(trim($this->core->config()->string('app.default_installation_id',''))));$body['takeover_pending_binding_matches']=hash_equals((string)$v['installation_id'],$this->core->authorityEpoch()->effectiveDefaultInstallationId(trim($this->core->config()->string('app.default_installation_id','')),true));return ['status'=>200,'body'=>$body];}
+                   catch(PublicUpdateException $e){return ['status'=>$e->httpStatus,'body'=>['ok'=>false,'error'=>$e->errorCode]];}
+               }
+           
+          --- a/public/src/Http/PublicHttpKernel.php
+          +++ b/public/src/Http/PublicHttpKernel.php
+          @@ -212,7 +212,7 @@
+                       if ($method === 'POST' && $path === '/staff/login') {
+                           $form=$this->formPayload($rawBody,$headers);
+                           $installationId=trim((string)($form['installation_id']??''));
+          -                if($installationId==='')$installationId=trim($this->core->config()->string('app.default_installation_id'));
+          +                if($installationId==='')$installationId=$this->core->authorityEpoch()->effectiveDefaultInstallationId(trim($this->core->config()->string('app.default_installation_id')));
+                           $selectedProjectionId=trim((string)($form['projection_id']??''));$manualUsername=trim((string)($form['username']??''));$originTransition=preg_match('/^rebind-[a-f0-9]{24}$/D',trim((string)($form['origin_transition']??'')))===1?trim((string)$form['origin_transition']):'';$username=$manualUsername;
+                           if($username===''&&$selectedProjectionId!==''){
+                               try{$q=$this->core->database()->prepare('SELECT username FROM auth_projections WHERE installation_id=? AND projection_id=? AND active=1 LIMIT 1');$q->execute([$installationId,$selectedProjectionId]);$username=trim((string)($q->fetchColumn()?:''));}catch(\Throwable){}
+          @@ -643,7 +643,7 @@
+               {
+                   $payload = json_decode($rawBody, true);
+                   $installationId = is_array($payload) ? trim((string)($payload['installation_id'] ?? '')) : '';
+          -        if ($installationId === '') $installationId = trim($this->core->config()->string('app.default_installation_id'));
+          +        if ($installationId === '') $installationId = $this->core->authorityEpoch()->effectiveDefaultInstallationId(trim($this->core->config()->string('app.default_installation_id')));
+                   if ($installationId === '' || preg_match('/^[A-Za-z0-9._:-]{1,96}$/D', $installationId) !== 1) {
+                       return $this->json(SafeErrors::response(400, 'invalid_installation', $this->correlationId($headers)));
+                   }
+          @@ -666,7 +666,7 @@
+               private function installationId(array $query): string
+               {
+                   $candidate = trim((string)($query['installation'] ?? ''));
+          -        if ($candidate === '') $candidate = trim($this->core->config()->string('app.default_installation_id'));
+          +        if ($candidate === '') $candidate = $this->core->authorityEpoch()->effectiveDefaultInstallationId(trim($this->core->config()->string('app.default_installation_id')));
+                   if ($candidate === '' || preg_match('/^[A-Za-z0-9._:-]{1,96}$/D', $candidate) !== 1) return '';
+                   return $candidate;
+               }
+          --- a/public/src/Maintenance/RemoteBackupVaultService.php
+          +++ b/public/src/Maintenance/RemoteBackupVaultService.php
+          @@ -66,7 +66,10 @@
+                   $policy=$principal['policy']??[];$maxChunk=(int)($policy['max_chunk_bytes']??0);
+                   if($maxChunk<1)throw new MaintenanceException('vault_policy_invalid','Chunk policy is invalid.',500);
+                   $tmp=$this->tmpPath($backupId);
+          -        $out=@fopen($tmp,'wb');if(!$out)throw new MaintenanceException('vault_storage_unavailable','Could not stage upload chunk.',500);
+          +        $out=@fopen($tmp,'x+b');if(!$out)throw new MaintenanceException('vault_storage_unavailable','Could not stage upload chunk.',500);
+          +        // Unlink while open where supported: a killed worker cannot strand a named chunk.
+          +        // On platforms that cannot unlink open files, normal close/finally still cleans it.
+          +        @unlink($tmp);
+                   $hash=hash_init('sha256');$size=0;
+                   try{
+                       while(!feof($input)){
+          @@ -75,12 +78,10 @@
+                           $size+=strlen($buf);if($size>$maxChunk)throw new MaintenanceException('vault_chunk_too_large','Upload chunk exceeds configured policy.',413,['max_chunk_bytes'=>$maxChunk]);
+                           hash_update($hash,$buf);if(fwrite($out,$buf)!==strlen($buf))throw new MaintenanceException('vault_storage_write_failed','Could not stage upload chunk.',500);
+                       }
+          -            fflush($out);if(function_exists('fsync'))@fsync($out);
+          -        }finally{fclose($out);}
+          -        $actualChunkSha=hash_final($hash);
+          -        if(!hash_equals($expectedChunkSha,$actualChunkSha)){@unlink($tmp);throw new MaintenanceException('vault_chunk_hash_mismatch','Upload chunk hash does not match.',422);}
+          -        try{
+          -            return $this->withLock($backupId,function()use($principal,$backupId,$sessionId,$offset,$tmp,$size,$actualChunkSha){
+          +            if(!fflush($out)||(function_exists('fsync')&&!@fsync($out)))throw new MaintenanceException('vault_storage_write_failed','Could not flush staged upload chunk.',500);
+          +            $actualChunkSha=hash_final($hash);
+          +            if(!hash_equals($expectedChunkSha,$actualChunkSha))throw new MaintenanceException('vault_chunk_hash_mismatch','Upload chunk hash does not match.',422);
+          +            return $this->withLock($backupId,function()use($principal,$backupId,$sessionId,$offset,$out,$size,$actualChunkSha){
+                           $receipt=$this->readReceipt($backupId,false);
+                           if($receipt!==null){
+                               $this->assertPrincipalInstallation($principal,(array)($receipt['metadata']??[]));
+          @@ -104,19 +105,19 @@
+                               return $this->stateResponse($state,true)+['idempotent_chunk_replay'=>true];
+                           }
+                           if($received+$size>$expectedSize)throw new MaintenanceException('vault_artifact_size_exceeded','Chunk would exceed declared artifact size.',413);
+          -                $src=@fopen($tmp,'rb');$dst=@fopen($part,'c+b');
+          -                if(!$src||!$dst){if(is_resource($src))fclose($src);if(is_resource($dst))fclose($dst);throw new MaintenanceException('vault_storage_unavailable','Could not open durable upload artifact.',500);}
+          +                $dst=@fopen($part,'c+b');
+          +                if(!$dst)throw new MaintenanceException('vault_storage_unavailable','Could not open durable upload artifact.',500);
+                           try{
+          -                    if(fseek($dst,$received)!==0)throw new MaintenanceException('vault_storage_write_failed','Could not seek durable upload artifact.',500);
+          -                    $copied=stream_copy_to_stream($src,$dst);
+          +                    if(fseek($out,0)!==0||fseek($dst,$received)!==0)throw new MaintenanceException('vault_storage_write_failed','Could not seek durable upload artifact.',500);
+          +                    $copied=stream_copy_to_stream($out,$dst);
+                               if($copied!==$size)throw new MaintenanceException('vault_storage_write_failed','Could not append full upload chunk.',500);
+          -                    fflush($dst);if(function_exists('fsync'))@fsync($dst);
+          -                }finally{fclose($src);fclose($dst);}
+          +                    if(!fflush($dst)||(function_exists('fsync')&&!@fsync($dst)))throw new MaintenanceException('vault_storage_write_failed','Could not flush durable upload chunk.',500);
+          +                }finally{fclose($dst);}
+                           $state['received_bytes']=$received+$size;$state['updated_at']=$this->now();
+                           $this->writeJsonAtomic($this->statePath($backupId),$state);
+                           return $this->stateResponse($state,false);
+                       });
+          -        }finally{@unlink($tmp);}
+          +        }finally{fclose($out);@unlink($tmp);}
+               }
+           
+               public function finalize(array $principal,string $backupId,string $sessionId): array
+          PATCH
+          cat > "$W/takeover-resume.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          use Sokna\PublicEdge\Http\PublicHttpKernel;
+          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]??'');$temp=realpath(getenv('RUNNER_TEMP'));if(!$w||!$temp||dirname($w)!==$temp||basename($w)!=='a22')exit(2);
+          require $w.'/local/bootstrap.php';
+          // The real Public HTTP server loads its own full bootstrap in a separate process.
+          foreach(['Core/Config','Core/Database','Core/Migrations','Core/Bootstrap','Emergency/PublicUpdateException','Emergency/EmergencyAccessService','Emergency/PairingSecretStore','Guest/GuestMediaStore','Authority/AuthorityEpochService'] as $class)require_once $w.'/public/src/'.$class.'.php';$cfg=require $w.'/config.php';$pcfg=require $w.'/public/config.php';
+          if($cfg['db']['name']!=='sokna_cp150'||$cfg['db']['host']!=='127.0.0.1'||$pcfg['db']['name']!=='sokna_cp150_public'||$pcfg['db']['host']!=='127.0.0.1'||$pcfg['app']['base_url']!=='http://127.0.0.1:18766/public')exit(2);
+          $checks=[];function ck($ok,$m){global $checks;if(!$ok)throw new RuntimeException($m);$checks[]=$m;echo 'PASS '.$m.PHP_EOL;}
+          function sql(PDO $p,string $sql,array $a=[]):PDOStatement{$q=$p->prepare($sql);$q->execute($a);return $q;}
+          function rows(PDO $p):array{$r=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','users','inventory_items','inventory_movements'] as $t)$r[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);return $r;}
+          function installation(PDO $p,string $id):array|false{return sql($p,'SELECT * FROM installations WHERE installation_id=?',[$id])->fetch(PDO::FETCH_ASSOC);}
+          function request(string $path,string $method='GET',array $data=[],string &$cookie=''):array{
+            $base='http://127.0.0.1:18766/public';$headers=['Accept: text/html,application/json'];if($cookie!=='')$headers[]='Cookie: '.$cookie;
+            $opt=['method'=>$method,'ignore_errors'=>true,'follow_location'=>0,'timeout'=>20];if($method==='POST'){$headers[]='Content-Type: application/x-www-form-urlencoded';$opt['content']=http_build_query($data);}$opt['header']=implode("\r\n",$headers);
+            $r=file_get_contents($base.$path,false,stream_context_create(['http'=>$opt]));$h=$http_response_header??[];$status=0;foreach($h as $line){if(preg_match('~^HTTP/\S+ (\d+)~',$line,$m))$status=(int)$m[1];if(preg_match('/^Set-Cookie: (sokna_public_emergency=[^;]+)/i',$line,$m))$cookie=$m[1];}return ['status'=>$status,'body'=>(string)$r,'headers'=>$h];
+          }
+          function csrf(array $r):string{if(!preg_match('/name="csrf" value="([a-f0-9]{48})"/',$r['body'],$m))throw new RuntimeException('owner csrf unavailable status '.$r['status']);return $m[1];}
+          $local=sokna_local_bootstrap($cfg);$p=$local->database();$pub=\Sokna\PublicEdge\Core\Bootstrap::fromArray($pcfg);$q=$pub->database();$iid=$cfg['installation']['id'];$base=$pcfg['app']['base_url'];$auth=$pub->authorityEpoch();
+          $originalConfig=hash_file('sha256',$w.'/public/config.php');ck($auth->effectiveDefaultInstallationId($iid)===$iid,'ordinary current default preserved');
+          // The test fixture created exact 35jc schema before applying the candidate. Emulate DDL-committed/ledger-not-yet-written boundary.
+          $version='0013_verified_takeover_binding';$legacy='qa-a23-historical-old';$legacyNew='qa-a23-historical-new';
+          ck(count($pub->migrations()->appliedVersions())===12,'exact previous schema 12 migrations');
+          foreach([$legacy,$legacyNew] as $id)sql($q,"INSERT INTO installations(installation_id,display_name,active,remote_enabled,order_intake_enabled,authority_epoch,authority_state) VALUES(?,?,1,1,1,5,'active')",[$id,$id]);
+          sql($q,"UPDATE installations SET active=0,remote_enabled=0,order_intake_enabled=0,revoked_at=UTC_TIMESTAMP() WHERE installation_id=?",[$legacy]);
+          sql($q,"INSERT INTO installation_takeovers(old_installation_id,new_installation_id,code_hash,status,expires_at,completed_at) VALUES(?,?,?,'completed',UTC_TIMESTAMP(),UTC_TIMESTAMP())",[$legacy,$legacyNew,password_hash('synthetic-old-code',PASSWORD_DEFAULT)]);
+          $legacyRow=sql($q,'SELECT id,old_installation_id,new_installation_id,status,completed_at FROM installation_takeovers WHERE old_installation_id=?',[$legacy])->fetch(PDO::FETCH_ASSOC);
+          $q->exec('ALTER TABLE installation_takeovers ADD COLUMN binding_epoch BIGINT UNSIGNED NULL DEFAULT NULL AFTER completed_at');
+          ck($pub->migrations()->migrate()===[$version],'DDL committed before ledger safely resumed');ck($pub->migrations()->migrate()===[]&&count($pub->migrations()->verifiedAppliedVersions())===13,'migration replay read-only');
+          ck(sql($q,'SELECT id,old_installation_id,new_installation_id,status,completed_at FROM installation_takeovers WHERE old_installation_id=?',[$legacy])->fetch(PDO::FETCH_ASSOC)===$legacyRow&&sql($q,'SELECT binding_epoch FROM installation_takeovers WHERE old_installation_id=?',[$legacy])->fetchColumn()===null,'historical rows retained without new authority');ck($auth->effectiveDefaultInstallationId($legacy)===''&&$auth->effectiveDefaultInstallationId($legacyNew)===$legacyNew,'historical unverified transition cannot redirect');
+          // Real fresh installation and commercial backup/restore; preserve source for comparison only.
+          $pass='synthetic-a23-takeover-backup-only';$before=rows($p);$media=MediaSnapshotCodec::scan($cfg['app']['data_dir']);$backup=$w.'/qa-takeover.skbf';$local->businessBackup()->createEncrypted($backup,$pass,0);
+          $target=$w.'-a23-takeover-target';$root=$target.'/local';$dest=$target.'/data';$p->exec('CREATE DATABASE sokna_a23_takeover_target CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$p->exec("CREATE USER 'a23_takeover_target'@'%' IDENTIFIED BY 'synthetic-a23-takeover-target-only'");$p->exec("GRANT ALL PRIVILEGES ON sokna_a23_takeover_target.* TO 'a23_takeover_target'@'%'");
+          $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$root);$init=$setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_a23_takeover_target','user'=>'a23_takeover_target','pass'=>'synthetic-a23-takeover-target-only'],'create_database'=>false,'admin_user'=>'qa-takeover-target','admin_password'=>'synthetic-a23-target-only','cafe_name'=>'QA destination','table_count'=>3]);ck(($init['success']??false)===true&&$init['installation_id']!==$iid,'independent fresh Local installation');
+          $tcfg=require $target.'/config.php';$tcore=sokna_local_bootstrap($tcfg);$tp=$tcore->database();$tid=$tcfg['installation']['id'];$r=$tcore->businessBackup()->restoreEncryptedToEmptyTarget($backup,$pass,0);ck($r['restored']===true&&$tcore->publicAuthorityState()->restoredSourceIdentity()['source_installation_id']===$iid,'restored authenticated source hint');ck(rows($tp)===$before&&MediaSnapshotCodec::scan($dest)===$media,'restored business and media exact');
+          $sourceConfigHash=hash_file('sha256',$w.'/config.php');$unpairedHash=hash_file('sha256',$target.'/config.php');$ownerPassword='synthetic-a23-emergency-owner-only';$pub->emergencyAccess()->provisionHash(password_hash($ownerPassword,PASSWORD_DEFAULT),'qa-fixture');$cookie='';
+          $login=request('/emergency.php','GET',[],$cookie);$token=csrf($login);$offer=['csrf'=>$token,'old_installation_id'=>$iid,'new_installation_id'=>$tid,'confirmation'=>'TAKEOVER'];
+          request('/emergency.php?action=takeover_offer','POST',$offer,$cookie);ck((int)sql($q,'SELECT COUNT(*) FROM installation_takeovers WHERE new_installation_id=?',[$tid])->fetchColumn()===0,'unauthenticated owner action cannot issue code');
+          $logged=request('/emergency.php?action=login','POST',['csrf'=>$token,'emergency_password'=>$ownerPassword],$cookie);ck($logged['status']===303,'real owner password and session accepted');$page=request('/emergency.php','GET',[],$cookie);$offer['csrf']=csrf($page);
+          $bad=$offer;$bad['csrf']=str_repeat('0',48);request('/emergency.php?action=takeover_offer','POST',$bad,$cookie);$bad=$offer;$bad['confirmation']='wrong';request('/emergency.php?action=takeover_offer','POST',$bad,$cookie);ck((int)sql($q,'SELECT COUNT(*) FROM installation_takeovers WHERE new_installation_id=?',[$tid])->fetchColumn()===0,'owner CSRF and explicit confirmation required');
+          $page=request('/emergency.php?action=takeover_offer','POST',$offer,$cookie);if(!preg_match('/<code class="mono">([A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8})<\/code>/',$page['body'],$m))throw new RuntimeException('owner code not issued status '.$page['status']);$code=$m[1];ck((int)sql($q,"SELECT COUNT(*) FROM installation_takeovers WHERE old_installation_id=? AND new_installation_id=? AND status='pending'",[$iid,$tid])->fetchColumn()===1&&$auth->effectiveDefaultInstallationId($iid)===$iid,'actual owner issued one-time offer without preemptive routing');
+          $client=$tcore->publicEdgeSyncClient();$authority=$tcore->publicAuthorityState();$service=new \Sokna\Local\Domain\PublicEdge\PublicReenrollmentService($tcore->config(),$client,$authority,$target.'/config.php');
+          function reject(callable $f,array $codes,string $label):void{try{$f();}catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){ck(in_array($e->errorCode,$codes,true),$label.' '.$e->errorCode);return;}throw new RuntimeException('Unexpected success '.$label);}
+          $journal=$target.'/config.php.public-recovery-pending.json';ck($service->deviceTakeoverStatus()['available']===true&&!is_file($journal),'restored new identity can start device takeover');
+          reject(fn()=>$service->startDeviceTakeover($base,$code,'wrong',1),['public_device_takeover_blocked'],'explicit Local confirmation required');
+          reject(fn()=>$service->startDeviceTakeover($base,'wrong-synthetic-code','TRANSFER_DEVICE',1),['takeover_offer_mismatch'],'wrong code rejected without journal');
+          reject(fn()=>$client->deviceTakeoverOffer($base,'qa-unrelated-source',$code),['takeover_source_not_default'],'wrong source rejected before consumption');
+          $preview=$client->deviceTakeoverOffer($base,$iid,$code);$epoch=$preview['body']['authority_epoch'];ck(is_int($epoch)&&$epoch>1,'owner offer binds exact next epoch');
+          reject(fn()=>$client->deviceTakeoverOffer($base,$iid,$code,$epoch+1,bin2hex(random_bytes(32))),['takeover_offer_mismatch'],'wrong epoch rejected atomically');
+          ck(!is_file($journal)&&installation($q,$iid)['active']&&installation($q,$tid)===false&&hash_file('sha256',$target.'/config.php')===$unpairedHash,'negative checks preserve source offer and target config');
+          // Real HTTP request commits at Public; QA transport discards only the successful reply.
+          $lost=0;$completeRequests=0;
+          $transport=static function(string $url,string $method,array $headers,string $body)use(&$lost,&$completeRequests,$journal,$code):array{
+            $hh=[];foreach($headers as $k=>$v)$hh[]=$k.': '.$v;
+            $res=file_get_contents($url,false,stream_context_create(['http'=>['method'=>$method,'header'=>implode("\r\n",$hh),'content'=>$body,'ignore_errors'=>true,'follow_location'=>0,'timeout'=>20]]));$hs=$http_response_header??[];$status=0;foreach($hs as $h)if(preg_match('~^HTTP/\S+ (\d+)~',$h,$m))$status=(int)$m[1];
+            if(str_contains($url,'action=device_takeover_complete')){++$completeRequests;if($status===200){$raw=file_get_contents($journal);$j=json_decode($raw,true);if(!is_array($j)||str_contains($raw,$code)||$j['kind']!=='device_takeover')throw new RuntimeException('journal missing or code stored');++$lost;throw new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException('public_unreachable','QA discarded successful real HTTP reply',503);}}
+            return ['status'=>$status,'body'=>(string)$res,'headers'=>$hs];
+          };
+          $lossClient=new \Sokna\Local\Domain\PublicEdge\PublicEdgeSyncClient($tcore->config(),$transport,null,$authority);$lossService=new \Sokna\Local\Domain\PublicEdge\PublicReenrollmentService($tcore->config(),$lossClient,$authority,$target.'/config.php');
+          reject(fn()=>$lossService->startDeviceTakeover($base,$code,'TRANSFER_DEVICE',1),['public_unreachable'],'successful real completion reply deliberately lost');
+          ck($lost===1&&$completeRequests===1&&is_file($journal)&&hash_file('sha256',$target.'/config.php')===$unpairedHash&&$authority->reenrollmentRequired(),'journal survives lost reply without local config mutation');
+          $old=installation($q,$iid);$new=installation($q,$tid);ck(!(bool)$old['active']&&!(bool)$new['remote_enabled']&&!(bool)$new['order_intake_enabled']&&$new['authority_state']==='resync_required','source revoked and destination fenced');ck((int)sql($q,"SELECT binding_epoch FROM installation_takeovers WHERE new_installation_id=? AND status='completed'",[$tid])->fetchColumn()===$epoch,'routing proof committed with takeover');
+          ck($auth->effectiveDefaultInstallationId($iid)===''&&request('/menu')['status']===404,'implicit menu unavailable until sync');
+          // New PHP object and database connection model a restarted Local request, no code supplied.
+          $tcore=sokna_local_bootstrap(require $target.'/config.php');$tp=$tcore->database();$client=$tcore->publicEdgeSyncClient();$service=new \Sokna\Local\Domain\PublicEdge\PublicReenrollmentService($tcore->config(),$client,$tcore->publicAuthorityState(),$target.'/config.php');
+          ck($service->deviceTakeoverStatus()['pending']===true&&$service->deviceTakeoverStatus()['available']===false,'restart exposes resume only');
+          reject(fn()=>$service->startDeviceTakeover($base,$code,'TRANSFER_DEVICE',1),['public_device_takeover_blocked'],'cannot submit a second code while pending');
+          $intent=json_decode(file_get_contents($journal),true);$stage=$target.'/'.$intent['stage_file'];$stageBytes=file_get_contents($stage);file_put_contents($stage,$stageBytes."\n");reject(fn()=>$service->resumeDeviceTakeover(1),['public_recovery_staged_config_missing'],'changed staged config refused');file_put_contents($stage,$stageBytes);
+          $raw=file_get_contents($journal);$intent['source_installation_id']='qa-wrong-hint';file_put_contents($journal,json_encode($intent));reject(fn()=>$service->resumeDeviceTakeover(1),['public_device_takeover_state_changed'],'wrong restored source journal refused');file_put_contents($journal,$raw);
+          ck(hash_file('sha256',$target.'/config.php')===$unpairedHash&&$tcore->publicAuthorityState()->reenrollmentRequired(),'failed resumes leave target fenced');
+          $done=$service->resumeDeviceTakeover(1);ck($done['ok']===true&&$done['authority_epoch']===$epoch&&!is_file($journal)&&!is_file($stage)&&$tcore->publicAuthorityState()->resyncRequired(),'resume proves exact source binding and commits via product service');
+          ck((int)sql($q,"SELECT COUNT(*) FROM installation_takeovers WHERE new_installation_id=? AND status='completed'",[$tid])->fetchColumn()===1,'single completed takeover without code replay');
+          $tcore=sokna_local_bootstrap(require $target.'/config.php');$tp=$tcore->database();ck($tcore->publicEdgeSyncClient()->configured()&&$tcore->publicEdgeSyncClient()->installationId()===$tid&&hash_file('sha256',$w.'/config.php')===$sourceConfigHash,'target config committed without touching source config');
+          $progress=[];for($i=0;$i<16;$i++){
+            $res=$tcore->publicEdgePublisher()->syncAll(10,true);$missing=(int)($res['guest_publication']['media_remaining']??-1);$progress[]=$missing;
+            $current=installation($q,$tid);ck($current['authority_state']==='resync_required'&&!(bool)$current['order_intake_enabled']&&$auth->effectiveDefaultInstallationId($iid)==='','publisher partial '.$i.' preserves fence and no default routing');
+            try{$tcore->publicEdgeSyncClient()->activateAuthority();$tcore->publicAuthorityState()->markActive($epoch);break;}catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){if(!in_array($e->errorCode,['takeover_resync_incomplete','authority_resync_incomplete'],true))throw $e;}
+          }
+          ck($tcore->publicAuthorityState()->phase()==='active'&&installation($q,$tid)['authority_state']==='active','real Local publisher and signed activation complete');
+          ck($auth->effectiveDefaultInstallationId($iid)===$tid&&$auth->effectiveDefaultInstallationId($legacy)===''&&hash_file('sha256',$w.'/public/config.php')===$originalConfig,'verified default moved without rewriting config or unrelated bindings');
+          $menu=request('/menu');ck($menu['status']===200&&str_contains($menu['body'],'data-installation-id="'.$tid.'"'),'actual HTTP default menu serves recovered identity');
+          $staff=request('/staff/login');ck($staff['status']===200&&str_contains($staff['body'],'name="installation_id" value="'.$tid.'"'),'actual HTTP staff login routes to recovered identity');
+          $manifest=request('/menu/manifest.webmanifest');$manifestJson=json_decode($manifest['body'],true);ck($manifest['status']===200&&str_contains($manifestJson['start_url']??'','installation='.rawurlencode($tid)),'actual PWA manifest points to new identity');
+          $explicit=request('/menu?installation='.rawurlencode($iid));ck($explicit['status']!==200&&!str_contains($explicit['body'],'data-installation-id="'.$tid.'"'),'explicit old identity not silently rewritten');
+          $proof=$tcore->publicEdgeSyncClient()->post('/api/v1/local/authority/status',['authority_epoch'=>$epoch]);ck(($proof['body']['default_binding_matches']??null)===true,'signed status observes active implicit binding');
+          $oldResponse=$local->publicEdgeSyncClient()->postRaw('/api/v1/local/heartbeat',['authority_epoch'=>(int)$old['authority_epoch']]);ck($oldResponse['status']===401,'old Local credential denied after handoff');
+          ck(rows($p)===$before&&rows($tp)===$before&&MediaSnapshotCodec::scan($dest)===$media,'source and restored business and media unchanged during transfer');
+          // Actual guest order after cutover; derive the table and item from the published catalog.
+          function guestJson(string $path,array $data):array{
+           $url='http://127.0.0.1:18766/public'.$path;$raw=file_get_contents($url,false,stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nAccept: application/json\r\n",'content'=>json_encode($data,JSON_THROW_ON_ERROR),'ignore_errors'=>true,'follow_location'=>0,'timeout'=>20]]));$status=0;foreach($http_response_header??[] as $h)if(preg_match('~^HTTP/\S+ (\d+)~',$h,$m))$status=(int)$m[1];$body=json_decode((string)$raw,true);return ['status'=>$status,'body'=>is_array($body)?$body:[]];
+          }
+          $snap=json_decode((string)sql($q,'SELECT r.snapshot_json FROM guest_active_revisions a JOIN guest_publish_revisions r ON r.installation_id=a.installation_id AND r.revision_id=a.revision_id WHERE a.installation_id=?',[$tid])->fetchColumn(),true,64,JSON_THROW_ON_ERROR);
+          $free=sql($tp,"SELECT id FROM cafe_tables t WHERE active=1 AND NOT EXISTS(SELECT 1 FROM table_sessions s WHERE s.table_id=t.id AND s.status IN('active','pending')) ORDER BY id LIMIT 1")->fetchColumn();$table=null;foreach($snap['tables'] as $row)if((int)$row['id']===(int)$free)$table=$row;ck(is_array($table)&&!empty($table['token']),'published free table on transferred identity');
+          $closed=$tcore->orderCatalog()->guestScheduleClosedItemIds();$item=null;foreach($snap['catalogs'] as $cat){foreach($cat['items'] as $row){if($row['available']===true&&empty($row['is_bundle'])&&!in_array((int)$row['id'],$closed,true)&&(int)$row['price']>0){$item=$row;break 2;}}}ck(is_array($item),'published available simple item with current price');
+          $clientToken='qa-a23-guest-'.bin2hex(random_bytes(12));$device='qa-a23-device-'.bin2hex(random_bytes(12));$payload=['table_token'=>$table['token'],'client_token'=>$clientToken,'device_token'=>$device,'session_token'=>'','items'=>[['id'=>(int)$item['id'],'quantity'=>1,'expected_price'=>(int)$item['price'],'fulfillment_mode'=>'dine_in']]];
+          $oldGuest=guestJson('/api/guest/order',$payload+['installation_id'=>$iid]);ck($oldGuest['status']>=400&&!(bool)($oldGuest['body']['success']??false),'explicit revoked guest identity cannot submit');
+          $heartbeat=$tcore->publicEdgePublisher()->syncHeartbeat(5);ck(($heartbeat['success']??false)===true,'transferred Local heartbeat current');
+          $submit=guestJson('/api/guest/order',$payload);$rid=(string)($submit['body']['request_id']??'');ck($submit['status']===202&&($submit['body']['accepted']??false)===true&&$rid!=='','implicit Public guest HTTP order queued');
+          ck((int)sql($q,'SELECT COUNT(*) FROM realtime_requests WHERE installation_id=? AND request_id=?',[$tid,$rid])->fetchColumn()===1&&(int)sql($q,'SELECT COUNT(*) FROM realtime_requests WHERE installation_id=? AND request_id=?',[$iid,$rid])->fetchColumn()===0,'queued command belongs only to new identity');
+          $statusPayload=['action'=>'submission_status','table_token'=>$table['token'],'client_token'=>$clientToken,'device_token'=>$device,'request_id'=>$rid];$seen=null;
+          for($i=0;$i<8;$i++){
+           $x=$tcore->publicEdgeRelay()->syncRealtimeExchange(8,8);if(($x['success']??false)!==true)throw new RuntimeException('guest exchange unsuccessful');
+           $seen=guestJson('/api/guest/orders',$statusPayload);if($seen['status']===200&&($seen['body']['state']??'')==='committed'&&($seen['body']['terminal']??false)===true)break;
+          }
+          ck($seen['status']===200&&($seen['body']['state']??'')==='committed'&&($seen['body']['business_terminal']??false)===true&&($seen['body']['result']['success']??false)===true,'guest polling sees authoritative committed ACK');
+          $order=sql($tp,'SELECT id,public_code,order_source,status,client_token,device_token,table_id FROM orders WHERE client_token=?',[$clientToken])->fetch(PDO::FETCH_ASSOC);ck(is_array($order)&&$order['order_source']==='guest'&&$order['status']==='pending_approval'&&$order['device_token']===$device&&(int)$order['table_id']===(int)$table['id']&&$seen['body']['result']['order_code']===$order['public_code'],'actual guest business order pending staff review, matching receipt');
+          $lines=sql($tp,'SELECT item_id,quantity,unit_price FROM order_items WHERE order_id=?',[$order['id']])->fetchAll(PDO::FETCH_ASSOC);ck(count($lines)===1&&(int)$lines[0]['item_id']===(int)$item['id']&&(int)$lines[0]['quantity']===1&&(int)$lines[0]['unit_price']===(int)$item['price'],'ordered item and price exact');
+          $again=guestJson('/api/guest/order',$payload);ck(in_array($again['status'],[200,202],true)&&($again['body']['success']??false)===true,'retry same guest token accepted idempotently');$tcore->publicEdgeRelay()->syncRealtimeExchange(8,8);$after=guestJson('/api/guest/orders',$statusPayload);
+          ck((int)sql($tp,'SELECT COUNT(*) FROM orders WHERE client_token=?',[$clientToken])->fetchColumn()===1&&(int)sql($q,'SELECT COUNT(*) FROM realtime_requests WHERE installation_id=? AND request_id=?',[$tid,$rid])->fetchColumn()===1&&($after['body']['result']['order_code']??null)===$order['public_code'],'same guest request has one business order and one terminal receipt');
+          ck(rows($p)===$before&&hash_file('sha256',$w.'/config.php')===$sourceConfigHash,'source Local business and configuration unchanged after new guest order');
+          file_put_contents($w.'/takeover-binding-receipt.json',json_encode(['status'=>'PASS','checks'=>$checks,'actual_mariadb'=>$q->query('SELECT VERSION()')->fetchColumn(),'actual_http_owner_login'=>true,'actual_owner_csrf_confirmation'=>true,'actual_native_local_takeover_client'=>true,'actual_business_restore'=>true,'actual_publisher'=>true,'default_menu_staff_manifest'=>true,'historic_takeover_not_redirected'=>true,'migration_resume'=>true,'old_local_revoked'=>true,'local_config_commit_harness'=>false,'product_service_resume'=>true,'lost_reply_tested'=>true,'completed_takeover_requests_observed'=>1,'actual_guest_order_ack'=>true,'guest_duplicate_tested'=>true,'guest_order_pending_staff_review'=>true,'actual_browser'=>false,'production_authorized'=>false],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          PHP
+          sha256sum -c <<HASHES
+          dbb0a5c775e061440d1c79682bab0aeb129eb10c9b44c3d08576578b342d3a79  $W/device.patch
+          72ec62781dc676c9d0606e3dfaae7d8459f364c27f6a298181553e9e0f91178b  $W/takeover-resume.php
+          HASHES
+          cd "$W"
+          patch --batch --forward -p1 < device.patch
+          sha256sum -c <<'HASHES'
+          3c1ac64a43b5f7591e525494646ee19a594be42ca8e35161f627f4aea36c0616  local/public/assets/connections-workspace.js
+          888bb3ca1df4b5d8eed38678a95f222aff22ee6e005021ed3360b9cd5b53929d  local/public/integrations/api.php
+          33acdb1743c971343760ebd39f25f93c0a39b21532e33e59ba92f550f30a215e  local/public/integrations/index.php
+          2a60afb37ab21c87c9052f0c9d1e95a80d44b730fb15215dac5cc021c3424f5a  local/public/system/recovery-upload.php
+          c09ff3dc66e707ed0278452eca5b6d5fe32b8aeb71681a55d5ce329844faf903  local/src/Domain/PublicEdge/PublicAuthorityStateService.php
+          bd8ab1170dcd49f719914f871af141df70e2f16e18f97a94597fd235a5888db0  local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
+          84162971d80e2244631e56bfd92d07d0a1a0a00b26b7ee83eb5f7dac88cd1140  local/src/Domain/PublicEdge/PublicMoveSimpleReplacement.php
+          eac7c532aabdc646cbc0a42fa035463280785de9e05ed0f52c195997cd3167fe  local/src/Domain/PublicEdge/PublicReenrollmentService.php
+          ba4a73cd00d005d24dd478b386ccff4a33513183abd94437a695ba9240082f8c  local/src/Domain/Recovery/BusinessBackupService.php
+          9fed2a2a36202d976a827426f72d79f50892ed2c9be6492af32ea1998c70a11f  local/tools/restore-business-backup.php
+          af1d1d5d4a66da73d9d5c7056e018a05760ad6bae556112f671b00474597c964  public/authority-recovery.php
+          7e45d02136b770159e67e57ea031fbb0d4f6b02876ca0f71f8d872f2f3e5bc02  public/database/migrations/0013_verified_takeover_binding.sql
+          af19b2ae2991cfe3fe3bc8bb85929cdec727cb7da6196e75f4ecdadb1ea73ad0  public/src/Authority/AuthorityEpochService.php
+          754c1816285ac99c396ab4c183b51e7c11d7f3400630960e5c8504c7650b040d  public/src/Core/Bootstrap.php
+          0e50c60721e34955f3477242883628806e927683244f8a0599eadc2373c8c975  public/src/Core/Migrations.php
+          e920828214f6b7ee536d953ee43da017d655ab8852408cea9d134296264689f8  public/src/Core/ResumablePublicSchema.php
+          948ac3beb554f5309950164eca5390342ad21681f9aa68631d7b31f0debcab45  public/src/Emergency/PublicTakeoverService.php
+          a660cf9beb9834d095ad26c17dd46e5cac255ce803e05868d4762e6f3c32cf3a  public/src/Http/AuthorityEpochHttpAdapter.php
+          afd21c4ab267ebe72a7783cb507fef7df4abcb2bef016392ed2cc58f3607c15c  public/src/Http/PublicHttpKernel.php
+          9c27dfd9f3707dd7ec20ceaa069b0721030f46e44cef281240bebd5c7bd31d34  public/src/Maintenance/RemoteBackupVaultService.php
+          HASHES
+          # Copy complete candidate Local tree to the independent, not-yet-installed target.
+          cp -a "$W/local/." "$W-a23-takeover-target/local/"
+          cat > "$W/qa-takeover-router.php" <<'PHP'
+          <?php
+          $p=parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH);
+          if(in_array($p,['/public/emergency.php','/public/authority-recovery.php'],true)){$_SERVER['SCRIPT_NAME']=$p;require __DIR__.$p;return true;}
+          if(str_starts_with($p,'/public/')){require __DIR__.'/public/index.php';return true;}
+          http_response_code(404);return true;
+          PHP
+          php -d opcache.enable_cli=0 -S 127.0.0.1:18766 -t "$W/public" "$W/qa-takeover-router.php" > "$W/takeover-http.log" 2>&1 & pp=$!
+          trap 'kill "$pp" 2>/dev/null || true' EXIT
+          sleep 2
+          kill -0 "$pp"
+          php "$W/takeover-resume.php" "$W" | tee "$W/takeover-binding-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-GUEST-AFTER-TRANSFER-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/takeover-binding-receipt.json
+            ${{ runner.temp }}/a22/takeover-binding-log.txt
+            ${{ runner.temp }}/a22/takeover-http.log
+            ${{ runner.temp }}/a22/takeover-resume.php
+          retention-days: 30
