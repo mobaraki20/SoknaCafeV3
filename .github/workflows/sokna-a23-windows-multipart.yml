@@ -91,7 +91,10 @@ jobs:
           Need ($ok.StatusCode -eq 200 -and $body2.success -and $body2.backup.size_bytes -eq $meta.bytes -and $body2.backup.sha256 -ceq $meta.sha256) 'BOUNDED_REAL_MULTIPART_FAILED'
           $registered=Join-Path $incoming ($body2.backup.id+'.skbf')
           Need ((Get-FileHash $registered -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $meta.sha256) 'REGISTERED_BYTES_DRIFT'
-          $noCsrf=Invoke-WebRequest $route -Method Post -Form @{backup=$file;csrf_token='wrong-synthetic-token'} -WebSession $userSession -SkipHttpErrorCheck -TimeoutSec 90
+          Write-Host "PASS bounded large multipart size and SHA, exact bytes registered"
+          # Explicitly replace the header too: PHP intentionally prioritizes X-CSRF-Token.
+          $noCsrf=Invoke-WebRequest $route -Method Post -Form @{backup=$file;csrf_token='wrong-synthetic-token'} -Headers @{'X-CSRF-Token'='wrong-synthetic-token'} -WebSession $userSession -SkipHttpErrorCheck -TimeoutSec 90
+          Write-Host ('CSRF_NEGATIVE_OBSERVED status='+$noCsrf.StatusCode+' code='+($noCsrf.Content|ConvertFrom-Json).code)
           Need ($noCsrf.StatusCode -eq 419 -and ($noCsrf.Content|ConvertFrom-Json).code -eq 'csrf_expired') 'BAD_CSRF_NOT_REJECTED'
           Need (@(Get-ChildItem $incoming -Filter 'uploaded-*.skbf').Count -eq 1) 'REJECTED_REQUEST_CHANGED_HISTORY'
           $v=@{status='PASS';actual_windows=$true;actual_mariadb=$true;actual_apache_multipart=$true;source_sha256=$sha;backup_bytes=$meta.bytes;backup_sha256=$meta.sha256;default_upload_limit=$meta.upload_max_filesize;default_post_limit=$meta.post_max_size;default_rejected_with_symbolic_error=$true;positive_disposable_test_upload_limit='32M';positive_disposable_test_post_limit='34M';registered_hash_exact=$true;bad_csrf_rejected=$true;production_ini_changed=$false;actual_browser_tested=$false}
