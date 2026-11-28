@@ -1,4 +1,4 @@
-name: SOKNA A21 actual financial archive and guest media acceptance
+name: SOKNA A21 actual financial archive and guest media corrected fixture
 on:
   push:
     branches: [qa/post-release-a10-20261128]
@@ -174,7 +174,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A21-FINANCE-MENU-REAL-QA-EVIDENCE-NO-INSTALL
+          name: SOKNA-A21-FINANCE-MENU-CONFIRMATION-NO-INSTALL
           path: |
             ${{ runner.temp }}/cp148-qa/*-results.txt
             ${{ runner.temp }}/cp148-qa/*-http.log
