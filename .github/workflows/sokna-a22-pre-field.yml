@@ -1,4 +1,4 @@
-name: A22 independent grouped QA
+name: A22 focused reporting acceptance
 on:
   push:
     branches: [qa/a22-pre-field-20261128]
@@ -51,66 +51,77 @@ jobs:
           PY
           php qa/cp148/preflight.php
           php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
-      - name: Independent remaining-criteria evidence on real MariaDB
+      - name: Focused remaining reporting criteria using synthetic records
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/a22"
-          cat > "$W/measure.php" <<'PHP'
+          cat > "$W/focus.php" <<'PHP'
           <?php
           declare(strict_types=1);
           if(PHP_SAPI!=='cli'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
           $w=realpath($argv[1]);require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';
           if(($cfg['db']['host']??'')!=='127.0.0.1'||($cfg['db']['name']??'')!=='sokna_cp150')exit(2);
-          $c=sokna_local_bootstrap($cfg);$p=$c->database();$actor=$p->query("SELECT id,role FROM users WHERE username='qa-target'")->fetch(PDO::FETCH_ASSOC);
-          $cashier=$p->query("SELECT id,role FROM users WHERE username='qa-cashier'")->fetch(PDO::FETCH_ASSOC);
-          $fixture=json_decode(file_get_contents($w.'/cp144-fixture.json'),true,512,JSON_THROW_ON_ERROR);
-          $out=['source'=>'707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10','mariadb'=>$p->query('SELECT VERSION()')->fetchColumn(),'synthetic_only'=>true,'groups'=>[]];
-          $fail=0;
-          function group(string $id,callable $f):void{global $out,$fail;try{$out['groups'][$id]=['status'=>'MEASURED','detail'=>$f()];echo "MEASURED $id\n";}catch(Throwable $e){$out['groups'][$id]=['status'=>'ERROR','detail'=>get_class($e).': '.$e->getMessage()];$fail++;echo "ERROR $id ".$e->getMessage()."\n";}}
-          function bench(callable $fn):array{global $p;$fn();$ms=[];$qs=[];$sizes=[];for($i=0;$i<12;$i++){$before=(int)$p->query("SHOW SESSION STATUS LIKE 'Questions'")->fetch(PDO::FETCH_NUM)[1];$t=hrtime(true);$v=$fn();$ms[]=(hrtime(true)-$t)/1e6;$after=(int)$p->query("SHOW SESSION STATUS LIKE 'Questions'")->fetch(PDO::FETCH_NUM)[1];$qs[]=max(0,$after-$before-1);$sizes[]=strlen(json_encode($v,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));}sort($ms);return ['n'=>12,'p50_ms'=>round(($ms[5]+$ms[6])/2,2),'p95_ms'=>round($ms[11],2),'queries_min'=>min($qs),'queries_max'=>max($qs),'json_bytes_min'=>min($sizes),'json_bytes_max'=>max($sizes)];}
-          $day=$fixture['day'];$cat=(int)$fixture['category_id'];$item=(int)$fixture['tax_item'];$clock=$c->businessClock()->assignment();
-          $table=(int)$fixture['hall']['partial']['table'];$sid=(int)$fixture['hall']['partial']['session'];
-          group('ADM-L442',function()use($c,$p,$actor){$a=[];foreach(['','admin','operator','waiter'] as $r){$actual=$c->notifications()->composePreview($r,$actor)['recipients'];$s=$p->prepare('SELECT COUNT(*) FROM users WHERE active=1'.($r===''?'':' AND role=?'));$s->execute($r===''?[]:[$r]);$expected=(int)$s->fetchColumn();if($actual!==$expected)throw new RuntimeException('audience mismatch');$a[$r===''?'all':$r]=$actual;}return $a;});
-          group('HELP-L561',function()use($c,$p,$actor){$r=$c->globalSearch()->search('QA157 family',$actor);return ['partial'=>$r['partial'],'results'=>array_column($r['results'],'type'),'titles'=>array_column($r['results'],'title')];});
-          group('HELP-L564',function()use($c,$p,$cashier,$day,$fixture){$closed=$p->query("SELECT business_order_number FROM orders WHERE public_code='qa160-sub-order'")->fetchColumn();$r=$c->globalSearch()->search('سفارش '.$closed,$cashier);return ['closed_order_number'=>$closed,'partial'=>$r['partial'],'order_hits'=>array_values(array_filter($r['results'],fn($x)=>$x['type']==='order'))];});
-          group('HELP-L570',function()use($c,$actor,$cashier){$r=[];foreach(['مالی','آماده سازی','کاتالوگ','انبار','اقامتگاه'] as $q){foreach(['admin'=>$actor,'cashier'=>$cashier] as $k=>$u){$v=$c->globalSearch()->search($q,$u);$r[$k.':'.$q]=['partial'=>$v['partial'],'nav'=>array_values(array_map(fn($x)=>$x['id'],array_filter($v['results'],fn($x)=>$x['type']==='navigation')))];}}return $r;});
-          group('PREP-L127',function()use($p){return $p->query("SELECT preparation_station,COUNT(*) n FROM order_items GROUP BY preparation_station")->fetchAll(PDO::FETCH_ASSOC);});
-          group('REP-L269',function()use($c,$p,$day){$r=$c->reporting()->report($day,$day);return ['context'=>$r['financial_context'],'transfer_count'=>(int)$p->query('SELECT COUNT(*) FROM accommodation_transfers')->fetchColumn(),'scope'=>'synthetic only; no external accommodation connection'];});
-          group('REP-L268',function()use($c,$p,$day){$r=$c->reporting()->report($day,$day);return ['summary'=>$r['margin']['summary'],'policy'=>$r['margin']['policy'],'scope'=>'existing synthetic settlement and unknown-cost baseline; no positive cost added'];});
-          foreach([0,100,500] as $target){
-            if($target>0){
-              $start=$target===100?0:100;
-              $p->beginTransaction();
-              try{
-                $o=$p->prepare("INSERT INTO orders(public_code,client_token,table_id,session_id,order_source,status,total_amount,business_order_number,business_date,business_shift_key,business_shift_label,business_cutoff_snapshot) VALUES(?,?,?,?,'staff','accounted',100000,?,?,?,?,?)");
-                $l=$p->prepare("INSERT INTO order_items(order_id,item_id,item_name,unit_price,quantity,ordered_quantity,preparation_station,line_total) VALUES(?,?,'A22 synthetic order',100000,1,1,'hot_bar',100000)");
-                $i=$p->prepare("INSERT INTO items(item_code,category_id,name,price,lifecycle_status,active,available) VALUES(?,?,?,100000,'retired',0,0)");
-                $v=$p->prepare("INSERT INTO inventory_items(item_code,name,base_unit,active) VALUES(?,?,'count',1)");
-                $m=$p->prepare("INSERT INTO guest_media_assets(media_key,sha256,mime,extension,byte_size,width_px,height_px,original_name,original_relpath,active) VALUES(?,?,'image/png','png',100,20,20,?,?,0)");
-                for($j=$start;$j<$target;$j++){
-                  $key='a22-synthetic-'.$j;
-                  $o->execute([$key,$key,$table,$sid,50000+$j,$day,$clock['shift_key'],$clock['shift_label'],$clock['cutoff']]);$l->execute([(int)$p->lastInsertId(),$item]);
-                  $i->execute([$key,$cat,$key]);$v->execute([$key,$key]);$m->execute([$key,hash('sha256',$key),$key.'.png',$key.'.png']);
-                }
-                $p->commit();
-              }catch(Throwable $e){if($p->inTransaction())$p->rollBack();$out['groups']['seed-'.$target]=['status'=>'ERROR','detail'=>$e->getMessage()];$fail++;break;}
-            }
-            group('PREP-L126-'.$target,fn()=>bench(fn()=>$c->preparation()->feed($actor)));
-            group('OPS-L164-'.$target,fn()=>bench(function()use($c,$actor){$r=$c->operationsWorkspace()->snapshot($actor);if(!empty($r['errors']))throw new RuntimeException('snapshot section errors');return $r;}));
-            group('REP-L283-'.$target,fn()=>bench(fn()=>$c->reporting()->report($day,$day)));
-            group('CAT-L315-'.$target,fn()=>bench(fn()=>$c->catalogAdmin()->snapshot($actor)));
-            group('GUEST-L351-'.$target,fn()=>bench(fn()=>$c->guestContent()->snapshot($actor)));
-          }
-          $out['errors']=$fail;file_put_contents($w.'/a22-results.json',json_encode($out,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR));exit($fail?1:0);
+          $c=sokna_local_bootstrap($cfg);$p=$c->database();
+          $out=[];$failed=0;
+          function ck($ok,$msg){if(!$ok)throw new RuntimeException($msg);echo "PASS $msg\n";}
+          function group($id,$fn){global $out,$failed;try{$out[$id]=['status'=>'PASS','detail'=>$fn()];}catch(Throwable $e){$out[$id]=['status'=>'FAIL','detail'=>$e->getMessage()];$failed++;echo "FAIL $id ".$e->getMessage()."\n";}}
+          group('REP-L268-positive-cost',function()use($p,$c){
+            $line=$p->query("SELECT oi.id,COALESCE(ts.business_date,o.business_date) day FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN table_sessions ts ON ts.id=o.session_id WHERE o.public_code='qa160-sub-order'")->fetch(PDO::FETCH_ASSOC);
+            $id=(int)$line['id'];$day=$line['day'];$inv=(int)$p->query("SELECT id FROM inventory_items WHERE item_code='qa160-unknown'")->fetchColumn();
+            $meta=['order_item_id'=>$id,'recipe_review_status'=>'ready','recipe_completeness_status'=>'complete','recipe_quantity_status'=>'known'];
+            $q=$p->prepare("INSERT INTO inventory_movements(inventory_item_id,movement_type,quantity_base,base_unit,total_cost_delta,cost_status,source_type,source_id,metadata_json,occurred_at) VALUES(?,'recipe_consumption',-1,'count',? ,?,'order_item',?,?,?)");
+            $q->execute([$inv,-30000,'known',(string)$id,json_encode($meta,JSON_THROW_ON_ERROR),$day.' 12:00:00']);$mid=(int)$p->lastInsertId();
+            $read=function()use($c,$day,$id){$r=$c->reporting()->report($day,$day)['margin'];$row=array_values(array_filter($r['rows'],fn($x)=>$x['order_item_id']===$id))[0];return [$row,$r['summary']];};
+            [$row,$s]=$read();ck($row['financially_complete']&&$row['cost_quality']==='known'&&$row['net_revenue']===100000&&$row['covered_cost']===30000&&$row['gross_margin']===70000,'exact positive margin');
+            ck($s['exact_margin_rows']===1&&$s['exact_revenue']===100000&&$s['exact_cost']===30000&&$s['exact_gross_margin']===70000,'exact aggregate');
+            $p->prepare("UPDATE inventory_movements SET cost_status='estimated',total_cost_delta=-40000 WHERE id=?")->execute([$mid]);
+            [$row,$s]=$read();ck($row['cost_quality']==='estimated'&&$row['gross_margin']===60000&&$s['estimated_margin_rows']===1&&$s['exact_margin_rows']===0&&$s['estimated_basis_cost']===40000,'estimated aggregate distinct from exact');
+            $p->prepare("UPDATE inventory_movements SET cost_status='unknown',total_cost_delta=NULL WHERE id=?")->execute([$mid]);
+            [$row,$s]=$read();ck($row['gross_margin']===null&&$row['cost_quality']==='incomplete'&&$s['margin_available']===0,'unknown never presented as zero cost');
+            $p->prepare("UPDATE inventory_movements SET cost_status='known',total_cost_delta=-30000 WHERE id=?")->execute([$mid]);
+            $partial=(int)$p->query("SELECT oi.id FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.public_code='qa150-order-0'")->fetchColumn();
+            $meta['order_item_id']=$partial;$q->execute([$inv,-20000,'known',(string)$partial,json_encode($meta,JSON_THROW_ON_ERROR),$day.' 12:00:00']);
+            $r=$c->reporting()->report($day,$day)['margin'];$pr=array_values(array_filter($r['rows'],fn($x)=>$x['order_item_id']===$partial))[0];ck(!$pr['financially_complete']&&$pr['gross_margin']===null,'incomplete settlement excluded');
+            return ['exact_margin'=>70000,'estimated_margin'=>60000,'unknown_excluded'=>true,'partial_payment_excluded'=>true];
+          });
+          group('REP-L269-document',function()use($p,$c,$w){
+            $r=$p->query("SELECT session_id,financial_period_id FROM settlement_records WHERE destination='subscriber' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            $q=$p->prepare("INSERT INTO accommodation_transfers(session_id,financial_period_id,external_order_id,reservation_code,guest_name_snapshot,room_name_snapshot,phone_hint_snapshot,amount,invoice_number,invoice_snapshot_json,account_signature,payload_hash,status,attempt_count,suspicious_response,last_error,remote_transaction_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'failed',2,1,?,?)");
+            $q->execute([(int)$r['session_id'],(int)$r['financial_period_id'],'qa-external-transfer','qa-reservation-private','qa-guest-private','qa-room-private','qa-phone-private',120000,'qa-invoice','{}',str_repeat('a',64),str_repeat('b',64),'qa-error-private','qa-remote-private']);$id=(int)$p->lastInsertId();
+            $doc=$c->reporting()->historicalAccommodationTransfer($id);
+            ck($doc['document']['id']===$id&&$doc['document']['amount']===120000&&$doc['document']['current_status']==='failed'&&$doc['document']['attention_required']&&$doc['read_only'],'historical transfer exact fields');
+            $encoded=json_encode($doc,JSON_THROW_ON_ERROR);ck(!str_contains($encoded,'-private'),'private metadata omitted');
+            file_put_contents($w.'/transfer-id.txt',(string)$id);return ['transfer_id'=>$id,'amount'=>120000,'private_metadata_omitted'=>true,'external_connection_tested'=>false];
+          });
+          $out['errors']=$failed;file_put_contents($w.'/focus-results.json',json_encode($out,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));exit($failed?1:0);
           PHP
-          php "$W/measure.php" "$W" | tee "$W/measure-log.txt"
+          php "$W/focus.php" "$W" | tee "$W/focus-log.txt"
+      - name: Actual HTTP authorization on transfer history
+        if: always()
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          test -s "$W/transfer-id.txt"
+          php -S 127.0.0.1:18765 -t "$W/local/public" >"$W/http.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          for i in {1..20}; do if curl -fsS http://127.0.0.1:18765/login.php >/dev/null; then break; fi; sleep 1; done
+          for spec in qa-target:synthetic-qa-admin-not-real qa-cashier:synthetic-member-only qa-bar-a:synthetic-member-only; do
+            user="${spec%%:*}";pass="${spec#*:}"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -c "$W/$user.cookie" --data-urlencode "username=$user" --data-urlencode "password=$pass" http://127.0.0.1:18765/login.php)
+            test "$code" = 302
+            code=$(curl -sS -o "$W/$user-transfer.json" -w '%{http_code}' -b "$W/$user.cookie" "http://127.0.0.1:18765/reports/api.php?action=accommodation_transfer_history&transfer_id=$(cat "$W/transfer-id.txt")")
+            echo "$user $code" | tee -a "$W/auth-results.txt"
+            if [ "$user" = qa-target ]; then test "$code" = 200; python3 -c 'import json,sys; j=json.load(open(sys.argv[1])); assert j["success"] and j["historical_accommodation_transfer"]["document"]["amount"]==120000 and "-private" not in str(j)' "$W/$user-transfer.json"; else test "$code" = 403; fi
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A22-GROUPED-MEASUREMENT
+          name: SOKNA-A22-FOCUSED-REPORTS-EVIDENCE
           path: |
-            ${{ runner.temp }}/a22/a22-results.json
-            ${{ runner.temp }}/a22/measure-log.txt
-            ${{ runner.temp }}/a22/fixture-log.txt
-            ${{ runner.temp }}/a22/measure.php
+            ${{ runner.temp }}/a22/focus-results.json
+            ${{ runner.temp }}/a22/focus-log.txt
+            ${{ runner.temp }}/a22/auth-results.txt
+            ${{ runner.temp }}/a22/*-transfer.json
+            ${{ runner.temp }}/a22/http.log
           retention-days: 30
