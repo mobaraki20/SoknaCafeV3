@@ -124,7 +124,8 @@ jobs:
           try:
               with sync_playwright() as pw:
                   browser=pw.chromium.launch(headless=True)
-                  page=browser.new_page(viewport={'width':1440,'height':1000},color_scheme='light')
+                  context=browser.new_context(viewport={'width':1440,'height':1000},color_scheme='light')
+                  page=context.new_page()
                   with page.expect_response(lambda r:'api.php?action=status' in r.url) as resp:
                       page.goto('http://127.0.0.1:18080/setup/')
                   assert resp.value.json()['preflight']['ok']
@@ -199,8 +200,7 @@ jobs:
                       page.locator('[data-global-order]').click()
                       table=page.locator('[data-pick-table]').first
                       table.wait_for()
-                      shot(page,'16-04-table-picker')
-                      table.click()
+                          table.click()
                       products=page.locator('[data-order-add]')
                       products.first.wait_for()
                       # One default menu item and a real disposable sale.
@@ -218,7 +218,7 @@ jobs:
                       # Use the same signed-in browser context, but real preparation page.
                       prep=page.context.new_page()
                       prep.goto(base+'/waiter/')
-                      prep.locator('[data-preparation-list] .sc-preparation-order').first.wait_for(timeout=15000) if prep.locator('[data-preparation-list] .sc-preparation-order').count() else prep.get_by_role('button',name='گرفتم',exact=True).first.wait_for(timeout=15000)
+                      prep.get_by_role('button',name='گرفتم',exact=True).first.wait_for(timeout=15000)
                       shot(prep,'16-11-preparation-pending')
                       btn=prep.get_by_role('button',name='گرفتم',exact=True).first
                       with prep.expect_response(lambda r:r.request.method=='POST' and '"claim"' in (r.request.post_data or ''),timeout=30000) as claim:
