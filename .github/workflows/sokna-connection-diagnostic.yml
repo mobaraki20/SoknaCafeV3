@@ -1,0 +1,13 @@
+name: Sokna connection diagnostic
+on:
+  push:
+    branches: [qa/connection-diagnostic-20261128]
+    paths: [.github/workflows/sokna-connection-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - run: echo TEST PASS
