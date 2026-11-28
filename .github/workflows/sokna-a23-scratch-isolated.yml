@@ -1,0 +1,245 @@
+name: A23 Windows isolated scratch crash gate
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-scratch-isolated.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  scratch:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      SOKNA_R186_CI_ONLY: 'YES'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          run-id: 46122453416
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: SOKNA-PREREQUISITES-105-QA-CANDIDATE-NOT-INSTALL
+          run-id: 45707538026
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/helper
+      - name: Verify exact source and run isolated Windows scratch process tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_OS -ne 'Windows' -or $env:SOKNA_R186_CI_ONLY -ne 'YES'){throw 'QA_DISPOSABLE_ONLY'}
+          $lab=Join-Path $env:RUNNER_TEMP ('a23-scratch-isolated-'+[guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Force $lab|Out-Null
+          function Need([bool]$ok,[string]$code){if(!$ok){throw $code}}
+          function Write-LF([string]$path,[string]$content){[IO.File]::WriteAllText($path,($content.Replace("`r`n","`n").TrimEnd("`r","`n")+"`n"),[Text.UTF8Encoding]::new($false))}
+          function Check-Hash([string]$p,[string]$h){Need ((Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $h) ('HASH_DRIFT '+[IO.Path]::GetFileName($p))}
+          $pack=Join-Path $env:RUNNER_TEMP 'candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip'
+          Check-Hash $pack '707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10'
+          $web=Join-Path $lab 'Web'
+          Expand-Archive $pack $web
+          $class=Join-Path $web 'src/Domain/Recovery/BusinessBackupService.php'
+          Check-Hash $class 'c2029d1fe5bb8ef11fd3becb3e08537e5c43b25e38d741d11e8f00b6a01e7420'
+          $patch=@'
+          --- a/local/src/Domain/Recovery/BusinessBackupService.php
+          +++ b/local/src/Domain/Recovery/BusinessBackupService.php
+          @@ -44,8 +44,9 @@
+                   self::requireSodium();
+                   self::validatePassphrase($passphrase);
+                   $destination=$this->safeDestination($destination);
+          -        $tmp=$this->tempPath('business-backup','.ndjson.gz');
+          +        $scratch=$this->acquireReadScratch($destination);$tmp=null;
+                   try{
+          +            $tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-backup-'.bin2hex(random_bytes(16)).'.ndjson.gz';
+                       $mediaLock=$this->acquireMediaWriteLock();
+                       try{$manifest=$this->writeSnapshot($tmp,$actorUserId);}finally{fclose($mediaLock);}
+                       $this->encryptFile($tmp,$destination,$passphrase);
+          @@ -57,7 +58,7 @@
+                           'excluded_machine_identity'=>$manifest['excluded_machine_identity'],
+                           'schema_versions'=>$manifest['schema_versions'],'created_at'=>$manifest['created_at'],
+                       ];
+          -        }finally{ @unlink($tmp); }
+          +        }finally{ if($tmp!==null)@unlink($tmp);fclose($scratch['lock']); }
+               }
+           
+               public function restoreEncryptedToEmptyTarget(string $source,string $passphrase,int $actorUserId=0): array
+          @@ -77,8 +78,8 @@
+               public function inspectEncrypted(string $source,string $passphrase): array
+               {
+                   self::requireSodium();self::validatePassphrase($passphrase);
+          -        $tmp=$this->tempPath('business-inspect','.ndjson.gz');
+          -        try{$this->decryptFile($source,$tmp,$passphrase);
+          +        $scratch=$this->acquireReadScratch($source);$tmp=null;
+          +        try{$tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-inspect-'.bin2hex(random_bytes(16)).'.ndjson.gz';$this->decryptFile($source,$tmp,$passphrase);
+                       $manifest=$this->readManifest($tmp);
+                       $schema=$manifest['schema_version']??0;
+                       if(!in_array($schema,[1,2],true))throw new RecoveryException('backup_contract','فرمت پشتیبان پشتیبانی نمی‌شود.',422);
+          @@ -101,7 +102,7 @@
+                           $manifest['target_kind']=$proof===null?'empty':'verified_fresh_seed';
+                           $manifest['target_ready']=true;
+                       }catch(RecoveryException $e){$manifest['target_issue']=['code'=>$e->errorCode,'message'=>$e->getMessage()];}
+          -            return $manifest;}finally{@unlink($tmp);}
+          +            return $manifest;}finally{if($tmp!==null)@unlink($tmp);fclose($scratch['lock']);}
+               }
+           
+               /**
+          @@ -746,6 +747,49 @@
+                   return $path;
+               }
+           
+          +    /** Dedicated, versioned scratch namespace for pre-mutation operations only.
+          +     * Never sweep recovery-tmp, restore journals, or user backup destinations.
+          +     * After a killed process, the next holder of the stable lock removes only
+          +     * abandoned scratch files in this namespace. This is not secure erase.
+          +     */
+          +    private function acquireReadScratch(string $externalPath): array
+          +    {
+          +        $root=realpath($this->observability->dataRoot());
+          +        if($root===false||!is_dir($root))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
+          +        $dir=$root.DIRECTORY_SEPARATOR.'recovery-read-scratch-v1';
+          +        if(is_link($dir)||(!is_dir($dir)&&!@mkdir($dir,0700)&&!is_dir($dir)))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
+          +        $canonical=static function(string $p):string{$p=rtrim(str_replace('\\','/',$p),'/');return PHP_OS_FAMILY==='Windows'?strtolower($p):$p;};
+          +        $actual=realpath($dir);
+          +        if($actual===false||$canonical($actual)!==$canonical($dir)||is_link($dir))throw new RecoveryException('temp_unavailable','مسیر موقت پشتیبان معتبر نیست.',500);
+          +        if(PHP_OS_FAMILY!=='Windows'&&((fileperms($dir)&0077)!==0))throw new RecoveryException('temp_unavailable','مجوز فضای موقت پشتیبان معتبر نیست.',500);
+          +        $external=realpath($externalPath);
+          +        if($external===false){$parent=realpath(dirname($externalPath));if($parent!==false)$external=$parent.DIRECTORY_SEPARATOR.basename($externalPath);}
+          +        if($external!==false&&($canonical($external)===$canonical($dir)||str_starts_with($canonical($external),$canonical($dir).'/')))throw new RecoveryException('invalid_path','مسیر موقت داخلی برای فایل پشتیبان مجاز نیست.',422);
+          +        $lockPath=$dir.DIRECTORY_SEPARATOR.'.scratch.lock';
+          +        if(is_link($lockPath)||(file_exists($lockPath)&&!is_file($lockPath)))throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
+          +        $lock=@fopen($lockPath,'c+b');
+          +        if(!$lock)throw new RecoveryException('temp_unavailable','قفل فضای موقت در دسترس نیست.',500);
+          +        try{
+          +            if(!flock($lock,LOCK_EX|LOCK_NB))throw new RecoveryException('backup_scratch_busy','عملیات دیگری روی پشتیبان در جریان است.',409);
+          +            clearstatcache(true,$lockPath);
+          +            $ls=@lstat($lockPath);$fs=fstat($lock);
+          +            if(is_link($lockPath)||!is_array($ls)||!is_array($fs)||$ls['ino']!==$fs['ino']||$ls['dev']!==$fs['dev']||$ls['nlink']!==1)throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
+          +            @chmod($lockPath,0600);
+          +            $entries=@scandir($dir);
+          +            if($entries===false)throw new RecoveryException('temp_unavailable','فضای موقت قابل بررسی نیست.',500);
+          +            // Validate every candidate before removing anything. Never follow links.
+          +            $orphans=[];
+          +            foreach($entries as $entry){
+          +                if(!preg_match('/^business-(?:backup|inspect)-[a-f0-9]{32}\.ndjson\.gz$/D',$entry))continue;
+          +                $file=$dir.DIRECTORY_SEPARATOR.$entry;$st=@lstat($file);
+          +                if(!is_array($st)||is_link($file)||!is_file($file)||$st['nlink']!==1||$canonical((string)realpath($file))!==$canonical($file))throw new RecoveryException('backup_scratch_cleanup_pending','فایل موقت نامعتبر است؛ نیازمند بررسی.',409);
+          +                $orphans[]=$file;
+          +            }
+          +            foreach($orphans as $file)if(!@unlink($file))throw new RecoveryException('backup_scratch_cleanup_pending','پاک‌سازی فایل موقت کامل نشد.',500);
+          +            return ['dir'=>$dir,'lock'=>$lock];
+          +        }catch(Throwable $e){fclose($lock);throw $e;}
+          +    }
+          +
+               private function tempPath(string $prefix,string $suffix): string
+               {
+                   $dir=$this->observability->dataRoot().DIRECTORY_SEPARATOR.'recovery-tmp';if(!is_dir($dir)&&!@mkdir($dir,0700,true)&&!is_dir($dir))throw new RecoveryException('temp_unavailable','فضای موقت بازیابی آماده نیست.',500);
+          '@
+          $patchPath=Join-Path $lab 'scratch.patch'
+          Write-LF $patchPath $patch
+          Check-Hash $patchPath 'f7008cbe42c3c3e1c9b4d105d16898aca6541bf15ddf8ab7abb62db417971214'
+          & git -C $web apply -p2 --whitespace=nowarn --check $patchPath
+          Need ($LASTEXITCODE -eq 0) 'PATCH_CHECK_FAILED'
+          & git -C $web apply -p2 --whitespace=nowarn $patchPath
+          Need ($LASTEXITCODE -eq 0) 'PATCH_FAILED'
+          Check-Hash $class '3a7209987a35ee88734fec66de94e5dd9004762e175ef610348d3c3c77c9b4d3'
+          $lock=Get-Content "$env:RUNNER_TEMP/helper/QA-release-lock.json" -Raw|ConvertFrom-Json
+          $dep=$lock.artifacts|Where-Object dependency -eq php
+          Need ($dep.sha256 -ceq '6df2a5f59f10f08022bede47a26d61c3c16756c54d86aad58503dc8a9d3c25ad') 'PHP_LOCK_DRIFT'
+          $zip=Join-Path $lab $dep.filename
+          $verified=$false
+          foreach($url in @(('https://downloads.php.net/~windows/releases/archives/'+$dep.filename),$dep.source_url)+@($dep.fallback_urls)){
+            Remove-Item $zip -ErrorAction SilentlyContinue
+            & curl.exe --location --fail --silent --show-error --max-time 90 --output $zip $url
+            if($LASTEXITCODE -eq 0 -and (Test-Path $zip) -and (Get-Item $zip).Length -eq $dep.size -and (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ceq $dep.sha256){$verified=$true;break}
+          }
+          Need $verified 'PINNED_PHP_UNAVAILABLE'
+          $pr=Join-Path $lab 'php'
+          Expand-Archive $zip $pr
+          $ini=Join-Path $pr 'php.ini'
+          Copy-Item (Join-Path $pr 'php.ini-production') $ini
+          Add-Content $ini ('extension_dir="'+(Join-Path $pr 'ext').Replace('\','/')+'"')
+          Add-Content $ini 'extension=sodium'
+          $php=Join-Path $pr 'php.exe'
+          & $php -c $ini -l $class
+          Need ($LASTEXITCODE -eq 0) 'PHP_LINT'
+          $test=@'
+          <?php
+          declare(strict_types=1);
+          if(PHP_SAPI!=='cli'||PHP_OS_FAMILY!=='Windows'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_R186_CI_ONLY')!=='YES'||count($argv)!==4)exit(2);
+          $root=realpath($argv[1]);$src=realpath($argv[3]);if(!$root||!$src||!is_file($root.'/synthetic-only'))exit(2);
+          require $src.'/Core/Observability.php';require $src.'/Domain/Recovery/RecoveryException.php';require $src.'/Domain/Recovery/BusinessBackupService.php';
+          class NoDB extends PDO{public function __construct(){}}
+          $b=new \Sokna\Local\Domain\Recovery\BusinessBackupService(new NoDB(),new \Sokna\Local\Core\Observability($root),'a23-synthetic-only');$pass='synthetic-a23-crash-only';$enc=new ReflectionMethod($b,'encryptFile');$mode=$argv[2];
+          if($mode==='prepare'){$gz=gzopen($root.'/plain.gz','wb1');gzwrite($gz,"SYNTHETIC-MARKER\n");for($i=0;$i<256;$i++)gzwrite($gz,random_bytes(1048576));gzclose($gz);$enc->invoke($b,$root.'/plain.gz',$root.'/synthetic.skbf',$pass);unlink($root.'/plain.gz');exit(0);}
+          try{
+           if($mode==='inspect')$b->inspectEncrypted($root.'/synthetic.skbf',$pass);
+           elseif(in_array($mode,['cleanup','hold','reserved'],true)){$m=new ReflectionMethod($b,'acquireReadScratch');$r=$m->invoke($b,$mode==='reserved'?$root.'/recovery-read-scratch-v1/business-inspect-'.str_repeat('f',32).'.ndjson.gz':$root.'/synthetic.skbf');if($mode==='hold'){file_put_contents($r['dir'].'/business-inspect-'.str_repeat('c',32).'.ndjson.gz','synthetic owned scratch');file_put_contents($root.'/hold-ready','ready');sleep(60);}fclose($r['lock']);}
+           else exit(2);
+           echo "OK\n";
+          }catch(\Sokna\Local\Domain\Recovery\RecoveryException $e){echo $e->errorCode.PHP_EOL;exit(3);}catch(Throwable $e){echo get_class($e).': '.$e->getMessage().PHP_EOL;exit(4);}
+          '@
+          $runner=@'
+          import pathlib,subprocess,tempfile,time,json,hashlib,sys,shutil,os
+          php,ini,script,src,out=sys.argv[1:]
+          root=pathlib.Path(tempfile.mkdtemp(prefix='a23-synthetic-'));(root/'synthetic-only').touch(); rows=[]
+          def ck(x,n):
+           assert x,n;rows.append(n);print('PASS',n,flush=True)
+          def args(mode):return [php,'-c',ini,script,str(root),mode,src]
+          def run(mode):return subprocess.run(args(mode),capture_output=True,text=True,timeout=90,cwd=str(pathlib.Path(php).parent))
+          def spawn(mode):return subprocess.Popen(args(mode),stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=str(pathlib.Path(php).parent))
+          def wait_for(fn,proc,seconds):
+           end=time.monotonic()+seconds
+           while time.monotonic()<end and proc.poll() is None:
+            result=fn()
+            if result:return result
+            time.sleep(.002)
+           return None
+          try:
+           r=run('prepare');ck(r.returncode==0,'encrypted synthetic fixture '+str(r.stdout))
+           cipher=root/'synthetic.skbf';digest=hashlib.sha256(cipher.read_bytes()).hexdigest();scratch=root/'recovery-read-scratch-v1';legacy=root/'recovery-tmp';legacy.mkdir();sentinel=legacy/'business-restore-1234567890abcdef.ndjson.gz';sentinel.write_text('preserve')
+           hold=spawn('hold')
+           try:
+            ck(wait_for(lambda:(root/'hold-ready').exists(),hold,20),'real Windows process holds actual scratch lock')
+            orphan=scratch/('business-inspect-'+'c'*32+'.ndjson.gz');r=run('cleanup');ck(r.returncode==3 and 'backup_scratch_busy' in r.stdout and orphan.exists(),'active lock refuses concurrent cleanup')
+            hold.kill();hold.wait(10);ck(orphan.exists(),'terminated process leaves scratch for next holder')
+           finally:
+            if hold.poll() is None:hold.kill();hold.wait(10)
+           r=run('cleanup');ck(r.returncode==0 and not orphan.exists(),'next exclusive lock cleans abandoned scratch '+r.stdout)
+           inspect=spawn('inspect')
+           def observed():
+            for f in scratch.glob('business-inspect-*.ndjson.gz'):
+             try:
+              if f.stat().st_size>=1048576:return f
+             except FileNotFoundError:pass
+            return None
+           try:
+            f=wait_for(observed,inspect,30);ck(f is not None,'observed actual decrypted scratch in Windows')
+            inspect.kill();inspect.wait(10);ck(f.exists(),'real inspect process terminated during plaintext write')
+           finally:
+            if inspect.poll() is None:inspect.kill();inspect.wait(10)
+           other=scratch/'keep.txt';other.write_text('preserve');r=run('reserved');ck(r.returncode==3 and 'invalid_path' in r.stdout and f.exists(),'reserved internal destination rejected')
+           r=run('cleanup');ck(r.returncode==0 and not f.exists() and other.read_text()=='preserve' and sentinel.read_text()=='preserve','abandoned decrypted file reclaimed, restore evidence retained')
+           ck(hashlib.sha256(cipher.read_bytes()).hexdigest()==digest,'encrypted source unchanged')
+           pathlib.Path(out).write_text(json.dumps({'status':'PASS','checks':rows,'actual_windows_process_termination':True,'actual_decryption_interrupted':True,'next_lock_cleanup':True,'real_database_tested':False,'windows_acl_tested':False,'synthetic_only':True},indent=2))
+          finally:shutil.rmtree(root,ignore_errors=True)
+          '@
+          $testPath=Join-Path $lab 'scratch-windows.php'
+          $runnerPath=Join-Path $lab 'scratch-windows.py'
+          Write-LF $testPath $test
+          Write-LF $runnerPath $runner
+          Check-Hash $testPath '3b5d717b8b6690205289c1286a1094846de5b12f4f941665d4164ffbe8712fba'
+          Check-Hash $runnerPath '609777f287a0e0d0a4af0c1a7e8ce5a5058d15f26352c1da6be6b023fa563e8b'
+          python $runnerPath $php $ini $testPath (Join-Path $web 'src') (Join-Path $env:RUNNER_TEMP 'a23-windows-scratch-receipt.json') | Tee-Object (Join-Path $env:RUNNER_TEMP 'a23-windows-scratch-log.txt')
+          Need ($LASTEXITCODE -eq 0) 'WINDOWS_SCRATCH_GATE_FAILED'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-WINDOWS-ISOLATED-SCRATCH-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a23-windows-scratch-receipt.json
+            ${{ runner.temp }}/a23-windows-scratch-log.txt
+          retention-days: 30
