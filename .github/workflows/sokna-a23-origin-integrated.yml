@@ -55,7 +55,7 @@ jobs:
           echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
           unzip -q "$P2" -d "$W/public"
           php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
-      - name: Verify A23-15 exact cumulative delta and observe real preflight
+      - name: Verify A23-17 exact delta and run origin rebind with active OPcache
         run: |
           set -euo pipefail
           W="$RUNNER_TEMP/a22"
@@ -1341,22 +1341,45 @@ jobs:
           82d438b07ca26f4a70afc9537464035bb8754e30b716b361d4d6ec21b4c8e335  public/.htaccess
           HASHES
           php -r 'require $argv[1]."/bootstrap.php";$c=sokna_public_bootstrap(require $argv[1]."/config.php");$c->migrations()->migrate();$cfg=require $argv[1]."/config.php";$iid=$cfg["app"]["default_installation_id"];$c->pairingSecrets()->put($iid,$cfg["relay"]["installation_secrets"][$iid]);file_put_contents($argv[1]."/install.lock",json_encode(["format"=>"sokna-public-install-lock-v1","public_instance_id"=>"qa-a23-origin-instance","pwa_app_id"=>"pwa-".str_repeat("a",32)],JSON_THROW_ON_ERROR));' "$W/public"
-          php -d opcache.enable_cli=0 -S 127.0.0.1:18766 -t "$W/public" "$W/origin-router.php" > "$W/origin-http.log" 2>&1 & pp=$!
-          php -d opcache.enable_cli=0 -S 127.0.0.1:18768 -t "$W/public" "$W/origin-router.php" > "$W/origin-other-http.log" 2>&1 & qp=$!
-          trap 'kill "$pp" "$qp" 2>/dev/null || true' EXIT
-          sleep 2
-          kill -0 "$pp" "$qp"
           # baseline observed in run 46150663216; do not repeat it here
           patch --batch --forward -p1 < preflight.patch
           sha256sum -c <<'HASHES'
           6fb2b2866e8c1bccfa4757257cf19e2a594445280d9b18cc5906fc2e24f344e8  local/src/Domain/PublicEdge/PublicEdgeSyncClient.php
           31cce1d9919fb68ea2ae1ce44e760f0fba26040e48bc2b023cd9e6a593e78280  local/src/Domain/PublicEdge/PublicOriginRebindService.php
           HASHES
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,hashlib
+          pairs=json.loads("{\"public/src/Deployment/DeploymentRebindService.php\":[[\"$this->atomicWrite($this->root.'/config.php',$after,0600);\",\"$this->atomicWrite($this->root.'/config.php',$after,0600);$this->invalidateRuntimeConfig();\"],[\"$this->atomicWrite($this->root.'/config.php',$bytes,0600);\",\"$this->atomicWrite($this->root.'/config.php',$bytes,0600);$this->invalidateRuntimeConfig();\"],[\"    private function configBytes(): string\",\"    /** Config is mutable even when the PHP opcode cache is configured for immutable scripts. */\\n    private function invalidateRuntimeConfig(): void{ $path=$this->root.'/config.php';clearstatcache(true,$path);if(function_exists('opcache_invalidate'))@opcache_invalidate($path,true); }\\n    private function configBytes(): string\"]],\"public/deployment-binding.php\":[[\"    $config=require __DIR__.'/config.php';\",\"    // A separate PHP pool may retain old config opcodes after a signed rebind.\\n    $configPath=__DIR__.'/config.php';clearstatcache(true,$configPath);if(function_exists('opcache_invalidate'))@opcache_invalidate($configPath,true);\\n    $config=require $configPath;\"]],\"public/index.php\":[[\"$configPath = trim((string)(getenv('SOKNA_PUBLIC_CONFIG') ?: ($componentRoot . '/config.php')));\",\"$configPath = trim((string)(getenv('SOKNA_PUBLIC_CONFIG') ?: ($componentRoot . '/config.php')));\\n// Deployment binding is mutable; read it from disk even in another PHP pool.\\nclearstatcache(true,$configPath);if(function_exists('opcache_invalidate'))@opcache_invalidate($configPath,true);\"]],\"local/src/Domain/PublicEdge/PublicOriginRebindService.php\":[[\"if(@rename($staged,$this->configPath)){@chmod($this->configPath,0600);return;}\",\"if(@rename($staged,$this->configPath)){@chmod($this->configPath,0600);$this->invalidateRuntimeConfig();return;}\"],[\"@chmod($this->configPath,0600);if($had)@unlink($backup);\",\"@chmod($this->configPath,0600);$this->invalidateRuntimeConfig();if($had)@unlink($backup);\"],[\"    /** @return resource */\\n    private function configLock\",\"    private function invalidateRuntimeConfig(): void{clearstatcache(true,$this->configPath);if(function_exists('opcache_invalidate'))@opcache_invalidate($this->configPath,true);}\\n\\n    /** @return resource */\\n    private function configLock\"]]}")
+          for n, changes in pairs.items():
+              p=Path(n); s=p.read_text()
+              for a,b in changes:
+                  assert s.count(a)==1,(n,a,s.count(a)); s=s.replace(a,b)
+              p.write_text(s)
+          PY
+          sha256sum -c <<'HASHES'
+          8f3d636a576239e03e2bc97889fecd2235137e1b486f52fae74b89d46f22bb71  public/src/Deployment/DeploymentRebindService.php
+          eadd6ffed594abc28ec4a8ac202d75e2a233a0ffc0f6f537fdf5de3b42eb2cda  public/deployment-binding.php
+          762ac3ddbb8e2dc7ca4e728d3feb32e6705cf4e2a02d354ca7f33af0b127b2f5  public/index.php
+          a085e0e97e10d9ea11c286357704582ab672cbc8c48b77ccd1a55228d21132b8  local/src/Domain/PublicEdge/PublicOriginRebindService.php
+          HASHES
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('origin-http.php');s=p.read_text();anchor='// Targeted readback:';assert s.count(anchor)==1;s=s.replace(anchor,"ck($c->publicEdgeSyncClient()->deploymentBindingProbe($other)['deployment']['base_url']===$old,'second PHP pool warmed with old binding');\n"+anchor);p.write_text(s)
+          p=Path('origin-router.php');s=p.read_text();anchor='$p=parse_url';s=s.replace(anchor,"if($_SERVER['REQUEST_URI']==='/qa-opcache-state'){header('Content-Type: application/json');echo json_encode(['sapi'=>PHP_SAPI,'active'=>opcache_get_status(false)!==false,'validate'=>ini_get('opcache.validate_timestamps'),'pid'=>getmypid()]);return true;}\n"+anchor);p.write_text(s)
+          PY
+          php -d opcache.enable=1 -d opcache.enable_cli=0 -d opcache.validate_timestamps=0 -d opcache.file_update_protection=0 -S 127.0.0.1:18766 -t "$W/public" "$W/origin-router.php" > "$W/origin-http.log" 2>&1 & pp=$!
+          php -d opcache.enable=1 -d opcache.enable_cli=0 -d opcache.validate_timestamps=0 -d opcache.file_update_protection=0 -S 127.0.0.1:18768 -t "$W/public" "$W/origin-router.php" > "$W/origin-other-http.log" 2>&1 & qp=$!
+          trap 'kill "$pp" "$qp" 2>/dev/null || true' EXIT
+          sleep 2
+          kill -0 "$pp" "$qp"
+          curl -fsS http://127.0.0.1:18766/qa-opcache-state | tee "$W/origin-opcache-state-log.txt"
+          curl -fsS http://127.0.0.1:18768/qa-opcache-state | tee -a "$W/origin-opcache-state-log.txt"
           php -d opcache.enable_cli=0 "$W/origin-http.php" "$W" candidate | tee "$W/origin-candidate-log.txt"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SOKNA-A23-16-ORIGIN-INTEGRATED-EVIDENCE
+          name: SOKNA-A23-17-ORIGIN-INTEGRATED-EVIDENCE
           path: |
             ${{ runner.temp }}/a22/origin-*-receipt.json
             ${{ runner.temp }}/a22/origin-*-log.txt
