@@ -1,0 +1,310 @@
+name: A23 authenticated restored identity durable hint
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: ['.github/workflows/sokna-a23-restored-identity.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-cp116-ci-only
+          MARIADB_ROOT_HOST: '%'
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      QA_DB_PASSWORD: synthetic-cp116-ci-only
+      SOKNA_QA_DISPOSABLE: YES
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/candidate
+      - name: Verify exact accepted Local clean web and prepare isolated database
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W"
+          P="$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip"
+          echo "707e64815c039224af1a8be6a55f89932e482f004c15a6a46913b41bfad1fa10  $P" | sha256sum -c
+          python3 - "$P" "$W/local" <<'PY'
+          import pathlib,sys,zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert z.testzip() is None
+              assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              z.extractall(sys.argv[2])
+          PY
+          php qa/cp148/preflight.php
+          php qa/cp160/fixture.php "$W/local" > "$W/fixture-log.txt"
+          P2="$RUNNER_TEMP/candidate/PUBLIC-A21-CLEAN-CANDIDATE-QA-ONLY.zip"
+          echo "641e70ebc45da13eaf538f93cdd7a50567b75109135b24b8fc7573b0349e5402  $P2" | sha256sum -c
+          unzip -q "$P2" -d "$W/public"
+          php qa/cp160/public-fixture.php "$W/public" >> "$W/fixture-log.txt"
+      - name: Verify transactional recovery identity on real independent target
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/a22"
+          mkdir -p "$W-a23-identity-target/local"
+          unzip -q "$RUNNER_TEMP/candidate/LOCAL-A21-CLEAN-WEB-CANDIDATE-QA-ONLY.zip" -d "$W-a23-identity-target/local"
+          cat > "$W/identity.patch" <<'PATCH'
+          --- a/local/src/Domain/PublicEdge/PublicAuthorityStateService.php
+          +++ b/local/src/Domain/PublicEdge/PublicAuthorityStateService.php
+          @@ -7,6 +7,9 @@
+           
+           final class PublicAuthorityStateService
+           {
+          +    public const RESTORE_SOURCE_KEY='public.recovery.source_identity_v1';
+          +    private const RESTORE_SOURCE_REASON='business_restore_identity:';
+          +
+               public function __construct(private readonly PDO $pdo, private readonly string $installationId) {}
+           
+               public function status(): array
+          @@ -29,6 +32,38 @@
+                   $this->ensure();
+                   $q=$this->pdo->prepare("UPDATE public_authority_state SET phase='reenroll_required',reason=?,blocked_at=UTC_TIMESTAMP(6),reenrolled_at=NULL,activated_at=NULL WHERE installation_id=?");
+                   $q->execute([substr($reason,0,96),$this->installationId]);
+          +    }
+          +
+          +    /** Record only authenticated manifest identity inside the business restore transaction.
+          +     * This is a recovery hint, NOT owner approval or proof of a previous Public pairing. */
+          +    public function markBusinessRestoreRequired(string $sourceId,string $operation): void
+          +    {
+          +        if(!$this->pdo->inTransaction())throw new PublicEdgeSyncException('restore_identity_transaction_required','ثبت هویت بازیابی باید در تراکنش بازیابی انجام شود.',409);
+          +        if(!$this->validRecoveryIdentity($sourceId)||!$this->validRecoveryIdentity($this->installationId)||!preg_match('/^[a-f0-9]{16}$/D',$operation)){
+          +            $this->pdo->prepare('DELETE FROM settings WHERE setting_key=?')->execute([self::RESTORE_SOURCE_KEY]);
+          +            $this->markRestoreRequired('business_restore');
+          +            return;
+          +        }
+          +        $record=json_encode(['format'=>'sokna-restore-source-v1','source_installation_id'=>$sourceId,'target_installation_id'=>$this->installationId,'restore_operation'=>$operation],JSON_THROW_ON_ERROR|JSON_UNESCAPED_SLASHES);
+          +        $this->pdo->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)')->execute([self::RESTORE_SOURCE_KEY,$record]);
+          +        $this->markRestoreRequired(self::RESTORE_SOURCE_REASON.hash('sha256',$record));
+          +    }
+          +
+          +    /** Return a scoped, non-secret hint only while this restoration requires re-enrollment. */
+          +    public function restoredSourceIdentity(): ?array
+          +    {
+          +        $state=$this->status();$reason=(string)($state['reason']??'');
+          +        if(($state['phase']??'')!=='reenroll_required'||!str_starts_with($reason,self::RESTORE_SOURCE_REASON))return null;
+          +        $q=$this->pdo->prepare('SELECT setting_value FROM settings WHERE setting_key=?');$q->execute([self::RESTORE_SOURCE_KEY]);$raw=$q->fetchColumn();
+          +        if(!is_string($raw)||strlen($raw)>1024||!hash_equals($reason,self::RESTORE_SOURCE_REASON.hash('sha256',$raw)))return null;
+          +        $r=json_decode($raw,true);
+          +        if(!is_array($r)||($r['format']??'')!=='sokna-restore-source-v1'||($r['target_installation_id']??'')!==$this->installationId||!is_string($r['source_installation_id']??null)||!$this->validRecoveryIdentity($r['source_installation_id'])||!is_string($r['restore_operation']??null)||!preg_match('/^[a-f0-9]{16}$/D',$r['restore_operation']))return null;
+          +        return ['source_installation_id'=>$r['source_installation_id'],'target_installation_id'=>$this->installationId,'restore_operation'=>$r['restore_operation'],'owner_approval_required'=>true,'previous_public_pairing_verified'=>false];
+          +    }
+          +
+          +    private function validRecoveryIdentity(string $id): bool
+          +    {
+          +        return $id!=='unknown-installation'&&preg_match('/^[A-Za-z0-9._:-]{1,96}$/D',$id)===1;
+               }
+           
+               public function markReenrolled(int $epoch): void
+          --- a/local/src/Domain/Recovery/BusinessBackupService.php
+          +++ b/local/src/Domain/Recovery/BusinessBackupService.php
+          @@ -44,8 +44,9 @@
+                   self::requireSodium();
+                   self::validatePassphrase($passphrase);
+                   $destination=$this->safeDestination($destination);
+          -        $tmp=$this->tempPath('business-backup','.ndjson.gz');
+          -        try{
+          +        $scratch=$this->acquireReadScratch($destination);$tmp=null;
+          +        try{
+          +            $tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-backup-'.bin2hex(random_bytes(16)).'.ndjson.gz';
+                       $mediaLock=$this->acquireMediaWriteLock();
+                       try{$manifest=$this->writeSnapshot($tmp,$actorUserId);}finally{fclose($mediaLock);}
+                       $this->encryptFile($tmp,$destination,$passphrase);
+          @@ -57,7 +58,7 @@
+                           'excluded_machine_identity'=>$manifest['excluded_machine_identity'],
+                           'schema_versions'=>$manifest['schema_versions'],'created_at'=>$manifest['created_at'],
+                       ];
+          -        }finally{ @unlink($tmp); }
+          +        }finally{ if($tmp!==null)@unlink($tmp);fclose($scratch['lock']); }
+               }
+           
+               public function restoreEncryptedToEmptyTarget(string $source,string $passphrase,int $actorUserId=0): array
+          @@ -77,8 +78,8 @@
+               public function inspectEncrypted(string $source,string $passphrase): array
+               {
+                   self::requireSodium();self::validatePassphrase($passphrase);
+          -        $tmp=$this->tempPath('business-inspect','.ndjson.gz');
+          -        try{$this->decryptFile($source,$tmp,$passphrase);
+          +        $scratch=$this->acquireReadScratch($source);$tmp=null;
+          +        try{$tmp=$scratch['dir'].DIRECTORY_SEPARATOR.'business-inspect-'.bin2hex(random_bytes(16)).'.ndjson.gz';$this->decryptFile($source,$tmp,$passphrase);
+                       $manifest=$this->readManifest($tmp);
+                       $schema=$manifest['schema_version']??0;
+                       if(!in_array($schema,[1,2],true))throw new RecoveryException('backup_contract','فرمت پشتیبان پشتیبانی نمی‌شود.',422);
+          @@ -101,7 +102,7 @@
+                           $manifest['target_kind']=$proof===null?'empty':'verified_fresh_seed';
+                           $manifest['target_ready']=true;
+                       }catch(RecoveryException $e){$manifest['target_issue']=['code'=>$e->errorCode,'message'=>$e->getMessage()];}
+          -            return $manifest;}finally{@unlink($tmp);}
+          +            return $manifest;}finally{if($tmp!==null)@unlink($tmp);fclose($scratch['lock']);}
+               }
+           
+               /**
+          @@ -140,6 +141,7 @@
+                           $this->gzLine($gz,['kind'=>'table','name'=>$table,'columns'=>$columns]);
+                           $stmt=$this->pdo->query('SELECT * FROM `'.str_replace('`','``',$table).'` ORDER BY '.$this->stableOrder($table,$columns));
+                           while($row=$stmt->fetch(PDO::FETCH_ASSOC)){
+          +                    if($table==='settings'&&($row['setting_key']??'')===PublicAuthorityStateService::RESTORE_SOURCE_KEY)continue;
+                               if($table==='settlement_records'&&array_key_exists('final_print_job_id',$row))$row['final_print_job_id']=null;
+                               $payload=['kind'=>'row','table'=>$table,'value'=>$row];$json=self::json($payload);
+                               hash_update($ctx,$json."\n");$this->gzRawLine($gz,$json);$counts[$table]++;
+          @@ -264,7 +266,7 @@
+                               $table=(string)($entry['table']??'');$row=$entry['value']??null;
+                               if($table===''||$table!==$current||!is_array($row))throw new RecoveryException('backup_contract','ترتیب رکوردهای پشتیبان معتبر نیست.',422);
+                               hash_update($hashCtx[$table],$trim."\n");
+          -                    if(!in_array($table,self::LEGACY_TRANSPORT_TABLES,true))$this->insertRow($table,$row);
+          +                    if(!in_array($table,self::LEGACY_TRANSPORT_TABLES,true)&&!($table==='settings'&&($row['setting_key']??'')===PublicAuthorityStateService::RESTORE_SOURCE_KEY))$this->insertRow($table,$row);
+                               $counts[$table]++;continue;
+                           }
+                           if($kind==='footer'){$footer=$entry;break;}
+          @@ -291,7 +293,10 @@
+                       foreach(['public_projection_outbox','public_projection_model_delivery','public_projection_model_targets','public_sync_state'] as $transportTable){
+                           try{$this->pdo->exec('DELETE FROM `'.$transportTable.'`');}catch(Throwable){}
+                       }
+          -            if($this->authorityState!==null)$this->authorityState->markRestoreRequired('business_restore');
+          +            if($this->authorityState!==null){
+          +                if(in_array('settings',$restoreTables,true))$this->authorityState->markBusinessRestoreRequired((string)($manifest['source_installation_id']??''),$operation);
+          +                else $this->authorityState->markRestoreRequired('business_restore');
+          +            }
+                       $this->pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+                       // The target must be empty; never overwrite pre-existing media on a different machine.
+                       if($mediaStage!==null){
+          @@ -746,6 +751,49 @@
+                   return $path;
+               }
+           
+          +    /** Dedicated, versioned scratch namespace for pre-mutation operations only.
+          +     * Never sweep recovery-tmp, restore journals, or user backup destinations.
+          +     * After a killed process, the next holder of the stable lock removes only
+          +     * abandoned scratch files in this namespace. This is not secure erase.
+          +     */
+          +    private function acquireReadScratch(string $externalPath): array
+          +    {
+          +        $root=realpath($this->observability->dataRoot());
+          +        if($root===false||!is_dir($root))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
+          +        $dir=$root.DIRECTORY_SEPARATOR.'recovery-read-scratch-v1';
+          +        if(is_link($dir)||(!is_dir($dir)&&!@mkdir($dir,0700)&&!is_dir($dir)))throw new RecoveryException('temp_unavailable','فضای موقت پشتیبان آماده نیست.',500);
+          +        $canonical=static function(string $p):string{$p=rtrim(str_replace('\\','/',$p),'/');return PHP_OS_FAMILY==='Windows'?strtolower($p):$p;};
+          +        $actual=realpath($dir);
+          +        if($actual===false||$canonical($actual)!==$canonical($dir)||is_link($dir))throw new RecoveryException('temp_unavailable','مسیر موقت پشتیبان معتبر نیست.',500);
+          +        if(PHP_OS_FAMILY!=='Windows'&&((fileperms($dir)&0077)!==0))throw new RecoveryException('temp_unavailable','مجوز فضای موقت پشتیبان معتبر نیست.',500);
+          +        $external=realpath($externalPath);
+          +        if($external===false){$parent=realpath(dirname($externalPath));if($parent!==false)$external=$parent.DIRECTORY_SEPARATOR.basename($externalPath);}
+          +        if($external!==false&&($canonical($external)===$canonical($dir)||str_starts_with($canonical($external),$canonical($dir).'/')))throw new RecoveryException('invalid_path','مسیر موقت داخلی برای فایل پشتیبان مجاز نیست.',422);
+          +        $lockPath=$dir.DIRECTORY_SEPARATOR.'.scratch.lock';
+          +        if(is_link($lockPath)||(file_exists($lockPath)&&!is_file($lockPath)))throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
+          +        $lock=@fopen($lockPath,'c+b');
+          +        if(!$lock)throw new RecoveryException('temp_unavailable','قفل فضای موقت در دسترس نیست.',500);
+          +        try{
+          +            if(!flock($lock,LOCK_EX|LOCK_NB))throw new RecoveryException('backup_scratch_busy','عملیات دیگری روی پشتیبان در جریان است.',409);
+          +            clearstatcache(true,$lockPath);
+          +            $ls=@lstat($lockPath);$fs=fstat($lock);
+          +            if(is_link($lockPath)||!is_array($ls)||!is_array($fs)||$ls['ino']!==$fs['ino']||$ls['dev']!==$fs['dev']||$ls['nlink']!==1)throw new RecoveryException('temp_unavailable','قفل فضای موقت معتبر نیست.',500);
+          +            @chmod($lockPath,0600);
+          +            $entries=@scandir($dir);
+          +            if($entries===false)throw new RecoveryException('temp_unavailable','فضای موقت قابل بررسی نیست.',500);
+          +            // Validate every candidate before removing anything. Never follow links.
+          +            $orphans=[];
+          +            foreach($entries as $entry){
+          +                if(!preg_match('/^business-(?:backup|inspect)-[a-f0-9]{32}\.ndjson\.gz$/D',$entry))continue;
+          +                $file=$dir.DIRECTORY_SEPARATOR.$entry;$st=@lstat($file);
+          +                if(!is_array($st)||is_link($file)||!is_file($file)||$st['nlink']!==1||$canonical((string)realpath($file))!==$canonical($file))throw new RecoveryException('backup_scratch_cleanup_pending','فایل موقت نامعتبر است؛ نیازمند بررسی.',409);
+          +                $orphans[]=$file;
+          +            }
+          +            foreach($orphans as $file)if(!@unlink($file))throw new RecoveryException('backup_scratch_cleanup_pending','پاک‌سازی فایل موقت کامل نشد.',500);
+          +            return ['dir'=>$dir,'lock'=>$lock];
+          +        }catch(Throwable $e){fclose($lock);throw $e;}
+          +    }
+          +
+               private function tempPath(string $prefix,string $suffix): string
+               {
+                   $dir=$this->observability->dataRoot().DIRECTORY_SEPARATOR.'recovery-tmp';if(!is_dir($dir)&&!@mkdir($dir,0700,true)&&!is_dir($dir))throw new RecoveryException('temp_unavailable','فضای موقت بازیابی آماده نیست.',500);
+          --- a/local/public/integrations/api.php
+          +++ b/local/public/integrations/api.php
+          @@ -11,13 +11,14 @@
+                   $errors=[];$guard=$core->snapshotGuard();
+                   $accommodation=$guard->capture('connections','accommodation',['enabled'=>false,'base_url'=>'','configured'=>false,'credential_saved'=>false],'وضعیت اتصال اقامتگاه فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->accommodationSnapshot());
+                   $public=$guard->capture('connections','public_edge',['status'=>'unavailable','base_url'=>'','last_sync_at'=>'','version'=>''],'وضعیت وب عمومی فعلاً در دسترس نیست.',fn():array=>$core->systemDiagnostics()->publicConnectionStatus());
+          +        $authority=$guard->capture('connections','public_authority',['phase'=>'unknown'],'وضعیت بازیابی اتصال پابلیک فعلاً در دسترس نیست.',function()use($core):array{$s=$core->publicAuthorityState()->status();return ['phase'=>(string)($s['phase']??'unknown'),'authority_epoch'=>(int)($s['authority_epoch']??0),'restored_source'=>$core->publicAuthorityState()->restoredSourceIdentity()];});
+                   $lanStaff=$guard->capture('connections','lan_staff',['enabled'=>false,'configured'=>false,'base_url'=>'','source'=>'config','staff_policy'=>'lan_preferred_public_fallback','guest_policy'=>'public_first'],'وضعیت مسیر LAN کارکنان فعلاً در دسترس نیست.',fn():array=>$core->integrationSettings()->lanStaffSnapshot());
+                   $originTransition=$guard->capture('connections','public_origin_transition',['active'=>false],'وضعیت انتقال آدرس Public فعلاً در دسترس نیست.',fn():array=>$core->publicOriginRebind()->transitionStatus());
+                   $windows=$guard->capture('connections','windows_services',['state'=>'unavailable','active'=>false],'وضعیت Windows Services فعلاً در دسترس نیست.',fn():array=>$core->windowsServicesPairing()->status());
+                   $runtime=$guard->capture('connections','windows_runtime',['status'=>'unavailable','runtime_version'=>'','contract_version'=>1],'وضعیت Windows Runtime فعلاً در دسترس نیست.',function()use($core):array{$health=$core->systemDiagnostics()->healthComponent('runtime');return (array)(($health['components']??[])['runtime']??[]);});
+                   $agents=$guard->capture('connections','print_agents',[],'فهرست Print Agentها فعلاً در دسترس نیست.',function()use($core):array{$snap=$core->printManagement()->snapshot();return array_values((array)($snap['agents']??[]));});
+          -        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+          -        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+          +        foreach(['accommodation'=>$accommodation,'public_edge'=>$public,'public_authority'=>$authority,'lan_staff'=>$lanStaff,'public_origin_transition'=>$originTransition,'windows_services'=>$windows,'windows_runtime'=>$runtime,'print_agents'=>$agents] as $key=>$section)if($section['error']!==null)$errors[$key]=$section['error'];
+          +        WebAction::json(['success'=>true,'snapshot'=>['accommodation'=>$accommodation['value'],'public_edge'=>$public['value'],'public_authority'=>$authority['value'],'lan_staff'=>$lanStaff['value'],'public_origin_transition'=>$originTransition['value'],'windows_services'=>$windows['value'],'windows_runtime'=>$runtime['value'],'print_agents'=>$agents['value'],'errors'=>$errors]]);
+               }
+               $data=WebAction::requireMutation();$action=(string)($data['action']??'');
+               if(in_array($action,['public_move_begin','public_move_confirm','public_move_cancel','public_move_status','public_move_finish','public_move_existing_owner_offer_execute'],true)){
+          PATCH
+          cat > "$W/restore-identity.php" <<'PHP'
+          <?php
+          declare(strict_types=1);
+          use Sokna\Local\Domain\PublicEdge\PublicAuthorityStateService;
+          use Sokna\Local\Domain\Recovery\MediaSnapshotCodec;
+          if(PHP_SAPI!=='cli'||getenv('GITHUB_ACTIONS')!=='true'||getenv('SOKNA_QA_DISPOSABLE')!=='YES'||getenv('QA_DB_PASSWORD')!=='synthetic-cp116-ci-only')exit(2);
+          $w=realpath($argv[1]);if(!$w||basename($w)!=='a22')exit(2);
+          require $w.'/local/bootstrap.php';$cfg=require $w.'/config.php';if($cfg['db']['name']!=='sokna_cp150'||$cfg['db']['host']!=='127.0.0.1')exit(2);
+          $checks=[];function ck($x,$m){global $checks;if(!$x)throw new RuntimeException($m);$checks[]=$m;echo "PASS $m\n";}
+          function rows(PDO $p):array{$r=[];foreach(['orders','order_items','settlement_records','settlement_record_lines','settlement_tender_allocations','users','inventory_items','inventory_movements'] as $t)$r[$t]=$p->query('SELECT * FROM `'.$t.'` ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);return $r;}
+          function marker(PDO $p):mixed{$q=$p->prepare('SELECT setting_value FROM settings WHERE setting_key=?');$q->execute([PublicAuthorityStateService::RESTORE_SOURCE_KEY]);return $q->fetchColumn();}
+          $core=sokna_local_bootstrap($cfg);$p=$core->database();$iid=$cfg['installation']['id'];$data=$cfg['app']['data_dir'];$pass='synthetic-a23-restore-identity-only';$authority=$core->publicAuthorityState();
+          ck($authority->restoredSourceIdentity()===null,'ordinary source no recovery hint');
+          try{$authority->markBusinessRestoreRequired('synthetic-not-committed',str_repeat('a',16));throw new RuntimeException('outside transaction accepted');}catch(\Sokna\Local\Domain\PublicEdge\PublicEdgeSyncException $e){ck($e->errorCode==='restore_identity_transaction_required','outside transaction rejected');}
+          $p->beginTransaction();$authority->markBusinessRestoreRequired('qa-original-identity',str_repeat('a',16));ck($authority->restoredSourceIdentity()['source_installation_id']==='qa-original-identity','transactional hint visible');$p->rollBack();ck($authority->restoredSourceIdentity()===null&&marker($p)===false,'rollback preserves authority and marker');
+          $p->prepare('INSERT INTO settings(setting_key,setting_value) VALUES(?,?)')->execute([PublicAuthorityStateService::RESTORE_SOURCE_KEY,'synthetic-forged-old-marker']);
+          $before=rows($p);$media=MediaSnapshotCodec::scan($data);$file=$w.'/qa-restored-identity.skbf';$made=$core->businessBackup()->createEncrypted($file,$pass,0);$sha=hash_file('sha256',$file);ck($sha===$made['sha256'],'actual encrypted business backup');
+          // Verify the machine-local hint is not exported in the authenticated stream.
+          $b=$core->businessBackup();$tmp=$w.'/qa-identity-test.gz';(new ReflectionMethod($b,'decryptFile'))->invoke($b,$file,$tmp,$pass);$gz=gzopen($tmp,'rb');$found=false;try{while(($line=gzgets($gz))!==false){$j=json_decode($line,true);if(($j['kind']??'')==='row'&&($j['table']??'')==='settings'&&($j['value']['setting_key']??'')===PublicAuthorityStateService::RESTORE_SOURCE_KEY)$found=true;}}finally{gzclose($gz);unlink($tmp);}ck(!$found,'machine-local marker excluded from encrypted backup');
+          $target=$w.'-a23-identity-target';$root=$target.'/local';$dest=$target.'/data';$p->exec('CREATE DATABASE sokna_a23_identity_target CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$p->exec("CREATE USER 'a23_identity_target'@'%' IDENTIFIED BY 'synthetic-a23-identity-target-only'");$p->exec("GRANT ALL PRIVILEGES ON sokna_a23_identity_target.* TO 'a23_identity_target'@'%'");
+          $setup=new \Sokna\Local\Setup\BrowserSetupService($target,$root);ck(($setup->status()['state']??'')==='new','fresh independent target');$init=$setup->installNew(['data_dir'=>$dest,'db'=>['host'=>'127.0.0.1','port'=>'3306','name'=>'sokna_a23_identity_target','user'=>'a23_identity_target','pass'=>'synthetic-a23-identity-target-only'],'create_database'=>false,'admin_user'=>'qa-identity-dest','admin_password'=>'synthetic-a23-target-only','cafe_name'=>'QA destination','table_count'=>3]);ck(($init['success']??false)===true&&$init['installation_id']!==$iid,'independent standard seed and identity');
+          $tcfg=require $target.'/config.php';$tcore=sokna_local_bootstrap($tcfg);$tp=$tcore->database();$tid=$tcfg['installation']['id'];$configHash=hash_file('sha256',$target.'/config.php');$restore=$tcore->businessBackup()->restoreEncryptedToEmptyTarget($file,$pass,0);ck($restore['restored']===true&&$restore['source_installation_id']===$iid,'actual restore source authenticated');ck(rows($tp)===$before&&MediaSnapshotCodec::scan($dest)===$media,'business records and media exact');
+          $reopen=sokna_local_bootstrap(require $target.'/config.php');$a=$reopen->publicAuthorityState();$proof=$a->restoredSourceIdentity();ck($a->phase()==='reenroll_required'&&$proof['source_installation_id']===$iid&&$proof['target_installation_id']===$tid&&preg_match('/^[a-f0-9]{16}$/D',$proof['restore_operation'])===1,'durable source hint after new bootstrap');ck($proof['owner_approval_required']===true&&$proof['previous_public_pairing_verified']===false,'not owner approval or pairing evidence');ck(!$reopen->publicEdgeSyncClient()->configured()&&hash_file('sha256',$target.'/config.php')===$configHash,'target remains unpaired, config unchanged');
+          $raw=marker($tp);$tp->beginTransaction();$tp->prepare('UPDATE settings SET setting_value=? WHERE setting_key=?')->execute(['tampered',PublicAuthorityStateService::RESTORE_SOURCE_KEY]);ck($a->restoredSourceIdentity()===null,'altered marker refused');$tp->rollBack();ck($a->restoredSourceIdentity()===$proof,'original proof restored after rollback');
+          $tp->beginTransaction();$a->markReenrolled($a->epoch()+1);ck($a->restoredSourceIdentity()===null,'hint inactive after phase changes');$tp->rollBack();ck($a->restoredSourceIdentity()===$proof,'pending hint preserved');
+          $tp->beginTransaction();$a->markBusinessRestoreRequired('unknown-installation',str_repeat('b',16));ck($a->phase()==='reenroll_required'&&$a->restoredSourceIdentity()===null&&marker($tp)===false,'unknown legacy source stays fenced without hint');$tp->rollBack();ck(marker($tp)===$raw,'legacy test rollback preserves original proof');
+          ck(rows($p)===$before&&marker($p)==='synthetic-forged-old-marker'&&hash_file('sha256',$file)===$sha,'source data and ciphertext unchanged');
+          file_put_contents($w.'/restore-identity-receipt.json',json_encode(['status'=>'PASS','actual_mariadb'=>$tp->query('SELECT VERSION()')->fetchColumn(),'checks'=>$checks,'restored_source_durable'=>true,'source_marker_not_exported'=>true,'owner_approval_tested'=>false,'public_transfer_completed'=>false,'source_and_target_business_exact'=>true,'no_config_mutation'=>true],JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+          PHP
+          sha256sum -c <<HASHES
+          790f12ebf09a08fd9c154992b5355252d0d77cc1496d07d8db44926c94331a63  $W/identity.patch
+          d4ea48117a7a0fed1c89aa0d5b5f2a8a6c9fe6ea5fa36e9e76eab6853adaffd3  $W/restore-identity.php
+          HASHES
+          for root in "$W" "$W-a23-identity-target"; do
+            cd "$root"
+            patch --batch --forward -p1 < "$W/identity.patch"
+            sha256sum -c <<'HASHES'
+          c09ff3dc66e707ed0278452eca5b6d5fe32b8aeb71681a55d5ce329844faf903  local/src/Domain/PublicEdge/PublicAuthorityStateService.php
+          ba4a73cd00d005d24dd478b386ccff4a33513183abd94437a695ba9240082f8c  local/src/Domain/Recovery/BusinessBackupService.php
+          cc8381de75048cb7f428bb5370d390a00ce31944d42bc26aab8b6a1a35ddca7e  local/public/integrations/api.php
+          HASHES
+          done
+          php "$W/restore-identity.php" "$W" | tee "$W/restore-identity-log.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-RESTORED-IDENTITY-EVIDENCE
+          path: |
+            ${{ runner.temp }}/a22/restore-identity-receipt.json
+            ${{ runner.temp }}/a22/restore-identity-log.txt
+            ${{ runner.temp }}/a22/identity.patch
+            ${{ runner.temp }}/a22/restore-identity.php
+          retention-days: 30
