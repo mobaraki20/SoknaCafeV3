@@ -1,0 +1,157 @@
+name: SOKNA A23-29 independent frozen package reconstruction
+on:
+  push:
+    branches: [qa/a23-recovery-lifecycle-20261128]
+    paths: [.github/workflows/sokna-a23-29-frozen-package-qa.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download last controlled Local delivery
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46067310389
+          name: SOKNA-LOCAL-231GK-CAFE-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/a11-input/local
+      - name: Download last controlled Public delivery
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46063873053
+          name: SOKNA-PUBLIC-35JB-CONTROLLED-OPERATOR-DELIVERY
+          path: ${{ runner.temp }}/a11-input/public
+      - name: Exact last delivery plus cumulative fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          mkdir -p "$W"
+          python3 - "$W" "$RUNNER_TEMP/a11-input" <<'PY' | tee "$W/source-results.txt"
+          import pathlib,hashlib,sys,zipfile,io
+          W,I=map(pathlib.Path,sys.argv[1:]); H=lambda b:hashlib.sha256(b).hexdigest()
+          def exact(p,h):
+              b=p.read_bytes();assert H(b)==h,(p,H(b));return b
+          local=exact(I/'local/SOKNA-LOCAL-231GK-CAFE-CONTROLLED-UPDATE.zip','79ea97f6be0577c9c724865f0fe271cff8dbb3bf078f12825fa91c6b091a5b45')
+          local=zipfile.ZipFile(io.BytesIO(local)).read('artifacts/local/web.zip')
+          assert H(local)=='fafcb63d1c9f7fd1a014836bf2e7f33bf09a1cc30137fa01ab6f056e779d01e8'
+          public=exact(I/'public/SOKNA-PUBLIC-35JB-CONTROLLED-CLEAN.zip','09fd9b7f7b968fa8721a5944c82970f702180c82b77e2b66c37104c87d1b725f')
+          expected={'local':(626,'b8019526c9fcbbe65bc5cf564769e62ca9175b956dfaee8cade6097f60309b52'),'public':(258,'239d2cbb5651463ab24bb5bb867b6dc727318e930ecf13f3b6c9956897faa77c')}
+          for host,b in [('local',local),('public',public)]:
+              z=zipfile.ZipFile(io.BytesIO(b));assert all(not pathlib.PurePosixPath(n).is_absolute() and '..' not in pathlib.PurePosixPath(n).parts for n in z.namelist())
+              r=W/host;z.extractall(r)
+              paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file())
+              actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==expected[host],(host,len(paths),actual)
+              print('PASS EXACT DELIVERY',host,len(paths),actual)
+          PY
+          base64 -d qa/post-release-a10/rebase.b64 > "$W/rebase.patch.gz"
+          echo '061db84e5b3175fcb59023ea50815a6a434b59c2b91720ab9f30f12fa42047b0  '"$W/rebase.patch.gz" | sha256sum -c -
+          gzip -dc "$W/rebase.patch.gz" > "$W/rebase.patch"
+          (cd "$W"; git apply --check rebase.patch; git apply rebase.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'f7687a2d4c6af1fbc749fe94c36c3111888a3853c75a277a507c49d5b35cf907'),'public':(258,'07715d03571d542cc1f6c862ec1fb266e6cc2b3995f2c6e291c11cc1ba11c2c2')}
+          for host,(n,sha) in expected.items():
+              r=root/host; paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file()); actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert len(paths)==n and actual==sha,(host,len(paths),actual)
+              print('PASS EXACT A11',host,n,actual)
+          PY
+      - name: Exact A12 archive interaction and compact expense form
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/a12.b64 > "$W/a12.patch.gz"
+          echo '4e2ed9794668428c9225497672201e5cb5ec67517617a5199d25ef562ef452a9  '"$W/a12.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a12.patch.gz" > "$W/a12.patch"
+          (cd "$W"; git apply --check a12.patch; git apply a12.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'098c20ccc5a2f61a8d85c6379397f84ba1de56c2d7a96605bfd8889ac97f624e'),'public':(258,'ed4fbf4e1d4778062dd4f4dff9d1711f294343dda81bbd559d2a0e3ef5ad5b73')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A12',host,n,actual)
+          PY
+      - name: A14 shared compact page header exact source
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          base64 -d qa/post-release-a10/a14.b64 > "$W/a14.patch.gz"
+          echo '1519ac76ab50f91923381e342e17b935ad3319e09cc7b62b1b14a36861e6b252  '"$W/a14.patch.gz" | sha256sum -c -
+          gzip -dc "$W/a14.patch.gz" > "$W/a14.patch"
+          (cd "$W"; git apply --check a14.patch; git apply a14.patch)
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'d797176c7c6509b4b316cd5c2dd3c1c4a0ceb8f5cce6a188988515b47cf9438a'),'public':(258,'80ad4bde59d592a36cd20f56b58862aa027b694ea04aafe0bcc5e7599a090b25')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A14',host,n,actual)
+          PY
+      - name: Apply and verify exact cumulative A21
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          echo '0d68e3d64773cff1d73ab86a956e985c4d4b3b9ecf4f54c2084398dd621be820  qa/post-release-a10/a21.patch' | sha256sum -c -
+          (cd "$W"; git apply --check "$GITHUB_WORKSPACE/qa/post-release-a10/a21.patch"; git apply "$GITHUB_WORKSPACE/qa/post-release-a10/a21.patch")
+          python3 - "$W" <<'PY' | tee -a "$W/source-results.txt"
+          import pathlib,hashlib,sys
+          root=pathlib.Path(sys.argv[1]);H=lambda b:hashlib.sha256(b).hexdigest()
+          expected={'local':(626,'e9d4a0e7f524d78dba676990cfbc83ec36ce9fd4d6548c8d3ab3cf8852c23728'),'public':(258,'515d993be47e0e7fd67614955d348ebcc17e80f87ed4b595ac8ae0343b25272c')}
+          for host,(n,sha) in expected.items():
+              r=root/host;paths=sorted(p.relative_to(r).as_posix() for p in r.rglob('*') if p.is_file());actual=H(''.join(p+'\0'+H((r/p).read_bytes())+'\n' for p in paths).encode())
+              assert (len(paths),actual)==(n,sha),(host,len(paths),actual)
+              print('PASS EXACT A21',host,n,actual)
+          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.5'
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 46122453416
+          name: SOKNA-A21-EXACT-CANDIDATES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/prior-a21
+      - name: Independently reconstruct source and candidate archives with exact protected owner separation
+        shell: bash
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/cp148-qa"
+          B="$RUNNER_TEMP/a23-29-base"
+          S="$RUNNER_TEMP/a23-29-source"
+          O="$RUNNER_TEMP/a23-29-frozen"
+          mkdir -p "$B" "$S" "$O"
+          cp -a "$W/local" "$W/public" "$B/"
+          cp -a "$B/local" "$B/public" "$S/"
+          echo 'a6a27a4f1c497a4c883ab285dd1079e7b00e8c7ac5be602ff443ae10cdc9d4f4  qa/a23-29/frozen-a23-23.patch' | sha256sum -c -
+          (cd "$S"; git apply --check "$GITHUB_WORKSPACE/qa/a23-29/frozen-a23-23.patch"; git apply "$GITHUB_WORKSPACE/qa/a23-29/frozen-a23-23.patch")
+          python qa/a23-29/build-frozen-qa.py "$B" "$S" "$RUNNER_TEMP/prior-a21" "$O" | tee "$O/build-log.json"
+          python - "$O" <<'PY'
+          import pathlib,hashlib,json,sys,zlib
+          p=pathlib.Path(sys.argv[1])
+          expected={'LOCAL-231GM-CLEAN-WEB-QA-NOT-INSTALL.zip':'b136b53e1e99d3dde0cbcc6139008b831bea73bdc2e51dd32e027a091c03c81c','LOCAL-231GM-UPDATE-QA-NOT-INSTALL.zip':'51947545b835e12d4dc7e91f47b2eeac9ff8624d9e87206da89ecc01b9fd9976','PUBLIC-35JD-CLEAN-QA-NOT-INSTALL.zip':'70057da26f95809a913aceda6d7ab51fb75b8c3b948de46a9018cffcd15780af','PUBLIC-35JD-PROTECTED-OWNER-QA-NOT-INSTALL.zip':'d43ec039b807d281b1e94d2b2205c35ba848e2b4596e8a15f16666e670e4c2e3','PUBLIC-35JD-UPDATE-QA-NOT-INSTALL.zip':'0ff7eb3c2f261f1fbc8ab7f7466d6a509ee4412ba9b99195fc81f15d743d83bc'}
+          got={n:hashlib.sha256((p/n).read_bytes()).hexdigest() for n in expected}
+          print('zlib',zlib.ZLIB_RUNTIME_VERSION)
+          r={'local_expected':expected,'runner_actual':got,'exact_bytes_match':got==expected,'delivery_authorized':False}
+          (p/'independent-build-receipt.json').write_text(json.dumps(r,indent=2)+'\n')
+          assert got==expected,r
+          print('PASS independent reconstruction of all five frozen archive bytes')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SOKNA-A23-29-FROZEN-PACKAGES-QA-NOT-INSTALL
+          path: ${{ runner.temp }}/a23-29-frozen/*
+          if-no-files-found: error
+          retention-days: 30
